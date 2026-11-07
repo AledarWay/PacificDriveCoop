@@ -76,7 +76,7 @@ jobs:
 
       # a fresh clone has new file times, so a cached build tree would be rebuilt anyway: only the crates are cached
       - name: Cargo cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -93,13 +93,13 @@ jobs:
           catch { "::error::build-alpha: $_"; exit 1 }
 
       - name: Upload the alpha
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: PacificDriveCoop-${{ steps.ver.outputs.version }}
           path: local/release/PacificDriveCoop-${{ steps.ver.outputs.version }}/
 
       - name: Upload the symbols (for crash-stack.ps1)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: symbols-${{ steps.ver.outputs.version }}
           path: local/release/symbols/${{ steps.ver.outputs.version }}/
