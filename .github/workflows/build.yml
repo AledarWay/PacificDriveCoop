@@ -29,7 +29,7 @@ jobs:
       run:
         shell: powershell
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # the scripts use C:\PacificDriveCoop (the dev PC's folder): point it at the checkout
       - name: Link C:\PacificDriveCoop
@@ -39,10 +39,10 @@ jobs:
         id: ver
         run: |
           $m = Select-String -Path mod\release\CHANGELOG.txt -Pattern '^(\d+\.\d+\.\d+\S*) \(' | Select-Object -First 1
-          if (-not $m) { throw 'no version in mod/release/CHANGELOG.txt' }
+          if (-not $m) { '::error::no version in mod/release/CHANGELOG.txt'; exit 1 }
           $v = $m.Matches[0].Groups[1].Value
           if ('${{ github.ref_type }}' -eq 'tag' -and '${{ github.ref_name }}' -ne "v$v") {
-            throw "tag ${{ github.ref_name }} does not match the CHANGELOG version $v"
+            "::error::tag ${{ github.ref_name }} does not match the CHANGELOG version $v"; exit 1
           }
           "version=$v" >> $env:GITHUB_OUTPUT
           "Version: $v"
@@ -50,18 +50,21 @@ jobs:
       - name: UE4SS sources
         env:
           UE4SS_TOKEN: ${{ secrets.UE4SS_TOKEN }}
+        # bash: Windows PowerShell 5.1 turns git's progress on stderr into a failing error
+        # (::error:: lines show in the run's annotations, readable without signing in)
+        shell: bash
         run: |
-          if (-not $env:UE4SS_TOKEN) { throw 'secret UE4SS_TOKEN is not set (Settings -> Secrets and variables -> Actions)' }
-          $commit = (Get-Content mod\native\ue4ss-commit.txt -TotalCount 1).Trim()
-          git clone --quiet https://github.com/UE4SS-RE/RE-UE4SS.git local\ue4ss-src
-          if ($LASTEXITCODE) { throw 'clone RE-UE4SS failed' }
-          git -C local\ue4ss-src checkout --quiet $commit
-          if ($LASTEXITCODE) { throw "checkout $commit failed" }
-          # submodules use git@github.com: URLs; UEPseudo is private -> https with the token (only for this command,
-          # -c reaches the submodule clones; nothing is written to a config file)
-          git -C local\ue4ss-src -c url."https://x-access-token:$($env:UE4SS_TOKEN)@github.com/".insteadOf=git@github.com: submodule update --init --recursive
-          if ($LASTEXITCODE) { throw 'submodules failed: does the UE4SS_TOKEN account have access to Re-UE4SS/UEPseudo (GitHub linked to Epic)?' }
-          git -C local\ue4ss-src log -1 --format='UE4SS %H %s'
+          fail() { echo "::error::$1"; exit 1; }
+          [ -n "$UE4SS_TOKEN" ] || fail 'secret UE4SS_TOKEN is not set (Settings -> Secrets and variables -> Actions)'
+          commit=$(head -1 mod/native/ue4ss-commit.txt | tr -d '\r\n ')
+          git clone --quiet https://github.com/UE4SS-RE/RE-UE4SS.git local/ue4ss-src || fail 'clone of UE4SS-RE/RE-UE4SS failed'
+          git -C local/ue4ss-src checkout --quiet "$commit" || fail "checkout of UE4SS commit $commit failed"
+          # submodules use git@github.com: URLs; UEPseudo is private -> https with the token (only for this command:
+          # -c reaches the submodule clones, nothing is written to a config file)
+          git -C local/ue4ss-src -c "url.https://x-access-token:${UE4SS_TOKEN}@github.com/.insteadOf=git@github.com:" \
+            submodule update --init --recursive \
+            || fail 'submodules failed: has the UE4SS_TOKEN account access to Re-UE4SS/UEPseudo (GitHub linked to Epic), is the token classic with scope repo and not expired?'
+          git -C local/ue4ss-src log -1 --format='UE4SS %H %s'
 
       # a fresh clone has new file times, so a cached build tree would be rebuilt anyway: only the crates are cached
       - name: Cargo cache
@@ -73,14 +76,13 @@ jobs:
           key: cargo-${{ hashFiles('mod/native/ue4ss-commit.txt') }}
 
       - name: Build the native half and UE4SS
-        run: |
-          cmd /c mod\native\build.bat
-          if ($LASTEXITCODE) { throw 'native build failed' }
+        shell: cmd
+        run: call mod\native\build.bat || (echo ::error::native build failed, see the step's log & exit /b 1)
 
       - name: Build the alpha zip
         run: |
-          & mod\tools\build-alpha.ps1 -Version '${{ steps.ver.outputs.version }}'
-          if (-not $?) { throw 'build-alpha failed' }
+          try { & mod\tools\build-alpha.ps1 -Version '${{ steps.ver.outputs.version }}' }
+          catch { "::error::build-alpha: $_"; exit 1 }
 
       - name: Upload the alpha
         uses: actions/upload-artifact@v4
@@ -110,5 +112,6 @@ jobs:
             $notes += $lines[$i]
           }
           [IO.File]::WriteAllText("$env:RUNNER_TEMP\notes.md", (($notes -join "`n").Trim()), (New-Object Text.UTF8Encoding($false)))
+          $ErrorActionPreference = 'Continue'   # gh prints progress on stderr
           gh release create '${{ github.ref_name }}' "local\release\PacificDriveCoop-$v.zip" --title "PacificDriveCoop $v" --notes-file "$env:RUNNER_TEMP\notes.md" --prerelease
-          if ($LASTEXITCODE) { throw 'gh release create failed' }
+          if ($LASTEXITCODE) { '::error::gh release create failed'; exit 1 }

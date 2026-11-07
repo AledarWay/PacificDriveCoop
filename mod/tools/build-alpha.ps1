@@ -18,7 +18,7 @@ $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 if ($LASTEXITCODE) { throw "lua-lint failed" }
 
 # the native half and our UE4SS: built fresh (mod\native\build.bat -> local\native-build, incremental)
-& cmd /c "$root\mod\native\build.bat" | Out-Null
+& cmd /c "$root\mod\native\build.bat 2>&1" | Out-Null   # 2>&1 inside cmd: stderr would stop this script (Stop)
 if ($LASTEXITCODE) { throw "native build failed (mod\native\build.bat)" }
 foreach ($f in "$native\CoopNative\main.dll", "$native\Game__Shipping__Win64\bin\UE4SS.dll", "$native\Game__Shipping__Win64\bin\dwmapi.dll") {
     if (-not (Test-Path $f)) { throw "missing $f" }

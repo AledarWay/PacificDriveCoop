@@ -1,54 +1,59 @@
-# Сеть CoopSync: два ПК
+# CoopSync network: two PCs (legacy relay)
 
-Lua в UE4SS не умеет работать с сокетами, поэтому рядом с игрой запускается **релей** (`relay.ps1`,
-обычный PowerShell + .NET, ничего ставить не нужно). Игра пишет и читает локальные файлы канала, а релеи
-переносят их строки и файлы между ПК по TCP (порт по умолчанию 27520). Подключение — по прямому IP:
-в локальной сети или через VPN-оверлей (Tailscale / ZeroTier), как советует плейбук для первого этапа.
+> **Legacy.** This is the first-stage network (a relay process next to the game). Since 0.1.0-alpha8 the network
+> runs inside the game (the native half, `mod/CoopNative/net.cpp`, Steam P2P), and the alpha zip no longer ships
+> CoopNet or the relay. Kept for the history and the relay self-tests.
 
-## Что нужно на обоих ПК
+Lua in UE4SS cannot use sockets, so a **relay** (`relay.ps1`, plain PowerShell + .NET, nothing to install) runs
+next to the game. The game writes and reads local channel files, and the relays carry their lines and files between
+the PCs over TCP (default port 27520). The connection is by direct IP: on a local network or through a VPN overlay
+(Tailscale / ZeroTier), as the playbook advises for the first stage.
 
-1. Pacific Drive из Steam той же сборки (у хоста проверено buildid 21896301, SHA-256 exe в `games/pacific-drive/NOTES.md`).
-2. **Тестовая копия** игры (не основная установка!) с UE4SS и модами `CoopDev`, `CoopSync`, как в `C:\PacificDriveCoop\testgame`,
-   и тот же `UE4SS-settings.ini` (важно: `bForceGUObjectArrayForIteration = true`).
-3. Папка проекта `C:\PacificDriveCoop\mod` (скрипты ссылаются на этот путь).
-4. Сеть между ПК: одна локальная сеть **или** Tailscale/ZeroTier у обоих. IP хоста — адрес в этой сети
-   (для Tailscale — `100.x.y.z` из приложения).
+## What both PCs need
 
-## Только у хоста: открыть порт
+1. Pacific Drive from Steam, the same build (the host checked buildid 21896301; the exe's SHA-256 is in
+   `games/pacific-drive/NOTES.md`).
+2. A **test copy** of the game (not the main install!) with UE4SS and the `CoopDev`, `CoopSync` mods, as in
+   `C:\PacificDriveCoop\testgame`, and the same `UE4SS-settings.ini` (important: `bForceGUObjectArrayForIteration = true`).
+3. The project folder `C:\PacificDriveCoop\mod` (the scripts use this path).
+4. A network between the PCs: one local network **or** Tailscale/ZeroTier on both. The host's IP is its address on
+   that network (for Tailscale, `100.x.y.z` from the app).
 
-Брандмауэр Windows по умолчанию не пустит входящее подключение. Это меняет системные настройки,
-поэтому команду выполняет владелец ПК сам, в PowerShell **от имени администратора**:
+## Host only: open the port
+
+Windows Firewall blocks incoming connections by default. This changes system settings, so the PC's owner runs the
+command themselves, in PowerShell **as administrator**:
 
 ```powershell
 New-NetFirewallRule -DisplayName "CoopSync relay" -Direction Inbound -Protocol TCP -LocalPort 27520 -Action Allow
 ```
 
-Порт в роутере пробрасывать не нужно, если вы в одной сети или в Tailscale/ZeroTier.
+No port forwarding on the router is needed on one network or in Tailscale/ZeroTier.
 
-## Автотест на двух ПК
+## Automatic test on two PCs
 
-Придумайте общий секрет (любая строка) — он не пускает посторонних к релею.
+Pick a shared secret (any string): it keeps strangers off the relay.
 
-Хост:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File C:\PacificDriveCoop\mod\net\coop-net-test.ps1 -Role host -Token <секрет> -Bind 0.0.0.0
-```
-
-Клиент (запускать после того, как хост напишет `sync: OK host sync started`):
+Host:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File C:\PacificDriveCoop\mod\net\coop-net-test.ps1 -Role client -Token <секрет> -HostAddr <IP хоста>
+powershell -ExecutionPolicy Bypass -File C:\PacificDriveCoop\mod\net\coop-net-test.ps1 -Role host -Token <secret> -Bind 0.0.0.0
 ```
 
-Каждый ПК запускает свою игру без графики (`-nullrhi`) в отдельном профиле (`-userdir`), ваши сохранения не трогаются.
-Хост печатает по трём этапам (после синхронизации, после действий бота хоста, после действий бота клиента)
-строки `PASS`/`FAIL` для позиций и `LOOT PASS`/`LOOT FAIL` для содержимого. Пришлите вывод обоих окон.
+Client (start it after the host prints `sync: OK host sync started`):
 
-## Что проверено, а что нет
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\PacificDriveCoop\mod\net\coop-net-test.ps1 -Role client -Token <secret> -HostAddr <host IP>
+```
 
-- Проверено на одном ПК (две копии игры, общение только через релеи по TCP на 127.0.0.1): все этапы PASS,
-  в том числе с эмуляцией задержки 75 мс в каждую сторону + джиттер 30 мс.
-- **Не проверено**: два настоящих ПК, интернет/VPN, потери пакетов, обрыв связи посреди игры.
-- Известные ограничения: при обрыве TCP строки «в полёте» могут потеряться (нет подтверждений и повторной
-  отправки); движение идёт по TCP (одна задержка тормозит остальное); трафик не шифруется, токен идёт открытым текстом.
+Each PC runs its game without graphics (`-nullrhi`) in a separate profile (`-userdir`); your saves are not touched.
+For three stages (after the sync, after the host bot's actions, after the client bot's actions) the host prints
+`PASS`/`FAIL` lines for the positions and `LOOT PASS`/`LOOT FAIL` for the contents. Send the output of both windows.
+
+## What was tested and what was not
+
+- Tested on one PC (two copies of the game talking only through the relays over TCP on 127.0.0.1): all stages PASS,
+  also with an emulated 75 ms delay each way + 30 ms jitter.
+- **Not tested**: two real PCs, internet/VPN, packet loss, a connection drop mid-game.
+- Known limits: on a TCP drop the lines "in flight" can be lost (no acknowledgements or resends); movement goes over
+  TCP (one delay holds up the rest); the traffic is not encrypted, the token goes in plain text.
