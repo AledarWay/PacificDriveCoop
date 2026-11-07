@@ -137,12 +137,12 @@ local function render(force)
     vb:ClearChildren()
     buttons = {}
     local tree = w.WidgetTree
-    text(vb, tree, L("CoopSync — панель (F7)"), 24)
+    text(vb, tree, L("panel.title"), 24)
     if lastMsg ~= "" then text(vb, tree, "» " .. lastMsg, 18) end
     for _, r in ipairs(rows) do
         if r.act then button(vb, tree, r.label, r.act) else text(vb, tree, r.label, 16) end
     end
-    button(vb, tree, L("Закрыть (F7)"), function() M.close() return "" end)
+    button(vb, tree, L("panel.close"), function() M.close() return "" end)
 end
 
 local savedPause -- { opacity, visibility } of the game's pause menu while the panel shows over it
@@ -213,7 +213,7 @@ local function tick()
             local p = o:IsPressed()
             if b.was and not p and b.act then
                 local ok, msg = pcall(b.act)
-                lastMsg = ok and tostring(msg or "") or (L("ошибка: ") .. tostring(msg))
+                lastMsg = ok and tostring(msg or "") or L("common.error", tostring(msg))
                 sig = ""
                 b.was = false
                 After(50, function() pcall(render, true) end)
@@ -255,7 +255,7 @@ function M.press(prefix)
         local label = o and o:GetContent():GetText():ToString() or ""
         if label:sub(1, #prefix) == prefix and b.act then
             local ok, msg = pcall(b.act)
-            lastMsg = ok and tostring(msg or "") or (L("ошибка: ") .. tostring(msg))
+            lastMsg = ok and tostring(msg or "") or L("common.error", tostring(msg))
             sig = ""
             render(true)
             return lastMsg

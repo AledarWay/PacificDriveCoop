@@ -56,6 +56,8 @@ Set-Content "$out\files\ue4ss\Mods\mods.json" '[ { "mod_name": "CoopSync", "mod_
 
 # the mod
 Copy-Item "$root\mod\CoopSync\Scripts\*.lua" "$mod\Scripts\"
+New-Item -ItemType Directory -Force "$mod\Scripts\lang" | Out-Null
+Copy-Item "$root\mod\CoopSync\Scripts\lang\*.lua" "$mod\Scripts\lang\"   # the texts, one file per language (loc.lua)
 Copy-Item "$native\CoopNative\main.dll" "$mod\dlls\main.dll"
 Ps1 "$root\mod\CoopSync\tools\collect-report.ps1" "$mod\tools\collect-report.ps1"
 Ps1 "$rel\common.ps1" "$mod\tools\common.ps1"

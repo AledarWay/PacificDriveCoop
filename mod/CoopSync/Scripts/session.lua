@@ -796,36 +796,36 @@ function M.debug(action)
             -- publish the zone again under a new seq: the guest imports it once more
             State.stopped, Players.stopped = true, true
             S.state, S.readyTicks, S.arrived, S.stoppedAt = "zone: generating", READY_TICKS, 0, nowS()
-            return L("зона отправлена заново")
+            return L("sess.zone_resent")
         elseif S.role == "client" and (S.state == "playing" or S.state == "zone: imported") then
             State.stopped, Players.stopped = true, true
             S.importedSeq, S.state = nil, "zone: waiting for the host's list"
-            return L("зона хоста загружается заново")
+            return L("sess.zone_reloading")
         end
-        return L("нечего синхронизировать (") .. S.state .. ")"
+        return L("sess.nothing_to_sync", S.state)
     elseif action == "restart" then
-        if not (S.state == "hosting" or S.state == "playing") then return L("синхронизация не запущена (") .. S.state .. ")" end
+        if not (S.state == "hosting" or S.state == "playing") then return L("sess.sync_not_running", S.state) end
         State.stopped, Players.stopped = true, true -- their loops end within a frame or two
         After(1500, function()
             State.start(Sync, S.role, chan, S.role == "host" and (chan .. "/" .. string.format("host-spawnlist-%d.tsv", S.seq)) or S.list)
             Players.start(Sync, S.role, chan, { ownCar = S.role == "client" and S.mode == "car" })
             Weather.start(Players, S.role)
         end)
-        return L("синхронизация перезапускается")
+        return L("sess.sync_restarting")
     elseif action == "teleport" then
         local ok, r = pcall(Players.teleportToOther)
-        return ok and tostring(r) or (L("телепорт не удался: ") .. tostring(r))
+        return ok and tostring(r) or L("sess.teleport_failed", tostring(r))
     elseif action == "restorecar" then
         local ok, r = pcall(Run.restoreCar, Run.insuranceFile())
-        return ok and tostring(r) or (L("не удалось вернуть детали: ") .. tostring(r))
+        return ok and tostring(r) or L("sess.restore_failed", tostring(r))
     elseif action == "leave" then
         State.stopped = true
         Players.stop()
         S.role, S.go, S.state = nil, false, "idle"
         Weather.release()
-        return L("вы вышли из сессии (одиночная игра)")
+        return L("sess.left_session")
     end
-    return L("неизвестное действие ") .. tostring(action)
+    return L("sess.unknown_action", tostring(action))
 end
 function M.state() return S end
 function M.channel() return chan end

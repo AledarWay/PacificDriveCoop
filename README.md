@@ -58,8 +58,8 @@ What works now, all tested in-game:
 - Each player sees the other walk, run and animate. Kicks and getting run over hurt the other player.
 
 **Language**
-- Every text of the mod follows the game's language. Russian and English are supported; other languages show
-  English. The texts are in [`mod/CoopSync/Scripts/loc.lua`](mod/CoopSync/Scripts/loc.lua).
+- Every text of the mod follows the game's language. English and Russian are included, and any other language
+  shows English until someone adds a translation (see [Adding a language](#adding-a-language)).
 
 **Tools for testers**
 - **Two copies on one PC** (`TwoGamesTest.bat`): test the co-op without a friend. Each copy plays on its own copy
@@ -148,7 +148,8 @@ This list changes with every alpha. The full log of findings is in
 
 | Path | What |
 |---|---|
-| `mod/CoopSync/Scripts` | the mod (Lua, UE4SS): session, cars, loot, zone, menu, localization |
+| `mod/CoopSync/Scripts` | the mod (Lua, UE4SS): session, cars, loot, zone, menu |
+| `mod/CoopSync/Scripts/lang` | the mod's texts, one file per language |
 | `mod/CoopNative` | the native half (C++, `main.dll`): Steam lobby and P2P network, world, saves |
 | `mod/native` | CMake tree: UE4SS from source + CoopNative; `build.bat` |
 | `mod/release` | installer scripts, the zip's README, CHANGELOG |
@@ -173,6 +174,29 @@ powershell -File mod\tools\build-alpha.ps1 -Version 0.1.0-alphaNN
 
 This builds `local\release\PacificDriveCoop-<version>.zip`. The scripts expect the repository at
 `C:\PacificDriveCoop`.
+
+### Adding a language
+
+Each language is one file in [`mod/CoopSync/Scripts/lang/`](mod/CoopSync/Scripts/lang/). The file is named
+after the game's language code, such as `de.lua`, `fr.lua` or `pt-br.lua`, and maps text keys to texts:
+
+```lua
+return {
+    ["menu.create_lobby"] = "Lobby erstellen",
+    ["menu.invitation"] = "Einladung von %s - annehmen",
+}
+```
+
+- Start from a copy of [`en.lua`](mod/CoopSync/Scripts/lang/en.lua). It is the reference and holds every key.
+- Keep `%s`, `%d` and `%.0f` as they are and in the same order: the mod fills them in (a name, a number).
+- A key you leave out shows in English.
+- The mod picks the file from the game's language: first the full code (`pt-br`), then the language alone (`pt`),
+  then English. To try a language without switching the game, set the environment variable `COOPSYNC_LANG=de`.
+- `mod/tools/loc-check.ps1` (run by `lua-lint.ps1` and the build) checks every file: unknown keys, `%` codes that
+  do not match English, and keys that are missing.
+
+In the code a text is `L("menu.create_lobby")`, or `L("menu.invitation", name)` with values to fill in
+([`loc.lua`](mod/CoopSync/Scripts/loc.lua)). A new text needs its key in `en.lua` and `ru.lua`.
 
 ### CI
 

@@ -4,6 +4,14 @@
 Newest first. The installed mod's version is in files\VERSION.txt of the zip.
 
 
+0.1.0-alpha21 (being prepared)
+------------------------------
+Texts:
+- The mod's texts are in one file per language (Mods\CoopSync\Scripts\lang\en.lua, ru.lua): a translation
+  is added as a new file named after the game's language (de.lua, fr.lua ...); a language without a file, or a text
+  a file lacks, shows in English.
+
+
 0.1.0-alpha20 (2026-11-05)
 --------------------------
 After the owner's alpha 19 test with two copies of the game on one PC.

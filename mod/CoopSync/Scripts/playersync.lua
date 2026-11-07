@@ -4321,16 +4321,16 @@ end
 
 -- debug menu: put the local player next to the other player (stuck under the map, lost in the fog)
 function M.teleportToOther()
-    local function L(t) return CoopSyncLoc and CoopSyncLoc.L(t) or t end -- (loc.lua: the game's language)
+    local function L(k, ...) return CoopSyncLoc and CoopSyncLoc.L(k, ...) or k end -- (loc.lua: the game's language)
     local pawn = localPawn()
-    if not pawn then return L("нет персонажа") end
-    if Sync.parentOf(pawn) then return L("сначала выйдите из машины") end
+    if not pawn then return L("tp.no_character") end
+    if Sync.parentOf(pawn) then return L("tp.get_out_first") end
     local p = Sync.deref(puppetPath)
-    if not p then return L("другого игрока здесь нет") end
+    if not p then return L("tp.no_other") end
     local loc = p:K2_GetActorLocation()
     local hit = {}
     pawn:K2_SetActorLocation({ X = loc.X + 150, Y = loc.Y, Z = loc.Z + 60 }, false, hit, true)
-    return string.format(L("вы рядом с другим игроком (%.0f, %.0f, %.0f)"), loc.X, loc.Y, loc.Z)
+    return L("tp.near", loc.X, loc.Y, loc.Z)
 end
 
 function M.selfInfo()

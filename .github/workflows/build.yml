@@ -44,6 +44,9 @@ jobs:
           if ('${{ github.ref_type }}' -eq 'tag' -and '${{ github.ref_name }}' -ne "v$v") {
             "::error::tag ${{ github.ref_name }} does not match the CHANGELOG version $v"; exit 1
           }
+          if ('${{ github.ref_type }}' -eq 'tag' -and $m.Line -match 'being prepared') {
+            "::error::CHANGELOG $v is still '(being prepared)': put the release date there before tagging"; exit 1
+          }
           "version=$v" >> $env:GITHUB_OUTPUT
           "Version: $v"
 
@@ -120,6 +123,8 @@ jobs:
             $notes += $lines[$i]
           }
           [IO.File]::WriteAllText("$env:RUNNER_TEMP\notes.md", (($notes -join "`n").Trim()), (New-Object Text.UTF8Encoding($false)))
+          # the symbols go with the release too: a release asset stays as long as the release (artifacts: 90 days)
+          Compress-Archive -Path "local\release\symbols\$v\*" -DestinationPath "local\release\symbols-$v.zip"
           $ErrorActionPreference = 'Continue'   # gh prints progress on stderr
-          gh release create '${{ github.ref_name }}' "local\release\PacificDriveCoop-$v.zip" --title "PacificDriveCoop $v" --notes-file "$env:RUNNER_TEMP\notes.md" --prerelease
+          gh release create '${{ github.ref_name }}' "local\release\PacificDriveCoop-$v.zip" "local\release\symbols-$v.zip" --title "PacificDriveCoop $v" --notes-file "$env:RUNNER_TEMP\notes.md" --prerelease
           if ($LASTEXITCODE) { '::error::gh release create failed'; exit 1 }

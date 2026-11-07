@@ -2,7 +2,7 @@
 # a script that starts with one) and unknown globals (luac -l lists every global access as GETTABUP/SETTABUP
 # _ENV "name"; anything outside the allow-list below is usually a typo or a missing `local`).
 # Full in-game load check: lua-check.ps1.
-param([string[]]$Paths = @("C:\PacificDriveCoop\mod\CoopSync\Scripts", "C:\PacificDriveCoop\mod\CoopDev\Scripts", "C:\PacificDriveCoop\mod\tools\cmds"))
+param([string[]]$Paths = @("C:\PacificDriveCoop\mod\CoopSync\Scripts", "C:\PacificDriveCoop\mod\CoopSync\Scripts\lang", "C:\PacificDriveCoop\mod\CoopDev\Scripts", "C:\PacificDriveCoop\mod\tools\cmds"))
 $luac = "C:\PacificDriveCoop\tools\lua\luac54.exe"
 $std = 'coroutine assert collectgarbage debug dofile error getmetatable io ipairs load loadfile math next os package pairs pcall print rawequal rawget rawlen rawset require select setmetatable string table tonumber tostring type utf8 xpcall _G _VERSION'
 $ue4ss = 'FindAllOf FindFirstOf FindObject FindObjects StaticFindObject StaticConstructObject LoadAsset FName FText FString UEHelpers EInternalObjectFlags EObjectFlags LoopAsync LoopInGameThreadWithDelay LoopInGameThreadAfterFrames CancelDelayedAction IsDelayedActionActive IsValidDelayedActionHandle ExecuteInGameThread ExecuteAsync ExecuteWithDelay RegisterHook UnregisterHook RegisterKeyBind Key ModifierKey RegisterConsoleCommandHandler NotifyOnNewObject IterateGameDirectories ModRef'

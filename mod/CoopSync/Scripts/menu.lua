@@ -276,8 +276,8 @@ end
 local function hostWhere()
     local s = kv((Link.read(Link.docPath(chan, "inbox", "host-session.txt")) or ""):match("^[^\r\n]*"))
     if not s.world then return nil end
-    if s.world == "-" then return L("в гараже") end
-    return L("в зоне ") .. s.world
+    if s.world == "-" then return L("menu.where_garage") end
+    return L("menu.where_zone", s.world)
 end
 
 ---------------------------------------------------------------------------------------------------
@@ -288,41 +288,41 @@ function M.lobbyRows(add, setPage)
     if not n.up then
         local err = (n.head.err or ""):gsub("_", " ")
         -- (the game brings Steam up a little after the mod starts: link.lua tries again by itself)
-        if err:find("not initialized", 1, true) then add(L("Сеть: ждём Steam…"))
-        else add(L("Сеть Steam недоступна") .. (err ~= "" and (": " .. err) or "")) end
-        add(L("Запустить сеть заново"), function() return Session.startNet() end)
+        if err:find("not initialized", 1, true) then add(L("menu.net_waiting"))
+        else add(err ~= "" and L("menu.net_unavailable_err", err) or L("menu.net_unavailable")) end
+        add(L("menu.net_restart"), function() return Session.startNet() end)
     elseif not n.inLobby then
-        add(L("Создать лобби"), function() netCmd("create") return L("лобби создаётся…") end)
+        add(L("menu.create_lobby"), function() netCmd("create") return L("menu.creating_lobby") end)
         for _, i in ipairs(n.invites) do
-            add(L("Приглашение от ") .. i.name .. L(" — принять"), function() netCmd("join " .. i.lobby) return L("вход в лобби…") end)
+            add(L("menu.invitation", i.name), function() netCmd("join " .. i.lobby) return L("menu.joining") end)
         end
         for _, f in ipairs(n.friends) do
             if f.ingame and f.lobby ~= "0" then
                 -- ("local-copy": the other game on this PC, the two-games test script's local link)
-                local who = f.name == "local-copy" and L("вторая копия игры на этом ПК") or f.name
-                add(L("Войти в лобби: ") .. who, function() netCmd("join " .. f.lobby) return L("вход в лобби…") end)
+                local who = f.name == "local-copy" and L("menu.local_copy") or f.name
+                add(L("menu.join_lobby", who), function() netCmd("join " .. f.lobby) return L("menu.joining") end)
             end
         end
     else
         -- (no ping: each change rebuilt the page - owner, alpha 19)
-        add(string.format(L("Лобби: %d из 2"), #n.members))
+        add(L("menu.lobby_count", #n.members))
         -- (the on-foot role is frozen, owner 2026-10-24: everyone comes with an own car, no role switch)
         for _, m in ipairs(n.members) do
-            add(string.format("%s%s%s", m.name, m.me and L(" (вы)") or "", m.owner and L(" · хост") or ""))
+            add(string.format("%s%s%s", m.name, m.me and L("menu.tag_me") or "", m.owner and L("menu.tag_host") or ""))
         end
         if n.owner then
-            add(L("Вы выбираете развилку"))
+            add(L("menu.you_pick"))
         else
             local where = hostWhere()
-            add(where == nil and L("Хост ещё не в игре") or where == L("в гараже") and L("Ждём выезда хоста") or L("Хост в зоне — выезжайте"))
+            add(where == nil and L("menu.host_not_in_game") or where == L("menu.where_garage") and L("menu.wait_host_drive") or L("menu.host_in_zone"))
         end
-        add(L("Пригласить друга…"), function() friendsPage = 1 setPage("friends") return "" end)
-        add(L("Покинуть лобби"), function() netCmd("leave") return L("вы вышли из лобби") end)
+        add(L("menu.invite_friend"), function() friendsPage = 1 setPage("friends") return "" end)
+        add(L("menu.leave_lobby"), function() netCmd("leave") return L("menu.left_lobby") end)
     end
     -- (out of a lobby the other side closing is the leave itself: it stayed on the menu for good, owner's alpha 18 test)
     local err = n.head.err or ""
     if err:find("other_side_closed", 1, true) and not n.inLobby then err = "" end
-    if err ~= "" then add(L("Ошибка сети: ") .. err:gsub("_", " ")) end
+    if err ~= "" then add(L("menu.net_error", (err:gsub("_", " ")))) end
 end
 
 -- friends: those in Pacific Drive first (the network sorts: in this game, online, name), online only, a page at a time
@@ -332,41 +332,41 @@ function M.friendRows(add, setPage)
     for _, f in ipairs(n.friends) do if f.online then list[#list + 1] = f end end
     local pages = math.max(1, math.ceil(#list / FRIENDS_PER_PAGE))
     if friendsPage > pages then friendsPage = pages end
-    if #list == 0 then add(L("Нет друзей в сети")) end
+    if #list == 0 then add(L("menu.no_friends")) end
     for i = (friendsPage - 1) * FRIENDS_PER_PAGE + 1, math.min(#list, friendsPage * FRIENDS_PER_PAGE) do
         local f = list[i]
-        add((f.ingame and "▶ " or "") .. f.name .. (f.ingame and L(" (в Pacific Drive)") or ""), function()
-            netCmd("invite " .. f.id) return L("приглашение отправлено: ") .. f.name
+        add((f.ingame and "▶ " or "") .. f.name .. (f.ingame and L("menu.in_game_tag") or ""), function()
+            netCmd("invite " .. f.id) return L("menu.invite_sent", f.name)
         end)
     end
     if pages > 1 then
-        add(string.format(L("Страница %d из %d — дальше"), friendsPage, pages), function()
+        add(L("menu.page_next", friendsPage, pages), function()
             friendsPage = friendsPage % pages + 1 return ""
         end)
     end
-    add(L("Назад"), function() setPage("coop") return "" end)
+    add(L("common.back"), function() setPage("coop") return "" end)
 end
 
 function M.debugRows(add, setPage)
     local function dbg(label, action) add(label, function() return Session.debug(action) end) end
-    dbg(L("Пересинхронизировать зону"), "resync")
-    dbg(L("Перезапустить синхронизацию"), "restart")
-    dbg(L("Телепорт к другому игроку"), "teleport")
-    dbg(L("Вернуть детали машины (страховка)"), "restorecar")
-    add(L("Собрать отчёт на рабочий стол"), function() return M.report() end)
-    dbg(L("Выйти из сессии (одиночная игра)"), "leave")
-    add(L("Состояние…"), function() setPage("state") return "" end)
+    dbg(L("dbg.resync"), "resync")
+    dbg(L("dbg.restart"), "restart")
+    dbg(L("dbg.teleport"), "teleport")
+    dbg(L("dbg.restore_car"), "restorecar")
+    add(L("dbg.report"), function() return M.report() end)
+    dbg(L("dbg.leave"), "leave")
+    add(L("dbg.state"), function() setPage("state") return "" end)
 end
 
 function M.stateRows(add, setPage)
     local n = net()
-    add(L("Сессия: ") .. Session.info():sub(1, 110))
-    add(string.format(L("Сеть: %s лобби=%s пир=%s пинг=%s"), tostring(n.head.state), tostring(n.head.lobby), tostring(n.head.peer), tostring(n.head.ping)))
+    add(L("dbg.st_session", Session.info():sub(1, 110)))
+    add(L("dbg.st_net", tostring(n.head.state), tostring(n.head.lobby), tostring(n.head.peer), tostring(n.head.ping)))
     local okP, p = pcall(function() return require("playersync").report() end)
-    add(L("Игроки: ") .. tostring(okP and p or "-"):sub(1, 110))
+    add(L("dbg.st_players", tostring(okP and p or "-"):sub(1, 110)))
     local okS, st = pcall(function() return require("statesync").report() end)
-    add(L("Мир: ") .. tostring(okS and st or "-"):sub(1, 110))
-    add(L("Назад"), function() setPage("main") return "" end)
+    add(L("dbg.st_world", tostring(okS and st or "-"):sub(1, 110)))
+    add(L("common.back"), function() setPage("main") return "" end)
 end
 
 -- the F7 panel's pages: main = lobby + debug, friends, state
@@ -379,7 +379,7 @@ function M.panelRows(p, setPage)
         M.stateRows(add, setPage)
     else
         M.lobbyRows(add, setPage)
-        add(L("—— отладка ——"))
+        add(L("menu.debug_header"))
         M.debugRows(add, setPage)
     end
     return r
@@ -393,7 +393,7 @@ local function pageRows()
     if lastMsg ~= "" then add("» " .. lastMsg) end
     if page == "coop" then
         M.lobbyRows(add, setPage)
-        add(L("Назад"), function() page = nil return "" end)
+        add(L("common.back"), function() page = nil return "" end)
     elseif page == "friends" then
         M.friendRows(add, setPage)
     end
@@ -448,7 +448,7 @@ local function onPressed(btn)
         if r.w:GetAddress() == a then
             if r.act then
                 local ok, msg = pcall(r.act)
-                lastMsg = ok and (msg or "") or (L("ошибка: ") .. tostring(msg))
+                lastMsg = ok and (msg or "") or L("common.error", tostring(msg))
                 sig = "" -- rebuild
                 render()
             end
@@ -463,7 +463,7 @@ local function ensureItem()
     if not menu then menuItemH = nil return end
     -- (UE4SS gives a new Lua object per read: compare addresses)
     if item() and menuItemOwner == menu:GetAddress() then return end
-    local ok, w, holder = pcall(newButton, menu, L("Кооператив"), menu.MenuItemBox)
+    local ok, w, holder = pcall(newButton, menu, L("common.coop"), menu.MenuItemBox)
     if ok then
         menuItemH, menuItemOwner = hold(w), menu:GetAddress()
         -- (at the end of the game's list: the box has no ShiftChild here - that call only ever failed)
@@ -496,11 +496,12 @@ function M.info()
         tostring(item() ~= nil), tostring(shown), tostring(page), #rows, #hidden, hv, table.concat(labels, " / "), table.concat(M.infoLines, " / "))
 end
 function M.press(prefix)
-    if prefix == "Кооператив" or prefix == L("Кооператив") then local mi = item() if mi then onPressed(mi) end return M.info() end -- (loc: test label)
+    -- (a test names a row by its text key, "common.back", or by the start of its label as shown: the tests run in
+    -- Russian, COOPSYNC_LANG=ru)
+    local want = Loc.has(prefix) and L(prefix) or prefix
+    if prefix == "Кооператив" or want == L("common.coop") then local mi = item() if mi then onPressed(mi) end return M.info() end -- (loc: test label)
     for _, r in ipairs(rows) do
-        -- (tests name rows in Russian: the label in the game's language matches too)
-        local want = L(prefix)
-        if r.label:sub(1, #prefix) == prefix or r.label:sub(1, #want) == want then onPressed(r.w) return lastMsg end
+        if r.label:sub(1, #want) == want then onPressed(r.w) return lastMsg end
     end
     return "no row " .. prefix
 end
@@ -509,7 +510,7 @@ function M.report()
     local script = (Session.modDir() .. "tools/collect-report.ps1"):gsub("/", "\\")
     local cmd = string.format('start "" /b powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%s" -Chan "%s"', script, chan:gsub("/", "\\"))
     os.execute(cmd)
-    return L("отчёт собирается — файл появится на рабочем столе")
+    return L("dbg.report_started")
 end
 
 local function loop(ms, fn)

@@ -145,17 +145,17 @@ function M.lines()
     if not (okG and tonumber(gs) == 4) then return nil end
     local out = {}
     -- (no ping: each change rebuilt the list, and the driver's checklist above it folded and unfolded - owner, alpha 19)
-    out[#out + 1] = { header = upper(L("Лобби")), text = string.format(L("%d из 2"), #n.members), done = #n.members >= 2 }
+    out[#out + 1] = { header = upper(L("cl.lobby")), text = L("cl.lobby_count", #n.members), done = #n.members >= 2 }
     for i, m in ipairs(n.members) do
-        local tag = m.me and m.owner and L(" (Вы, Хост)") or m.me and L(" (Вы)") or m.owner and L(" (Хост)") or ""
-        out[#out + 1] = { header = i == 1 and upper(L("Игроки")) or nil, text = upper(m.name or "?") .. tag, done = true }
+        local tag = m.me and m.owner and L("cl.tag_me_host") or m.me and L("cl.tag_me") or m.owner and L("cl.tag_host") or ""
+        out[#out + 1] = { header = i == 1 and upper(L("cl.players")) or nil, text = upper(m.name or "?") .. tag, done = true }
     end
     local gateOpen = false
     pcall(function() local ex = Session.garageExit and Session.garageExit() gateOpen = ex ~= nil and ex.ExitActive == true end)
     local action
-    if n.owner then action = gateOpen and L("Выезжайте в зону") or L("Выберите развилку")
-    else action = (S.go or S.joinPending or gateOpen) and L("Выезжайте в зону") or L("Ожидание хоста") end
-    out[#out + 1] = { header = upper(L("Задача")), text = action, done = false }
+    if n.owner then action = gateOpen and L("cl.drive_out") or L("cl.pick_junction")
+    else action = (S.go or S.joinPending or gateOpen) and L("cl.drive_out") or L("cl.wait_host") end
+    out[#out + 1] = { header = upper(L("cl.task")), text = action, done = false }
     return out
 end
 
@@ -175,7 +175,7 @@ local function build(main, rows)
     local slot = wrap:AddChildToVerticalBox(box)
     pcall(function() slot:SetPadding({ Left = 0, Top = 36, Right = 0, Bottom = 0 }) end) -- (owner, alpha 19: 12 sat too close)
     -- the title as the game's: its font, a line under it
-    box:AddChildToVerticalBox(text(tree, upper(L("Кооператив")), s.title or s.header, s.titleColor))
+    box:AddChildToVerticalBox(text(tree, upper(L("common.coop")), s.title or s.header, s.titleColor))
     pcall(function()
         local line = new("Image", tree)
         line:SetBrushSize({ X = 140, Y = 1 })

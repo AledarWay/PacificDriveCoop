@@ -11,6 +11,8 @@ commit is `mod/native/ue4ss-commit.txt`. CI `.github/workflows/build.yml` (windo
 with the secret UE4SS_TOKEN (classic token of the owner's Epic-linked account, for UEPseudo), runs mod/native/build.bat
 and build-alpha.ps1 with the newest CHANGELOG version. Push to main -> zip as a workflow artifact; tag
 `v<version>` (must match CHANGELOG) -> a GitHub pre-release with the zip. Publishing a release = ask the owner first.
+Texts: one file per language, `mod/CoopSync/Scripts/lang/<code>.lua` (keys; en.lua = reference, ru.lua complete),
+`L(key, ...)` in loc.lua; NOTES "The texts: one file per language". CHANGELOG has "0.1.0-alpha21 (being prepared)".
 
 ## Before (2026-11-05): alpha 20 built, the owner tests it
 `local/release/PacificDriveCoop-0.1.0-alpha20.zip` (install-test 10/10): all 18 items of the owner's alpha 19

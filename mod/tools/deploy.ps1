@@ -8,6 +8,9 @@ foreach ($m in 'CoopSync', 'CoopDev') {
     $dst = "$mods\$m\Scripts"; New-Item -ItemType Directory -Force $dst | Out-Null
     foreach ($f in Get-ChildItem "$root\mod\$m\Scripts" -Filter *.lua) { Copy-Item $f.FullName "$dst\$($f.Name)" -Force; $n++ }
 }
+# the texts, one file per language (CoopSync's loc.lua)
+New-Item -ItemType Directory -Force "$mods\CoopSync\Scripts\lang" | Out-Null
+foreach ($f in Get-ChildItem "$root\mod\CoopSync\Scripts\lang" -Filter *.lua) { Copy-Item $f.FullName "$mods\CoopSync\Scripts\lang\$($f.Name)" -Force; $n++ }
 "deploy: $n Lua files copied to $mods"
 # the native half (mod/CoopNative -> Mods/CoopSync/dlls/main.dll, built by mod\native\build.bat) and the UE4SS
 # build it is compiled against (its C++ API must match): copied when they changed

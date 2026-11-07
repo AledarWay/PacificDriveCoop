@@ -3410,3 +3410,18 @@ The full suite (63 tests) the night before:
     process_delayed_actions -> call_ufunction_from_lua), the known freed-object family seen in gates once before.
   - Dumps: local/reports/suite-a20-crashes.
 - CHANGELOG lists both under "Known issues", with the dash's overall status text / clock.
+
+## The texts: one file per language (2026-11-07, owner)
+The owner asked for a proper localization layout instead of Russian texts as keys in loc.lua. Now:
+`mod/CoopSync/Scripts/lang/<code>.lua` returns `{ [key] = text }` (68 keys: common.*, cl.* checklist, menu.*,
+dbg.*, panel.*, sess.*, tp.*); `en.lua` is the reference, `ru.lua` is kept complete (the tests run with
+COOPSYNC_LANG=ru and press rows by their Russian labels, unchanged). `loc.lua`: `L(key, ...)` = the current
+language's text, else English, else the key; with arguments `string.format` (a translation with broken %-codes
+falls back to the English format). Language = the game's language/culture lower-cased: `lang/<full>.lua`
+("pt-br"), else `lang/<language>.lua`, else en; COOPSYNC_LANG / CoopSyncLang force any code. Joined texts became
+format strings ("Приглашение от %s — принять", "в зоне %s", "нечего синхронизировать (%s)"). menu.press accepts a key
+or a label prefix. `loc-check.ps1` (via lua-lint): every L("key") in en.lua, other files only known keys with the
+same %-codes in order, missing keys listed (an error only for ru.lua), unused en keys listed, no Cyrillic in code
+outside lang/ (it is ASCII-only now: Ѐ-ӿ; the CI runner's ANSI code page broke the old literal range).
+build-alpha and deploy copy `Scripts\lang\`; lua-lint covers it. Checked offline (lua54: ru, ru-RU, en-US, de-DE ->
+en, pt_BR -> en, "../x" -> en) and in game: menu, f7, esc, startflow, session-net.
