@@ -58,8 +58,7 @@ $tests = @(
     @{ name = 'session-net';   quick = $true;  cmd = { & "$t\session-test.ps1" -CoopNet } },
     @{ name = 'menu';          quick = $true;  cmd = { & "$t\menu-test.ps1" } },
     @{ name = 'startflow';     quick = $true;  cmd = { & "$t\startflow-test.ps1" } },
-    @{ name = 'nextzone';      quick = $true;  cmd = { & "$t
-extzone-test.ps1" } },
+    @{ name = 'nextzone';      quick = $true;  cmd = { & "$t\nextzone-test.ps1" } },
     @{ name = 'mapsync';       quick = $true;  cmd = { & "$t\mapsync-test.ps1" } },
     @{ name = 'gates';         quick = $true;  cmd = { & "$t\gates-test.ps1" } },
     @{ name = 'esc';           quick = $true;  cmd = { & "$t\esc-test.ps1" } },
