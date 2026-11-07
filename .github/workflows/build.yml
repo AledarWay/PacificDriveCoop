@@ -56,12 +56,20 @@ jobs:
         run: |
           fail() { echo "::error::$1"; exit 1; }
           [ -n "$UE4SS_TOKEN" ] || fail 'secret UE4SS_TOKEN is not set (Settings -> Secrets and variables -> Actions)'
+          # the token's account and scopes (not secret) -> an annotation, so a wrong token is plain to see
+          tok=$(echo "$UE4SS_TOKEN" | tr -d '\r\n ')
+          login=$(curl -s -H "Authorization: Bearer $tok" https://api.github.com/user | sed -n 's/.*"login": *"\([^"]*\)".*/\1/p' | head -1)
+          scopes=$(curl -sI -H "Authorization: Bearer $tok" https://api.github.com/user | tr -d '\r' | sed -n 's/^[Xx]-[Oo][Aa]uth-[Ss]copes: *//p')
+          case "$tok" in ghp_*) kind=classic;; github_pat_*) kind=fine-grained;; *) kind=unknown;; esac
+          echo "::notice::UE4SS_TOKEN: account '${login:-?}', kind $kind, scopes '${scopes:-none}'"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $tok" https://api.github.com/repos/Re-UE4SS/UEPseudo)
+          [ "$code" = 200 ] || fail "the token cannot see Re-UE4SS/UEPseudo (HTTP $code; account '${login:-?}', kind $kind, scopes '${scopes:-none}'): needs a classic token with scope repo of the Epic-linked account"
           commit=$(head -1 mod/native/ue4ss-commit.txt | tr -d '\r\n ')
           git clone --quiet https://github.com/UE4SS-RE/RE-UE4SS.git local/ue4ss-src || fail 'clone of UE4SS-RE/RE-UE4SS failed'
           git -C local/ue4ss-src checkout --quiet "$commit" || fail "checkout of UE4SS commit $commit failed"
           # submodules use git@github.com: URLs; UEPseudo is private -> https with the token (only for this command:
           # -c reaches the submodule clones, nothing is written to a config file)
-          git -C local/ue4ss-src -c "url.https://x-access-token:${UE4SS_TOKEN}@github.com/.insteadOf=git@github.com:" \
+          git -C local/ue4ss-src -c "url.https://x-access-token:${tok}@github.com/.insteadOf=git@github.com:" \
             submodule update --init --recursive \
             || fail 'submodules failed: has the UE4SS_TOKEN account access to Re-UE4SS/UEPseudo (GitHub linked to Epic), is the token classic with scope repo and not expired?'
           git -C local/ue4ss-src log -1 --format='UE4SS %H %s'
