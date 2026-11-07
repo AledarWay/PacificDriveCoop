@@ -1,0 +1,9 @@
+# private / machine-local: test install of the game, saves, dumps, downloads, build trees, built alphas
+/local/
+/testgame/
+# .NET build output
+bin/
+obj/
+# junk folder from a PowerShell `-OutFile True` slip (game data dumps)
+/mod/tools/True/
+*.log

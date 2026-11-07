@@ -1,0 +1,381 @@
+﻿CoopSync for Pacific Drive - version history
+============================================
+
+Newest first. The installed mod's version is in files\VERSION.txt of the zip.
+
+
+0.1.0-alpha20 (2026-11-05)
+--------------------------
+After the owner's alpha 19 test with two copies of the game on one PC.
+Joining the zone:
+- The guest's screen stays dark from leaving the garage until it is in the host's zone and synced: the guest no
+  longer sees a zone of its own.
+- The guest is in the host's zone faster: after loading the host's zone it no longer waits 25 s for a zone
+  generator that has nothing to do.
+- The guest no longer gets its car twice when driving out of the garage (the game's own trip and the mod's started
+  together; the controls then jumped between the two cars).
+- Fixed: the guest's game could crash when going home from the zone (the sync kept working a few frames on the left
+  zone's objects).
+The garage and the pause menu:
+- More space between the driver's checklist and the Co-op list; no ping in it any more (its updates made the driver's
+  checklist fold and unfold).
+- Pause menu, Co-op page: the lobby's state and the players are back in the column with the buttons, as text headers.
+Cars:
+- Getting out of the other player's car through a back door no longer leaves its front door standing open as well
+  on your side (it opens for a moment for the walk-out, then shuts at once).
+- A door whose seat the other player sits on is no longer hidden: it highlights, opens, shuts and can be taken off;
+  only getting in there is refused. (The driver's door of a taken driver's seat stays hidden: the game's own way
+  in there cannot be stopped.)
+- The other player's car's dashboard shows that car's readings, not your own car's: the battery charge, the
+  durability bar and the parts' condition on the computer screen.
+- The other player's car no longer has its hood hanging in the air beside it (the hood of your side's copy of that
+  car came off its place and moved along with the car).
+The players:
+- A kick at the other player now also takes 1 % of its health.
+- Running over the other player: the driver now sees the hit at once - the other player is thrown as the car reaches
+  it, and the car loses a little speed - instead of the car passing through and the player flying off a moment later.
+  The player hit takes the driver's hit straight away.
+The zone:
+- Abandoned cars on the guest's side have the same paint as on the host's (they all stood in one orange-blue paint).
+- The garage map: a junction's details (hazards, features, events) are the host's on the guest's side too; the
+  guest's zone no longer gets random events of its own junction's (e.g. a radiation event the host did not have).
+- The zone's gameplay events (storms, radiation and others, with their clouds on the map) are the host's on the
+  guest's side: the guest no longer rolls events of its own, and the event's cloud is at the same place for both.
+- The north is the host's on the guest's side: in zones where the game turns the north at random, the ARC map's and
+  the compass's directions no longer differ between the players.
+- Anomalies the guest's game spawned on its own during the run (seen: a pillar sticking out of the ground that the
+  host did not have) are removed; the guest sees the host's anomalies only.
+- Fixed an error on the host's side when an anomaly that moves vanished.
+Known issues:
+- The computer screen's overall status text and clock in the other player's car are still your own car's.
+- The guest's game can crash now and then while it enters the host's zone or follows the host to the next one
+  (seen twice in about 150 test runs).
+
+
+0.1.0-alpha19 (2026-11-03)
+--------------------------
+After the owner's alpha 18 test with two copies of the game on one PC.
+The zone:
+- The guest now gets the host's zone exactly: the host's game saves its zone, the save goes to the guest, and the
+  guest's game loads it (with its own car, inventory and garage) next to the host's car. Buildings, their
+  interiors and variants are the host's, not the guest's own generation. Joining later (after going home) loads it
+  again. This also works for a host further in the game (its save holds run stats and photos).
+The garage lobby:
+- A "Co-op" checklist on the screen under the game's driver's checklist: the lobby and ping, the players (you, the
+  host) and what to do next ("Pick a junction" / "Waiting for the host" -> "Drive out to the zone").
+- The Co-op pause menu shows the lobby's state and the players as text beside the buttons, not as buttons.
+- The host's key, levers, lights, wipers and radio work again in the garage while in a lobby (they could not be
+  used there).
+- The pause menu no longer stops the game in the lobby (the other player's figure slid around without animation).
+- The guest's map is look-only: the guest can no longer pick a junction.
+- "Network error: Recv: the other side closed" no longer stays on the menu after leaving a lobby.
+Cars and loot:
+- Joining later no longer puts the guest's car inside the host's car (the two used to fly apart).
+- A guest searching a container no longer opens the loot window on the host.
+- An item the guest puts into a chosen slot stays in that slot (it jumped to the first slot).
+- The guest no longer hears the host's trunk shutting again and again while driving.
+- Each car's mirrors show its own rear view again (the host's mirrors froze on a picture from the start).
+- Getting out from a passenger seat outlines that seat's door, not the driver's.
+- The host can sit on a back seat of its own car (by the back door); the car can't be driven from there.
+- Driving the other player's car no longer destroys doors of your own car (they vanished one by one, also from
+  the car monitor).
+- The guest can shut the host's open trunk (and doors) again; a door you got in by no longer swings and tries to
+  slam several times on your side.
+- An anchor one player takes is gone for the other too (it was doubled).
+- An anchor put into the ARC charges both players' ARC (each anchor's charge is rolled, so about the same amount).
+- The exits home (portals) are the same for both, and the exit one player picks on the ARC opens for both: the zone's closing storm starts for both.
+- Shrubs, young trees, barrels, cones, signs and other breakables a car runs over or a player kicks break for both players.
+- A fuel barrel holds the same amount for both players, also after one of them takes fuel from it.
+- Saw blades and geysers start when either player comes near, at the same moment for both: a saw runs its track in
+  step on both sides (it lagged on the guest), a geyser fires at the same time.
+- The other player's doors and trunk lid open and shut smoothly (they moved in steps), and their hood opens too.
+- The other player's trunk lid shutting on your head hurts and pushes you back, as your own does.
+- A car no longer drives through the other player: it knocks the player away and hurts them, as your own car does.
+- A part's wear (dents, scorch, radiation stains) on the other player's car looks as on its owner's (it looked new).
+- Tourists (the figures) stand in the same pose for both players, and one that sways after a kick or a bump sways
+  for the other player too.
+Texts:
+- Every text of the mod follows the game's language: Russian or English.
+- The teleport messages (F7 -> Debug) showed garbled letters - fixed.
+Tests and reports:
+- TwoGamesTest.bat (was "Две копии игры.bat") and the new ReportTwoGames.bat: the report of both copies in one zip.
+- The mod keeps its own log (coopsync.log in its folder): the two copies no longer overwrite each other's log.
+- The mod watches the cars of the zone and writes any extra car into its log (the guest's own car twice).
+- The installer, the scripts, README and CHANGELOG are in English.
+Known:
+- The guest's game sometimes crashed in the tests when going home from the zone (a few runs of many; not found
+  yet). If it happens to you, please send the report (ReportTwoGames.bat or Report.bat).
+- Sometimes the guest has two extra exit portals in the zone (the picked exit still opens for both).
+- Not done from the alpha 18 test: the guest on foot (frozen); the hood opened from the other player's side.
+
+
+0.1.0-alpha18 (2026-10-31)
+--------------------------
+The cars reworked "natively": both cars work through the game itself, the mod only shares them between the
+players (after the alpha 17 test).
+The friend's car:
+- Getting in and out, doors, key, levers, lights, radio and horn are the game's ordinary actions, with its
+  animations. While working with the friend's car the game takes it for its own car.
+- At the wheel of the friend's car your game drives it: no jerks or delay, your own car no longer drives along.
+  The key starts with a hold as usual; pedals and wheel no longer stick.
+- A passenger gets out by looking at their door and pressing E, with the animation, through their own door (the
+  owner sees that door open). The camera no longer stays in the car, the door no longer loops.
+- The levers, key and gears are the driver's only - not for a passenger or someone outside. A passenger reaches
+  only their own door.
+- The door of the seat the other player sits on cannot be used (the game used to start getting in, and the mod
+  then threw the player out).
+- The friend's car's doors open and shut for both like real ones (an open one can be shut).
+Your own car:
+- Getting out of your car no longer opens (or breaks off) a door of the friend's car.
+- The gauges and the game no longer mix up the parts of your car and the friend's (the game used to take the parts
+  of the car that appeared last).
+- The friend's trunk box no longer shows the contents of your own trunk.
+Other:
+- At low FPS (15 frames) a wreck's trunk opened by the other player and an item they picked up show at once.
+- If the guest, having driven out of the garage to the host, stayed in the garage, the mod retries after 30 s.
+- With a long network delay the same wreck part can no longer be taken by both players.
+- "Две копии игры.bat": Steam no longer restarts the game (one copy used to open, with the "launch with custom
+  parameters" window).
+Known:
+- A car left in drive with the engine on creeps away by itself - put it into park.
+- Not checked on real cars: the door animation when getting into your own car (alpha 17 test item).
+- Not done from the alpha 17 test: a "Waiting for the host" screen instead of the junction map, buildings in their
+  places, the loot window on the host when the guest searches, the guest's extra car copy on arrival - next stage.
+
+
+0.1.0-alpha17 (2026-10-29)
+--------------------------
+Fixes after the alpha 16 test with a friend, and anomaly sync.
+Crashes:
+- The cause of random crashes "inside Lua" is gone (the friend's crash while moving loot): F7 and Esc were handled
+  on another thread at the same time as the mod's work. Keys are now polled from the game.
+Arriving in the zone:
+- The host announces the map on arrival, the guest travels at the same time instead of waiting for the host's zone
+  to settle. The wait on the junction screen is about half a minute to a minute shorter.
+Each other's cars:
+- Getting out of your car opens your door again (the game used to open the friend's car's door, and the player
+  walked through the shut one).
+- You can take the wheel of the friend's car if the friend is not at it - key, lever, throttle and wheel drive the
+  friend's car. Before, the car stood still: only "its own" driver released the parking brake.
+- Getting out of a seat in the friend's car uses the game's animation, not a teleport.
+- The friend's trunk opens and shuts (it did not shut, and the presses opened doors and the trunk of YOUR car
+  somewhere far away). While your own door is open, the matching door of the friend's car no longer vanishes.
+- The friend's car's paint (colour and pattern of the parts) shows correctly - the parts were factory-coloured.
+- While you sit in the friend's car your own car's lights no longer switch on (it showed the friend's car's lights).
+- The friend's car you ride in as a passenger moves smoothly, without jerks.
+- The host getting into their own car always takes the wheel (could sit at the back and take the friend's seat).
+The world:
+- Doors of buildings and containers are the same for both: opened by the generation and by the players (one had a
+  container door open, the other shut).
+- A wreck's trunk forced with the crowbar (or just opened) opens for both.
+- Items the guest takes, puts or moves in a wreck's trunk reach the host (only the host's did before).
+- Anomalies that chase a player (grabbers etc.) are now run by the side of the player they are nearest to, the
+  other side smoothly follows (the guest did not interest them before).
+Radio:
+- After the friend joins the lobby the track plays from the same position for both.
+- After a track change both radios match in position (the noise between tracks no longer shifts them).
+- If the radio's owner skipped a DJ line, it stops for the other player too.
+Other:
+- The F7 panel no longer opens in the main menu.
+- "Две копии игры.bat": two copies of the game on one PC to test the co-op without a friend (see README.txt).
+- Known: the hazard lamp and charging of the friend's car - as before; your car's door flags on the dash may go
+  wrong after a ride in the friend's car (the doors themselves are fine).
+
+
+0.1.0-alpha16 (2026-10-28)
+--------------------------
+Long sessions with bots: found and fixed.
+- Getting out of the friend's car now opens and shuts its door, like getting in (both sides see the door). The
+  character still appears outside at once, without the exit animation.
+- After a kick (and after any stop) the other player's figure goes into the standing pose at once instead of
+  walking on the spot for almost a second.
+- Car crashes are symmetric: both sides see them, both cars get the shared speed.
+- Fixed the host's crash on a second visit to a zone (old references to car parts after the trip).
+- The friend's car no longer "jumps" through objects after a network hiccup: it used to fling nearby things (and
+  could kill a player).
+- Items that fell out of the trunk or broke off your car in a crash now appear for both (stayed with one player
+  only). Also those that fall off while driving.
+- The friend's car's storage: changes made from afar arrive within 5 seconds; old changes no longer come back.
+- The mod spends noticeably less time per frame (was 8-10 ms, now about 4 ms): higher FPS near the friend's car.
+- Known: the hazard lamp on the friend's car computer shows your own car's state; charging through the friend's car
+  port charges your own car.
+
+
+0.1.0-alpha15 (2026-10-27)
+--------------------------
+The DJ, the friend's car storage, car crashes.
+- The radio DJ's lines are the same for both: the other player hears the same line as the radio's owner, its own
+  random lines do not play meanwhile.
+- The friend's trunk used to show and change YOUR trunk. Now it holds the friend's things: what you put in or take
+  changes for the friend, the friend's changes show within a second. An item that does not fit comes back.
+- The car's racks (small and large) work the same way.
+- Car crashes: a standing car is pushed to about half the hitting car's speed (it either flew off at full speed or
+  barely moved).
+- Fixed: one broken item in a car slot stopped the sync of all the equipment.
+
+
+0.1.0-alpha14 (2026-10-27)
+--------------------------
+Radio in step, loot at once, car collisions.
+- Radio: both hear the same track from the same place. The owner picks the next track in advance, so the players
+  no longer drift apart at a track change; the game's random seek when the radio is switched on is replaced by a
+  seek to the owner's place. A drift over 0.7 s corrects itself.
+- The garage radio is shared too: the guest hears what the host hears anywhere in the garage.
+- Loot updates at once: if the friend took or put an item in a box, a cabinet etc., it shows within a fraction of a
+  second. An item put in that did not fit at the host's comes back.
+- Cars no longer drive through each other: they collide and both get part damage; the friend's car's damage shows
+  for both.
+- Your own tracks (Custom/Radio folder): the same file plays, but the place in the track may differ.
+
+
+0.1.0-alpha13 (2026-10-27)
+--------------------------
+The friend's car works like your own.
+- The friend's car parts are real game parts from the friend's car: they can be taken off and put on with E.
+  Part durability, fuel and battery charge match for both; repairs and refuelling go back to the owner.
+- Found the cause of the alpha 12 "teleport into your own car": E at the friend's car door acted on your own car
+  and could break its real door. Fixed; parts torn off that way come back.
+- The friend's car's key, levers and buttons from outside no longer act on your own car (they could).
+- Inside the friend's car the lights, top light, wipers, radio and horn control the friend's real car; both see
+  what is on. The friend's car's wipers move, the screens work.
+- Radio: the friend's car plays the same track as the friend's radio; changing the track there switches the
+  friend's radio. No seek in the game - who connects hears the track from the start.
+- Your own car's gear lever did not move when the friend's car was near - fixed; the friend sees the lever move.
+
+
+0.1.0-alpha12 (2026-10-26)
+--------------------------
+The friend's car: doors, getting in, mirrors (after the alpha 9 test).
+- You can no longer take the driver's seat of the friend's car (it "seated you for a second and threw you out").
+- Getting in like your own car: a short E at the door of a free seat - the door opens and the character sits down
+  with the game's animation. A long E - only open / shut the door. If the seat is taken (by the other player or a
+  device) - only the door.
+- Doors open for real: the owner's door opens, and both players see it open.
+- The friend's car's side mirrors are no longer dark; your own mirrors now show the friend's car (the game hid it).
+- The seated friend's legs no longer stick out under the car: knees a little higher, shins forward, feet on the
+  floor.
+- After the friend's car was re-created, your car's wheel, needles and doors stopped showing at the friend's -
+  fixed.
+- Removed an unsafe way of delayed actions in the menu, the F7 panel and on arrival in a zone - a likely cause of
+  some game crashes.
+
+
+0.1.0-alpha11 (2026-10-26)
+--------------------------
+Reliability and performance.
+- The mod hooks the game's functions safely: only once the function is loaded (failed attempts could crash the game
+  over time). The co-op pause is lifted at once, and loading a save or a new game leaves the lobby.
+- At the host the mod takes half the time per frame: zone object positions are tracked in the C++ part, container
+  contents are checked often only near the players.
+- The mod finds the pause menu faster (less work every 100 ms).
+- The guest's zone loads in smaller portions per frame - smoother FPS while loading.
+- The report (Report.bat) now records the versions of the mod's parts - crashes from a report can be decoded
+  exactly.
+- The hitch log shows which part of the mod takes how much time.
+
+0.1.0-alpha10 (2026-10-26)
+--------------------------
+After the alpha 9 test (the host's and the friend's reports).
+- The Co-op item in the pause menu vanished: it landed in the mod's hidden column, and one error could stop the
+  menu's updates for good. Both fixed; the gap above the item is now like the others'.
+- Found and fixed a rare game crash in the zone at the host (failed attempts to hook the game's functions spoiled
+  the scripts' internal state).
+- After closing the F7 panel the game stayed paused with a cursor - fixed, the pause is lifted.
+- The friend landed on another map: the host's data from an earlier game stayed with them. Now all the host's data
+  (zone, route, gates, map) goes only over the network in the game's memory, without files, and does not outlive
+  the game.
+- A second trip to the same zone: the host's game froze for 1-2 minutes, the friend's car hung in the air without
+  control, the host could not get into their car, FPS fell to 15-22. Causes found and fixed: looking up objects
+  that no longer existed cost ~50 ms each (there were hundreds), and on a second visit the mod confused new
+  objects with old ones (your car with the previous visit's twin).
+- The guest's sync start: applying the host's accumulated events no longer freezes for seconds.
+- The guest's other freezes are gone: the sync start ~0.3 s instead of 1.1-1.4 s, the car moved to the host on
+  arrival (not half a minute later), building decor created in portions.
+- The report now has FPS and the mod's share of each frame (hitches.log, F lines).
+
+0.1.0-alpha9 (2026-10-25)
+-------------------------
+After the alpha 8 test, and faster.
+- The Co-op pause menu: wide buttons, long labels on one line and readable; the empty "TEXT BLOCK" rows between
+  buttons are gone.
+- "Network error: Steam not initialized" no longer stays: the game starts Steam a little after the mod, the mod now
+  waits for Steam itself (the menu says "waiting for Steam" meanwhile), and the old error is cleared.
+- The guest's zone loads faster: finding world objects on import and cleanup, laying out loot in containers and
+  finding car parts run in the mod's C++ part (3-30 times faster). The cleanup after the import no longer takes
+  one long frame - it is split into short steps.
+- Fixed: aligning building frames at the guest silently failed when a frame had to be replaced.
+
+0.1.0-alpha8 (2026-10-25)
+-------------------------
+The network is now inside the game.
+- The Steam lobby and the link between the players run right in the game (a new C++ part of the mod), the separate
+  CoopNet.exe is no longer needed or installed. Sync lines go through memory, not files on disk - less delay and
+  disk load.
+- UE4SS in the zip is built from the sources of the same version (needed for the mod's C++ part).
+- If Steam is not available, the Co-op menu shows why.
+- The alpha 8 lobby is not compatible with older versions: both players need alpha 8.
+
+0.1.0-alpha7 (2026-10-25)
+-------------------------
+After the real alpha 6 test. The on-foot mode is frozen - each plays in their own car.
+- Cars flipping: when the twin car appeared, your own car got a push (parts were re-created under it) - both cars
+  flipped and stopped working. Now the car "freezes" for that moment.
+- Freezes in the zone: the guest's big zone loaded in one frame (import up to 20 s, cleanup up to 16 s), the car
+  twin up to 7 s, the host had a ~0.5 s hitch every 10 s. All of it is many times faster and spread over frames.
+  The new hitch log hitches.log goes into the report.
+- The guest's departure: the guest's exit gate is shut until the host has left; then it opens, the guest drives
+  out and goes straight to the host's zone - no junction screen. The guest cannot pick a junction itself (its pick
+  leads to the host's map anyway).
+- In the zone the guest has the same entrance and exits as the host, and its car appears next to the host's car.
+- The other player's model moves smoothly (no jerks, no falling through, no hops), and sits down in the garage
+  when the other sits in a car.
+- After coming home the guest's car could "stick" to its place from the zone and not drive - fixed.
+- The pause menu: in co-op Esc closes the pause again (the menu used to stick), Esc closes the F7 panel too; the
+  button column no longer jumps in width.
+
+0.1.0-alpha6 (2026-10-24)
+-------------------------
+The host's map and sky in the garage.
+- The route map: the lobby members' garage map table shows the host's map - the same junctions, the junctions the
+  host scanned, the conditions (zone modifiers), instability and anchors. The host's new scans show up at the
+  guest by themselves (an open map is reopened).
+- The guest's own map is kept and comes back when it leaves the lobby; on its next own departure it is saved as
+  usual.
+- With the host's map, the conditions of the zone the guest goes to with the host come from the host's junction.
+- The garage sky: time of day, weather (preset, rain, fog, wind, darkness, storm, acid), precipitation, wetness,
+  clouds - as the host's, and with them the light through the garage windows.
+
+0.1.0-alpha5 (2026-10-24)
+-------------------------
+The game start reworked (the real alpha 4 test could not connect).
+- The pause menu: buttons like the game's, the Co-op item shows at once, friends page by page (7 each, those in
+  Pacific Drive first), closing the pause on a submenu no longer breaks the menu.
+- The F7 panel: a separate window with the lobby and debug (resync, teleport, report, state) - a fallback if the
+  pause menu breaks. Debug removed from the pause menu.
+- Network: fixed "access to the path is denied" and "LimitExceeded" (send queue, 16 MB buffer).
+- The lobby forms in the garages: each in their own garage sees the other. Only the host picks the departure; when
+  the host leaves, the lobby follows (the guest in their own car or on foot, chosen in the menu).
+- A run member who came back to the lobby lands on the host's map. Quitting to the main menu or loading a save
+  leaves the lobby. The lobby holds 2 players.
+- Fixed a crash when the guest entered the same zone again.
+
+0.1.0-alpha4 (2026-10-23)
+-------------------------
+- Building contents (meshes, lights, doors) match at the host and the guest: the zone matches 91-94% instead of 59%.
+
+0.1.0-alpha3 (2026-10-23)
+-------------------------
+- The other player's car is a real car (a copy of your own with its look), not a "ghost".
+- Synced clouds and cloud shadows, paint, seated players' hands; a taken seat cannot be used, players collide, you
+  can push the other player.
+
+0.1.0-alpha2 (2026-10-23)
+-------------------------
+- The host's weather and time of day at the guest in the zone.
+- The other player's car "ghost" looks like the real one: paint, glass, collisions.
+
+0.1.0-alpha1 (2026-10-23)
+-------------------------
+- The first alpha: Steam lobby (friends, invitations), playing together - the guest goes to the host's zone on foot
+  or in their own car, a shared world (items, loot, hazards), seats in the car, trips between zones, going home,
+  co-op pause (the pause does not stop the world), the Co-op menu, report collection, installer.

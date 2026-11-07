@@ -1,0 +1,114 @@
+# Builds the alpha zip (the same mod/tools/build-alpha.ps1 as on the dev PC):
+#   every push to main that touches mod/ or tools/, and manual runs (Actions -> build -> Run workflow) -> the zip as a workflow artifact (Actions -> the run -> Artifacts);
+#   a tag v<version> (v0.1.0-alpha21) -> also a GitHub release with the zip attached.
+# The version is the newest entry of mod/release/CHANGELOG.txt; a tag must match it.
+# Needs the repository secret UE4SS_TOKEN: a classic token (scope "repo") of a GitHub account linked to Epic Games,
+# for the private submodule Re-UE4SS/UEPseudo of the UE4SS sources. No pull_request trigger on purpose: forks never
+# get the secret, and nothing of UEPseudo is uploaded (only our built DLLs, as in every alpha).
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths: ['mod/**', 'tools/**', '.github/workflows/**']   # not checked for tags: a tag always builds
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  alpha:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v4
+
+      # the scripts use C:\PacificDriveCoop (the dev PC's folder): point it at the checkout
+      - name: Link C:\PacificDriveCoop
+        run: cmd /c mklink /J C:\PacificDriveCoop "$env:GITHUB_WORKSPACE"
+
+      - name: Version
+        id: ver
+        run: |
+          $m = Select-String -Path mod\release\CHANGELOG.txt -Pattern '^(\d+\.\d+\.\d+\S*) \(' | Select-Object -First 1
+          if (-not $m) { throw 'no version in mod/release/CHANGELOG.txt' }
+          $v = $m.Matches[0].Groups[1].Value
+          if ('${{ github.ref_type }}' -eq 'tag' -and '${{ github.ref_name }}' -ne "v$v") {
+            throw "tag ${{ github.ref_name }} does not match the CHANGELOG version $v"
+          }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          "Version: $v"
+
+      - name: UE4SS sources
+        env:
+          UE4SS_TOKEN: ${{ secrets.UE4SS_TOKEN }}
+        run: |
+          if (-not $env:UE4SS_TOKEN) { throw 'secret UE4SS_TOKEN is not set (Settings -> Secrets and variables -> Actions)' }
+          $commit = (Get-Content mod\native\ue4ss-commit.txt -TotalCount 1).Trim()
+          git clone --quiet https://github.com/UE4SS-RE/RE-UE4SS.git local\ue4ss-src
+          if ($LASTEXITCODE) { throw 'clone RE-UE4SS failed' }
+          git -C local\ue4ss-src checkout --quiet $commit
+          if ($LASTEXITCODE) { throw "checkout $commit failed" }
+          # submodules use git@github.com: URLs; UEPseudo is private -> https with the token (only for this command,
+          # -c reaches the submodule clones; nothing is written to a config file)
+          git -C local\ue4ss-src -c url."https://x-access-token:$($env:UE4SS_TOKEN)@github.com/".insteadOf=git@github.com: submodule update --init --recursive
+          if ($LASTEXITCODE) { throw 'submodules failed: does the UE4SS_TOKEN account have access to Re-UE4SS/UEPseudo (GitHub linked to Epic)?' }
+          git -C local\ue4ss-src log -1 --format='UE4SS %H %s'
+
+      # a fresh clone has new file times, so a cached build tree would be rebuilt anyway: only the crates are cached
+      - name: Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ hashFiles('mod/native/ue4ss-commit.txt') }}
+
+      - name: Build the native half and UE4SS
+        run: |
+          cmd /c mod\native\build.bat
+          if ($LASTEXITCODE) { throw 'native build failed' }
+
+      - name: Build the alpha zip
+        run: |
+          & mod\tools\build-alpha.ps1 -Version '${{ steps.ver.outputs.version }}'
+          if (-not $?) { throw 'build-alpha failed' }
+
+      - name: Upload the alpha
+        uses: actions/upload-artifact@v4
+        with:
+          name: PacificDriveCoop-${{ steps.ver.outputs.version }}
+          path: local/release/PacificDriveCoop-${{ steps.ver.outputs.version }}/
+
+      - name: Upload the symbols (for crash-stack.ps1)
+        uses: actions/upload-artifact@v4
+        with:
+          name: symbols-${{ steps.ver.outputs.version }}
+          path: local/release/symbols/${{ steps.ver.outputs.version }}/
+          retention-days: 90
+
+      - name: GitHub release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = '${{ steps.ver.outputs.version }}'
+          # the release notes: this version's CHANGELOG section
+          $lines = Get-Content mod\release\CHANGELOG.txt -Encoding UTF8
+          $start = [array]::FindIndex($lines, [Predicate[string]]{ param($l) $l -like "$v (*" })
+          $notes = @()
+          for ($i = $start + 2; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^\d+\.\d+\.\d+\S* \(' ) { break }
+            $notes += $lines[$i]
+          }
+          [IO.File]::WriteAllText("$env:RUNNER_TEMP\notes.md", (($notes -join "`n").Trim()), (New-Object Text.UTF8Encoding($false)))
+          gh release create '${{ github.ref_name }}' "local\release\PacificDriveCoop-$v.zip" --title "PacificDriveCoop $v" --notes-file "$env:RUNNER_TEMP\notes.md" --prerelease
+          if ($LASTEXITCODE) { throw 'gh release create failed' }

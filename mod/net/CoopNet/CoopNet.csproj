@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- CoopNet: the Steam side of CoopSync (lobby, invites, P2P transport of the mod's channel files).
+       WinExe = no console window; the mod starts it next to the game. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+  <PropertyGroup>
+    <SteamworksDir>$(MSBuildThisFileDirectory)..\..\..\local\downloads\steamworks-net-2025.164.1\unpacked\Windows-x64</SteamworksDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Steamworks.NET">
+      <HintPath>$(SteamworksDir)\Steamworks.NET.dll</HintPath>
+    </Reference>
+    <None Include="$(SteamworksDir)\steam_api64.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="steam_appid.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
