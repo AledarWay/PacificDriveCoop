@@ -4,8 +4,43 @@
 Newest first. The installed mod's version is in files\VERSION.txt of the zip.
 
 
-0.1.0-alpha21 (being prepared)
-------------------------------
+0.1.0-alpha21 (2026-11-07)
+--------------------------
+After the owner's alpha 20 test with a friend (host and guest on two PCs).
+Going to the zones together:
+- The guest no longer gets the map to pick a junction: not when it drives out of its garage, not on arrival, not at
+  a zone's exit gate. Its screen stays dark instead, as a loading screen.
+- The guest goes to the host's own junction, in one travel (driving out of the garage it travelled five times at
+  once, and its later junctions all led back to the host's first zone).
+- The next zone together: the guest drives into the zone's exit gate and waits there, its screen dark; once the host
+  has picked a junction and arrived, the guest follows it to the same zone (before, both picked on their own and could
+  end up in different zones). Driving out of the gate again (4 s) plays on.
+Cars:
+- The other player's car moves smoothly as seen from outside (it moved in steps and jerked).
+- A back seat can be taken through a doorway with no door in it.
+- The driver's door can be aimed at, taken off and put on while the other player sits at that wheel (it could not
+  even be aimed at); only its "get in" is off then. (Not yet checked by hand: the tests cover the getting in, not the
+  taking off.)
+- A door put back on the other player's car no longer makes doors fall off on both sides when that car is driven
+  and jolts (the game's "door broke off" took the door of your OWN car).
+- A part the other player threw down (a door taken off a car) falls to the ground on both sides (it stood in the air
+  on the host and jumped up and down on the guest).
+The zone:
+- The orange instability spots around the junctions on the guest's map are the host's.
+- Abandoned cars on the guest's side get the host's paint again when the game resets it (they all stood orange-blue
+  again in the alpha 20 test).
+- Hazards close to the guest and not to the host are run by the guest's game: a tourist mine the guest drove past
+  went off on the host's side only.
+Tests: a new test of going to the next zone together; the start test counts the guest's travels and checks that no
+map is open; the anchor test checks that the other player gets no anchor in hand. The cars test caught a first try
+at the driver's door fix that made the driver's doors of both cars fall off after a ride in the other's car (the
+owner's item 9); fixed before this build.
+Known issues:
+- An anchor one player takes shows in both players' hands (not reproduced in the tests yet: please report how it
+  happened).
+- In one test run the guest had a second copy of its own car standing where it arrived, for the whole zone.
+- The light can look brighter or darker on one PC: the time of day, sun, sky and fog are the same on both sides (the
+  tests compare them), so this is likely each PC's own graphics settings.
 Texts:
 - The mod's texts are in one file per language (Mods\CoopSync\Scripts\lang\en.lua, ru.lua): a translation
   is added as a new file named after the game's language (de.lua, fr.lua ...); a language without a file, or a text

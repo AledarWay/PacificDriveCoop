@@ -28,7 +28,10 @@ What works now, all tested in-game:
   straight into the host's zone.
 - The guest's game loads the host's zone exactly as the host's game has it (it is passed through the game's own
   save), and the guest's car appears next to the host's car.
-- Joining later works too, and so does following the host into the next zone.
+- Joining later works too. The guest never sees the junction map: while the host's game loads, the guest's
+  screen stays on the loading cover, and the guest lands at the junction the host picked.
+- The next zone: the host picks the junction at the zone's exit. The guest drives into the same exit and waits
+  there (no map), then follows the host into the same zone.
 
 **Cars**
 - Both cars are real cars on both sides, so screens, gauges, lights, mirrors and collisions all work.
@@ -97,7 +100,9 @@ before the install, it is put back. Your saves are not touched.
 3. Both of you are now in your own garages and can see each other. The host picks the junction on the map.
 4. **The host drives out first.** Then the guest's gate opens: drive out, and you arrive in the host's zone next
    to the host's car.
-5. Play together. To go home or on to the next zone, use the exit portal the host or the guest opened on the ARC.
+5. Play together. To go home, use the exit portal the host or the guest opened on the ARC.
+6. To go on to the next zone, both drive into the zone's exit. The host picks the junction; the guest waits in
+   the exit (a dark screen, no map) and then arrives next to the host.
 
 Tips:
 - Put the lever into park before you get out. In drive with the engine on, a car creeps away by itself (that is how
@@ -130,6 +135,11 @@ You need a strong PC for this.
 - Sometimes the guest has extra exit portals in the zone. The picked exit still opens for both players.
 - The computer screen's overall status text and clock in the other player's car still show your own car's.
 - In drive with the engine on, a car left alone creeps away. This is the game's own behaviour.
+- An anchor once showed up in both players' hands (alpha 20). The tests could not repeat it; if you see it, please
+  send the reports and say how the anchor was taken.
+- The zone's light can look brighter in one game than in the other. The mod syncs the time of day and the
+  weather; the rest comes from each player's graphics settings.
+- Instability spots on the map and wreck paint were fixed in alpha 21 but are not yet checked by a real two-PC game.
 
 ## Not done yet / planned
 

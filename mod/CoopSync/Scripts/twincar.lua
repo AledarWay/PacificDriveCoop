@@ -1780,11 +1780,15 @@ end
 -- game's E would get the player onto the taken seat - its own entry cannot be stopped from a hook), and with them the
 -- taking off / putting on. Now only their E handlers (open, get in) are parked while the seat is taken and put back
 -- once it is free; the highlight and the part's own interactive spot (taking the door off) stay.
+M.PARK_SLOT_SPOT = false
 local parkedEntry = {} -- actor address -> { actor, list of { hc, del, obj, fn } }
 local function entryActors(car, n)
     local r = {}
     local d = M.door(car, n)
     if d and d:IsValid() then r[#r + 1] = { a = d, dels = MUTE_DELS } end
+    -- (the door only: parking the handlers of its slot spot - BP_CarPart_Interactive_C - too broke cars: the driver's
+    -- doors of both cars came off after a ride in the other's car, cars-test 11 failed, the owner's alpha 20 item 9)
+    if not M.PARK_SLOT_SPOT then return r end
     local att = {}
     pcall(function() car:GetAttachedActors(att, true) end)
     for i = 1, #att do

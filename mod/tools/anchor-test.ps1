@@ -49,12 +49,17 @@ $hr = Send $hd "return CoopSyncState.report()"
 Check "the host's anchor A is taken too (GRAB)" ($h -match '^true' -and $hr -match 'req_GRAB_done=1') "host A: $h | client A: $c | host: $hr"
 Check "nobody on the host got an anchor item from it" ($h -match "items=$hItems0$") "host items before $hItems0, now: $h"
 
+$cItems0 = Send $cd "$st return items"
 "=== 3. the host grabs anchor B"
 "  host: " + (Send $hd ($grab.Replace('PATH', "'$kb'")))
 Start-Sleep 6
 $c = Send $cd "$st return st(CoopSyncMap['$kb'])"
 $cr = Send $cd "return CoopSyncState.report()"
 Check "the guest's anchor B is taken too (U R|1)" ($c -eq 'true') "client B: $c | client: $cr"
+# (owner's alpha 20 test: "who takes an anchor, it shows in both players' hands" - the other side's take must hand
+# nothing to its own player; the guest's items before / after, and what its character holds)
+$ci = Send $cd "$st local held = '-' pcall(function() local p = FindFirstOf('PlayerController').Pawn local h = p.HeldItemActor or p.CurrentHeldItem held = h and h:IsValid() and h:GetFName():ToString() or '-' end) return items .. ' held=' .. held"
+Check "nobody on the guest got an anchor item from the host's take" ($ci -match "^$cItems0 ") "guest items before $cItems0, now: $ci"
 Start-Sleep 4
 $c = Send $cd "$st return st(CoopSyncMap['$ka']) .. '/' .. st(CoopSyncMap['$kb'])"
 $h = Send $hd "$st return st('$ka') .. '/' .. st('$kb')"
