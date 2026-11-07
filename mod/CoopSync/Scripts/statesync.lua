@@ -329,6 +329,18 @@ local function hostHandle(t)
         local loc = { X = tonumber(t[3]), Y = tonumber(t[4]), Z = tonumber(t[5]) }
         local xf = { Translation = loc, Rotation = Sync.quat(tonumber(t[6]) or 0, tonumber(t[7]) or 0, tonumber(t[8]) or 0), Scale3D = { X = 1, Y = 1, Z = 1 } }
         local ok, a = pcall(Loot.spawnWorldItem, t[2], xf)
+        -- (it falls here as it fell there: a world item spawned this way - a car door the guest took off and threw
+        -- down - stood in the air on the host, and its positions pulled the guest's falling one up again and again;
+        -- owner's alpha 20 test)
+        if ok and a then
+            pcall(function()
+                local r = a.RootComponent
+                if r and r:IsValid() and r:IsA(StaticFindObject("/Script/Engine.PrimitiveComponent")) then
+                    r:SetSimulatePhysics(true)
+                    r:WakeAllRigidBodies()
+                end
+            end)
+        end
         count((ok and a) and "req_DROP_done" or "req_DROP_failed")
         return
     end
@@ -1006,6 +1018,41 @@ local function setTarget(key, t)
     HZ.target[key] = { loc = loc, rot = rot, t = now, v = v }
 end
 
+-- host, every second: the hazards within HZ.NEAR_GUEST of the guest (its character, its car) and nearer to it than to
+-- the host's player by HZ.MARGIN become the guest's (puppet here, HGRANT there) - the rule a claim follows, before the
+-- host's copy acts on the guest's twin. The list of hazards is looked up every HZ.LIST_S.
+HZ.NEAR_GUEST, HZ.LIST_S = 4000, 5
+function HZ.handOver()
+    if not CoopSyncOtherPoints then return end
+    local t = os.clock()
+    if not HZ.list or t - (HZ.listAt or -1e9) > HZ.LIST_S then
+        HZ.listAt, HZ.list = t, {}
+        for _, a in ipairs(FindAllOf("BP_Base_Hazard_C") or {}) do if Sync.alive(a) then HZ.list[#HZ.list + 1] = a end end
+    end
+    local okP, pts = pcall(CoopSyncOtherPoints)
+    if not (okP and pts and #pts > 0) then return end
+    for _, a in ipairs(HZ.list) do
+        if Sync.alive(a) and not Sync.inPool(a) then
+            local l = a:K2_GetActorLocation()
+            local nearG = false
+            for _, o in ipairs(pts) do if dist2(o, l) < HZ.NEAR_GUEST ^ 2 then nearG = true break end end
+            if nearG then
+                local key = Sync.ref(a)
+                if not HZ.guest[key] and not exploding[key] then
+                    local host, guest = HZ.dists(l)
+                    if guest + HZ.MARGIN < host then
+                        HZ.guest[key] = true
+                        HZ.hot[key] = nil
+                        puppet(a)
+                        send("host.events", "HGRANT\t" .. key)
+                        count("hz_handover")
+                    end
+                end
+            end
+        end
+    end
+end
+
 function HZ.hostHandle(t)
     local op, key = t[1], t[2]
     local a = Sync.deref(key)
@@ -1109,6 +1156,10 @@ function HZ.frame()
     end
     if role == "host" and t - HZ.lastCheck >= 1 then
         HZ.lastCheck = t
+        -- (handed over before it moves: the guest drove past a tourist mine some way off, the host's copy - going by the
+        -- guest's car's twin - swayed toward it and went off on the host only; owner's alpha 20 test. A guest claims
+        -- only once its copy moved: one near the guest and not the host is the guest's at once now)
+        pcall(HZ.handOver)
         for key in pairs(HZ.guest) do
             local a = Sync.deref(key)
             if not a or Sync.inPool(a) then
@@ -1257,7 +1308,14 @@ function CoopSyncPaint.handle(t)
     local x, y, z, pp, dp = tonumber(t[2]), tonumber(t[3]), tonumber(t[4]), t[5] or "", t[6] or ""
     if not (x and y and z) then return end
     local key = x .. "," .. y .. "," .. z
-    if P.applied[key] == pp .. dp then return end
+    -- (applied once per place before; owner's alpha 20 test: all the guest's wrecks orange-blue again - a wreck whose
+    -- dynamic materials are gone again, or never built, is done again on the host's next line, every 20 s)
+    local was = P.applied[key]
+    if was and was.v == pp .. dp and Sync.alive(was.car) then
+        local okN, nm = pcall(function() return #was.car.DynamicMaterialInstances end)
+        if okN and nm > 0 then return end
+        count("ap_VP_again")
+    end
     if not (P.list and os.clock() - P.list.at < 1) then P.list = { at = os.clock(), l = paintList() } end
     local best, bd
     for _, e in ipairs(P.list.l) do
@@ -1274,8 +1332,9 @@ function CoopSyncPaint.handle(t)
         car:SetupMaterials()
         car:SetupTintOnVehicleAndParts()
     end)
-    P.applied[key] = pp .. dp
-    count(ok and "ap_VP" or "ap_VP_failed")
+    P.applied[key] = { v = pp .. dp, car = car }
+    local okN, nm = pcall(function() return #car.DynamicMaterialInstances end)
+    count(ok and (okN and nm > 0 and "ap_VP" or "ap_VP_no_mid") or "ap_VP_failed")
 end
 
 -- Gameplay events (owner, alpha 19 items 10 / 15: "anomaly clouds at different places on the map", "the guest got a

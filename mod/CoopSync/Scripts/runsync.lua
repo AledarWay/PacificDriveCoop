@@ -4,6 +4,11 @@
 -- inventory. Spawn/loot/state/player sync then runs on top as before. Going home is the game's own
 -- TravelToGarage, which saves the guest's profile (what it carries included) in its garage.
 --   descriptor line: RUN <maplocation path> <route profile path or -> <modifier paths, comma separated or ->
+--                    <the leg's junction: its RouteShapeLeg name, or ->
+-- The guest travels to the host's own junction (owner's alpha 20 test): its route map is the host's (mapsync), so
+-- the same leg keeps both routes the same and the next exit leads both to the same zone. Before, every next leg of
+-- the guest was pointed at the host's map and TravelToNextLeg travelled once per route state (five travels in one
+-- frame, "concurrent save/load"), and the guest's later junctions all led back to the host's first zone.
 local M = {}
 local After = CoopSyncAfter or dofile((debug.getinfo(1, "S").source:match("^@(.*[/\\])") or "./") .. "hooks.lua").after -- (never ExecuteWithDelay: hooks.lua)
 -- path lookups: the native one answers a miss at once (UE4SS walks every object then: ~50 ms)
@@ -83,7 +88,9 @@ function M.describe()
             if p then mods[#mods + 1] = p end
         end
     end)
-    return string.format("RUN\t%s\t%s\t%s", pathOf(ml), pathOf(leg.DestinationRoute) or "-", #mods > 0 and table.concat(mods, ",") or "-")
+    local key = "-"
+    pcall(function() key = leg.ShapeLeg:GetFName():ToString() end)
+    return string.format("RUN\t%s\t%s\t%s\t%s", pathOf(ml), pathOf(leg.DestinationRoute) or "-", #mods > 0 and table.concat(mods, ",") or "-", key)
 end
 
 -- the host's documents: "doc:<name>" = in memory (the in-game network, link.lua), else a file
@@ -115,8 +122,9 @@ local function parse(line)
     local t = {}
     for v in (line .. "\t"):gmatch("([^\t]*)\t") do t[#t + 1] = v end
     if t[1] ~= "RUN" or not t[2] then return nil end
-    return { map = t[2], route = t[3] ~= "-" and t[3] or nil, mods = t[4] ~= "-" and t[4] or nil }
+    return { map = t[2], route = t[3] ~= "-" and t[3] or nil, mods = t[4] ~= "-" and t[4] or nil, leg = t[5] ~= "-" and t[5] or nil }
 end
+M.parse = parse
 
 local function loadObj(p)
     local o = SFO(p)
@@ -239,67 +247,83 @@ function M.hostMapLocation(descPath)
     return d and loadObj(d.map) or nil
 end
 
--- Guest, in its garage: every leg it could drive to next now leads to the host's map.
-function M.prepare(desc)
-    local d = parse(desc)
+-- Guest: the leg to travel to for the host's zone, on the route state the travel goes through.
+--   1. the host's own junction (descriptor's leg: its RouteShapeLeg) in the main route (the garage map: the progression
+--      manager's WorldState), then in the run's route and the others: the same junction keeps both routes the same;
+--   2. none (an old host, a new game's route without it): the first leg it could drive to next.
+-- The one leg gets the host's MapLocation when its own differs (a junction's level is the host's anyway: mapsync).
+local function legKey(l)
+    local ok, k = pcall(function() return l.ShapeLeg:GetFName():ToString() end)
+    return ok and k or nil
+end
+local function candidates()
+    local r, seen = {}, {}
+    local function add(rs) if rs and rs:IsValid() and not seen[rs:GetFullName()] then seen[rs:GetFullName()] = true r[#r + 1] = rs end end
+    pcall(function() add(FindFirstOf("BP_ProgressionManager_C").WorldState) end)
+    add((zoneRoute()))
+    for _, rs in ipairs(routeStates()) do add(rs) end
+    return r
+end
+function M.pickLeg(d)
+    local routes = candidates()
+    if d.leg then
+        for _, rs in ipairs(routes) do
+            local found
+            pcall(function()
+                rs.LegStates:ForEach(function(k, v)
+                    if not found and k:get():GetFName():ToString() == d.leg then found = v:get() end
+                end)
+            end)
+            if found and found:IsValid() then return rs, found, "host's junction " .. d.leg end
+        end
+    end
+    for _, rs in ipairs(routes) do
+        local cur = rs.CurrentLeg
+        for _, l in ipairs(FindAllOf("BaseLegState") or {}) do
+            local ok, isCand = pcall(function()
+                return l:GetOuter():GetFullName() == rs:GetFullName() and l.Active and not l.Visited
+                    and not (cur and cur:IsValid() and l:GetFullName() == cur:GetFullName())
+            end)
+            if ok and isCand then return rs, l, "next leg " .. tostring(legKey(l)) .. " (host's junction " .. tostring(d.leg) .. " not here)" end
+        end
+    end
+end
+-- one travel (BaseRouteState:TravelTo, what a pick on the map does) to the host's zone
+function M.travelTo(desc)
+    local d = parse(desc or "")
     if not d then return nil, "bad descriptor" end
     local ml = loadObj(d.map)
     if not ml then return nil, "map location not found: " .. d.map end
-    local n, per = 0, {}
-    for _, rs in ipairs(routeStates()) do
-        local cur = rs.CurrentLeg
-        local m = 0
-        for _, l in ipairs(FindAllOf("BaseLegState") or {}) do
-            pcall(function()
-                if l:GetOuter():GetFullName() ~= rs:GetFullName() then return end
-                if not l.Active or l.Visited or (cur and cur:IsValid() and l:GetFullName() == cur:GetFullName()) then return end
-                l:OverrideMapLocation(ml)
-                m = m + 1
-            end)
-        end
-        n = n + m
-        -- (which route got how many: a late join at 15 fps pointed 67 legs and never travelled; 1 when it did)
-        if m > 0 then per[#per + 1] = (rs:GetFName():ToString():gsub("^BP_RouteState_C_", "R")) .. "=" .. m end
-    end
-    if n == 0 then return nil, "no next leg to point at the host's map (not in the garage?)" end
-    return n, table.concat(per, ",")
+    local rs, leg, how = M.pickLeg(d)
+    if not rs then return nil, "no leg to travel to" end
+    local same = false
+    pcall(function() same = leg.MapLocation and leg.MapLocation:IsValid() and leg.MapLocation:GetFullName() == ml:GetFullName() end)
+    if not same then leg:OverrideMapLocation(ml) end
+    M.stats.travels = (M.stats.travels or 0) + 1
+    M.stats.lastTravel = how
+    rs:TravelTo(leg, 0)
+    return string.format("%s%s -> %s", how, same and "" or " (map set)", d.map:match("[^/]+$") or d.map)
 end
 
--- Guest: read the descriptor file, point the next leg at the host's map, drive out of the garage.
+-- Guest, in its garage: drive out to the host's zone.
 function M.join(descPath)
     local s = readText(descPath)
     if not s then return "ERR no descriptor at " .. descPath end
     local line = s:match("^[^\r\n]*") or ""
-    local n, e = M.prepare(line)
-    if not n then return "ERR " .. e end
     -- guest mode: the own car must come home as it left (see insureCar; the CoopSync mod restores it)
     local ins = M.insureCar(M.insuranceFile())
-    local helpers = StaticFindObject("/Game/Systems/ScriptingLibraries/BFL_ProgressionHelpers.Default__BFL_ProgressionHelpers_C")
-    helpers:TravelToNextLeg(FindFirstOf("PlayerController"))
-    return string.format("joining: %d leg(s) (%s) -> %s; %s", n, e, (parse(line).map:match("[^/]+$") or "?"), ins)
+    local r, e = M.travelTo(line)
+    if not r then return "ERR " .. e end
+    return "joining: " .. r .. "; " .. ins
 end
 
--- Guest, in a zone: follow the host to the map of a new descriptor. The guest's own run route has no next leg
--- of its own to drive to (a new game's first zone has none), but any unvisited leg of that route given the
--- host's MapLocation and passed to BaseRouteState:TravelTo loads it (probed: first zone -> Rooster_11, 20 s).
+-- Guest, in a zone: follow the host to the zone of a new descriptor (the host's junction; a new game's first zone
+-- has no next leg of its own, but any unvisited leg given the host's MapLocation loads it - probed: first zone ->
+-- Rooster_11, 20 s).
 function M.follow(desc)
-    local d = parse(desc or "")
-    if not d then return "ERR bad descriptor" end
-    local ml = loadObj(d.map)
-    if not ml then return "ERR map location not found: " .. d.map end
-    local rs, cur = zoneRoute()
-    if not rs then return "ERR not in a zone (no run route)" end
-    for _, l in ipairs(FindAllOf("BaseLegState") or {}) do
-        local ok, isCand = pcall(function()
-            return l:GetOuter():GetFullName() == rs:GetFullName() and not l.Visited and l:GetFullName() ~= cur:GetFullName()
-        end)
-        if ok and isCand then
-            l:OverrideMapLocation(ml)
-            rs:TravelTo(l, 0)
-            return "following the host to " .. (d.map:match("[^/]+$") or d.map)
-        end
-    end
-    return "ERR no unvisited leg on the run route"
+    local r, e = M.travelTo(desc)
+    if not r then return "ERR " .. e end
+    return "following the host: " .. r
 end
 
 -- Guest: back to its own garage. directLoad = true skips the game's "rinse" (save + reload); observed:

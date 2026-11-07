@@ -440,12 +440,18 @@ function TD.equipTick(c)
     if target.equip and TD.equipSeqApplied ~= target.equipSeq then
         TD.equipSeqApplied = target.equipSeq
         pcall(Twin.applyEquip, c, target.equip)
+        pcall(Twin.muteDoorBreak, c) -- (a door spawned onto it now: its break handler off at once)
         TD.sweepAt = M.nowMs() - TD.SWEEP_MS + 1000 -- (parts spawned again bind themselves: parked 1 s later)
     end
     local now = M.nowMs()
     -- (every 0.5 s; the part state every 1 s: a repair is no quick action - 6 ms a check, soak test profile 2026-10-28)
     if now - (TD.equipWatchMs or 0) < 500 then return end
     TD.equipWatchMs = now
+    -- (a door put on the twin - by the owner's line or by the local player - binds the game's OnConstraintBroken handler,
+    -- which destroys the OWN car's door of that number when the twin's breaks: muted every 0.5 s here, not only with a
+    -- full pose once a second. Owner's alpha 20 test: both had just put a driver's door back, the host got into the
+    -- guest's car, it jolted, on shutting the driver's doors fell off on both sides - each the other car's.)
+    timed("eq_doorbrk", function() Twin.muteDoorBreak(c) end)
     if TD.native then
         -- (native cars: the twin keeps the game's own handlers; the car manager's bindings of the car that is not the
         -- context are parked - parts spawned again bind themselves afresh: a sweep every TD.SWEEP_MS, ~9 ms)
@@ -724,15 +730,22 @@ function TD.aimSeatSocket(g, n)
     pcall(function() sock:K2_SetRelativeLocation({ X = want.X - sockDelta.X, Y = want.Y - sockDelta.Y, Z = want.Z - sockDelta.Z }, false, {}, true) end)
     return true
 end
+-- (no door on that side - taken off: owner's alpha 20 test, the guest could not get onto a back seat then - the
+-- player gets in through the empty doorway: the car the game's context, the seat socket at seat n, CommandEnterCar
+-- without a door)
 function TD.twinEnter(pawn, g, tag, n)
     local door = Twin.door(g, n)
-    if not door then return false end
     TD.aimSeatSocket(g, n)
-    if not Twin.startEntry(g, door) then return false end
-    TD.sendDoor(n, "open")
+    if door then
+        if not Twin.startEntry(g, door) then return false end
+        TD.sendDoor(n, "open")
+    else
+        if not Twin.startEntry(g, nil) then return false end
+        st.doorlessEntries = (st.doorlessEntries or 0) + 1
+    end
     local now = M.nowMs()
     inGhost = { tag = tag, seat = nil, pending = false, entry = { X = SEAT_DOOR[n].X, Y = SEAT_DOOR[n].Y }, twin = true, since = now,
-        aimed = n, door = n, doorPath = Sync.ref(door), enterAt = now + TD.ENTRY_STEP_MS, native = TD.native or nil }
+        aimed = n, door = door and n or nil, doorPath = door and Sync.ref(door) or nil, enterAt = now + TD.ENTRY_STEP_MS, native = TD.native or nil }
     if tag == "H" then myAssigned, seatPending = nil, false end
     st.ghostBoarded = (st.ghostBoarded or 0) + 1
     return true
@@ -746,16 +759,17 @@ function TD.ownEnter(pawn, n)
     local own = Twin.ownCar()
     local door = own and Twin.door(own, n)
     local function no(why) st.ownEnter = n .. ":" .. why return false end
-    if not door then return no("no_door") end
+    if not own then return no("no_car") end
     if Sync.parentOf(pawn) then return no("in_a_car") end
     if seatTakenByOther(myTag(), n) then return no("player") end
     if seatDevice(own, n) then return no("device") end
     if TD.native then pcall(Native.use, own) end
     TD.aimSeatSocket(own, n)
-    if not pcall(function() door:StartEntry(true) end) then TD.aimSeatSocket(own, 1) return no("entry_failed") end
-    st.ownEnter = n .. ":started"
+    -- (no door there: in through the empty doorway - TD.twinEnter)
+    if door and not pcall(function() door:StartEntry(true) end) then TD.aimSeatSocket(own, 1) return no("entry_failed") end
+    st.ownEnter = n .. (door and ":started" or ":started_doorless")
     local now = M.nowMs()
-    TD.ownSeat = { n = n, since = now, door = Sync.ref(door), enterAt = now + TD.ENTRY_STEP_MS, shutAt = now + TD.ENTRY_SHUT_MS }
+    TD.ownSeat = { n = n, since = now, door = door and Sync.ref(door) or nil, enterAt = now + TD.ENTRY_STEP_MS, shutAt = door and (now + TD.ENTRY_SHUT_MS) or nil }
     st.ownBackEntries = (st.ownBackEntries or 0) + 1
     return true
 end
@@ -1336,8 +1350,9 @@ function TD.doorTick()
     end
     if inGhost and inGhost.enterAt and now >= inGhost.enterAt then
         inGhost.enterAt = nil
-        local pawn, door = localPawn(), Sync.deref(inGhost.doorPath)
+        local pawn, door = localPawn(), inGhost.doorPath and Sync.deref(inGhost.doorPath)
         if pawn and door and Twin.finishEntry(pawn, door) then inGhost.shutAt = now + TD.ENTRY_SHUT_MS - TD.ENTRY_STEP_MS
+        elseif pawn and not inGhost.doorPath and Twin.finishEntry(pawn, nil) then -- (the doorway: no door to shut)
         elseif pawn then ghostLeave(pawn, "entry failed") end
     end
     -- (the own car's back seat, TD.ownEnter: the game's CommandEnterCar after the door's StartEntry, as for the other's
@@ -1345,8 +1360,8 @@ function TD.doorTick()
     local ownS = TD.ownSeat
     if ownS and ownS.enterAt and now >= ownS.enterAt then
         ownS.enterAt = nil
-        local pawn, door = localPawn(), Sync.deref(ownS.door)
-        if not (pawn and door and Twin.finishEntry(pawn, door)) then st.ownEnter = ownS.n .. ":enter_failed" end
+        local pawn, door = localPawn(), ownS.door and Sync.deref(ownS.door)
+        if not (pawn and (door or not ownS.door) and Twin.finishEntry(pawn, door)) then st.ownEnter = ownS.n .. ":enter_failed" end
     end
     if ownS and ownS.shutAt and now >= ownS.shutAt then
         ownS.shutAt = nil
@@ -1355,7 +1370,7 @@ function TD.doorTick()
     end
     if inGhost and inGhost.shutAt and now >= inGhost.shutAt then
         inGhost.shutAt = nil
-        TD.sendDoor(inGhost.door, "shut")
+        if inGhost.door then TD.sendDoor(inGhost.door, "shut") end
     end
     if TD.entryShut and now >= TD.entryShut.at then
         TD.sendDoor(TD.entryShut.n, "shut")
@@ -1439,7 +1454,7 @@ function TD.catShow(cat)
     if not Twin.isTwin(g) then return nil end
     -- (native cars: not for a seat the other player sits on - its door would get the player in, the game's way)
     -- (the driver's door only: the others the game just opens - owner's alpha 19 item 14)
-    if TD.native and n == 1 and seatTakenByOther(otherTag(), n) then return false end
+    if TD.native and n == 1 then TD.entryPark(g, seatTakenByOther(otherTag(), n)) end -- (its E parked, not hidden: doorBlocked)
     -- (shown always: hidden while the owner's door stood open, an open door's seat could not be taken - ghostseat;
     -- its open door is also pressed by looking at it, TD.lookedAtOpenDoor)
     return true
@@ -2148,6 +2163,17 @@ end
 -- No "get in" at a door whose seat the other player sits on (owner): the game's door asks K2_ShouldHighlight before
 -- showing its prompt and taking the interact; the hook returns false for such a door of this side's real car
 -- (UE4SS: a hook's return value replaces the function's). Probed: the prompt is gone and E does not get in.
+-- the driver's door's E handlers (open / get in) parked while the other player sits at that wheel (twincar parkEntry);
+-- looked at again at most once a second per car and state (the game asks K2_ShouldHighlight every frame it is aimed at)
+TD.parkSt = {}
+function TD.entryPark(car, park)
+    if not (car and car:IsValid()) then return end
+    local key, now = car:GetAddress(), M.nowMs()
+    local p = TD.parkSt[key]
+    if p and p.on == park and now - p.at < 1000 then return end
+    TD.parkSt[key] = { on = park, at = now }
+    pcall(Twin.parkEntry, car, 1, park)
+end
 local function doorBlocked(door)
     if M.stopped or not door then return false end
     local par = door:GetAttachParentActor()
@@ -2162,7 +2188,10 @@ local function doorBlocked(door)
     local n = doorSeat(l.X, l.Y)
     -- (the driver's door only: a back / passenger door the game just opens, its seat the mod's entry - which refuses a
     -- taken one; that door stays to open / shut / take off, owner's alpha 19 item 14)
-    return n == 1 and seatTakenByOther(realTag, n)
+    -- (not hidden any more: its E handlers are parked while the seat is taken - TD.entryPark; owner's alpha 20 test: a
+    -- hidden door could not be taken off or put on while the other player sat at the wheel)
+    if n == 1 then TD.entryPark(par, seatTakenByOther(realTag, n)) end
+    return false
 end
 -- Getting out of the own car with a twin around (owner, alpha 16: "no door animation, I walked out through it"): the
 -- car's ExitDoor handler finds "the driver's door" by a lookup of its own that answers the twin's (traced: AttemptOpen /
@@ -3245,6 +3274,7 @@ end
 -- (a Hermite curve, Catmull-Rom tangents from the samples around); outside it - collisions need it where it is now -
 -- extrapolated as before, but every frame with a smoothing by the frame's time.
 TD.CAR_INTERP_MS = 160
+TD.OUTSIDE_EVERY_FRAME = true -- the twin seen from outside moved every frame (TD.twinFrame), not by the apply loop
 TD.carHist, TD.carOff = { car = {}, otherCar = {}, drv = {} }, {}
 function TD.carSample(which, s)
     local h = TD.carHist[which]
@@ -3337,9 +3367,11 @@ function TD.twinFrame()
             if TD.inTwin(actor) and inGhost.seat ~= 1 then
                 local loc, rot = TD.carInterp(which)
                 if loc then follow(actor, tgt, zero, true, 1, { loc = loc, rot = rot }) st.twinInterp = (st.twinInterp or 0) + 1 end
-            elseif TD.inTwin(actor) then
-                -- (its driver: where it is now, the old 0.6 per 33 ms step as a share of the way per this frame's time.
-                -- Outside it the apply loop moves it as before: moved every frame its pushes were harder - collide-test)
+            elseif TD.inTwin(actor) or TD.OUTSIDE_EVERY_FRAME then
+                -- (its driver, and from outside: where it is now, the old 0.6 per 33 ms step as a share of the way per
+                -- this frame's time. Outside it was moved by the apply loop, 30 times a second, toward a sample
+                -- extrapolated along its velocity and pulled back at each new sample: at 50+ fps the owner saw the
+                -- other's car jerk - alpha 20 test, ping 13 ms, the frame rate steady)
                 follow(actor, tgt, zero, true, 1 - (1 - SMOOTH) ^ (dt / 0.033))
             end
         end
@@ -3727,7 +3759,7 @@ local function applyTick()
         end
         if car then
             -- (a twin the local player sits in: every frame, TD.twinFrame)
-            local l = (Twin.isTwin(car) and TD.inTwin(car)) and car:K2_GetActorLocation() or follow(car, target.car, { X = 0, Y = 0, Z = 0, Yaw = 0 }, Twin.isTwin(car))
+            local l = (Twin.isTwin(car) and (TD.inTwin(car) or TD.OUTSIDE_EVERY_FRAME)) and car:K2_GetActorLocation() or follow(car, target.car, { X = 0, Y = 0, Z = 0, Yaw = 0 }, Twin.isTwin(car))
             ts = section("car_follow", ts)
             if target.pose and Twin.isTwin(car) then TD.doorGuard = true pcall(Twin.applyPose, car, target.pose) TD.doorGuard = false end -- (its door shuts are the pose, not the exit: TD.onDoorCall)
             ts = section("car_pose", ts)
@@ -3758,7 +3790,7 @@ local function applyTick()
                 if c then otherCarPath = Sync.ref(c) end
             end
             if c then
-                if not (Twin.isTwin(c) and TD.inTwin(c)) then follow(c, target.otherCar, { X = 0, Y = 0, Z = 0, Yaw = 0 }, Twin.isTwin(c)) end -- (sat in: TD.twinFrame)
+                if not (Twin.isTwin(c) and (TD.inTwin(c) or TD.OUTSIDE_EVERY_FRAME)) then follow(c, target.otherCar, { X = 0, Y = 0, Z = 0, Yaw = 0 }, Twin.isTwin(c)) end -- (sat in: TD.twinFrame)
                 ts = section("car_follow", ts)
                 if target.pose and Twin.isTwin(c) then TD.doorGuard = true pcall(Twin.applyPose, c, target.pose) TD.doorGuard = false end
                 ts = section("car_pose", ts)

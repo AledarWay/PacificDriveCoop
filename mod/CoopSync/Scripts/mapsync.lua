@@ -237,6 +237,14 @@ function M.applyRows(rows)
         end
     end
     pcall(function() route:UpdateConditions() end)
+    -- the orange instability around the junctions (owner's alpha 20 test: "in different places for host and guest"):
+    -- the map's UMG_RouteShape_Static_Instability draws it from the legs' Instability, but only on the route's
+    -- OnInstabilityUpdated (and its Construct) - the copied values stayed undrawn, the guest's own spots on screen
+    pcall(function() route:OnInstabilityUpdated() end)
+    for _, w in ipairs(FindAllOf("UMG_RouteShape_Static_Instability_C") or {}) do
+        pcall(function() if w:IsValid() then w:UpdateInstabilityMaterial() end end)
+    end
+    M.instabilityRedrawn = (M.instabilityRedrawn or 0) + 1
     return n, miss
 end
 

@@ -65,6 +65,7 @@ local CLEANUP_AFTER_S = 10   -- import -> cleanup
 local S = { role = nil, mode = "car", go = false, state = "idle", seq = 0, note = "" }
 local chan, ctlOff = nil, 0
 local Sync, Run, State, Players, Weather, Map
+local TwinMod -- twincar.lua (session start)
 local Hitch = require("hitch")
 -- the host's zone through the game's own save (zonesave.lua); CoopSyncZoneSave = false: the old way (the guest keeps
 -- the zone the game generated from the seed, the host's list imported over it)
@@ -186,8 +187,8 @@ local function writeStatus(gstate, world)
         local ok, r = pcall(Players.report)
         puppet = ok and (tostring(r):match("puppet=(%S+)") or "?") or "?"
     end
-    writeFile(chan .. "/status.txt", string.format("role=%s mode=%s state=%s world=%s gstate=%d seq=%d go=%s puppet=%s unpaused=%d weather=%s map=%d/%d/%d gate=%d/%d/%d hitch=%s anim=%s zs=%s twins=%d mapblock=%d cars=%s extra=%d chk=%d cover=%d/%d note=%s\n",
-        tostring(S.role), S.mode, (S.state:gsub("%s", "_")), world, gstate, S.seq, tostring(S.go), puppet, M.pauseLifted, Weather and Weather.short() or "-", M.mapSent or 0, M.mapApplied or 0, M.mapRestores or 0, M.gateClosed or 0, M.gateOpened or 0, M.exitTaken or 0, Hitch.short(), (Players and Players.puppetAnim and Players.puppetAnim()) or "-", zoneSaveShort(), twinCount(), M.plannerUnbound or 0, M.carsSeen, M.extraCars or 0, CoopSyncChecklist and CoopSyncChecklist.rows or 0, M.covered or 0, S.coverShown and 1 or 0, ((S.note or ""):gsub("%s", "_"))))
+    writeFile(chan .. "/status.txt", string.format("role=%s mode=%s state=%s world=%s gstate=%d seq=%d go=%s puppet=%s unpaused=%d weather=%s map=%d/%d/%d gate=%d/%d/%d hitch=%s anim=%s zs=%s twins=%d mapblock=%d cars=%s extra=%d chk=%d cover=%d/%d exitmap=%d/%d/%d travels=%d note=%s\n",
+        tostring(S.role), S.mode, (S.state:gsub("%s", "_")), world, gstate, S.seq, tostring(S.go), puppet, M.pauseLifted, Weather and Weather.short() or "-", M.mapSent or 0, M.mapApplied or 0, M.mapRestores or 0, M.gateClosed or 0, M.gateOpened or 0, M.exitTaken or 0, Hitch.short(), (Players and Players.puppetAnim and Players.puppetAnim()) or "-", zoneSaveShort(), twinCount(), M.plannerUnbound or 0, M.carsSeen, M.extraCars or 0, CoopSyncChecklist and CoopSyncChecklist.rows or 0, M.covered or 0, S.coverShown and 1 or 0, M.mapClosed or 0, M.zoneExits or 0, M.follows or 0, (Run and Run.stats and Run.stats.travels) or 0, ((S.note or ""):gsub("%s", "_"))))
 end
 
 -- zone ready = generator done for READY_TICKS ticks and MIN_ZONE_S after arriving
@@ -314,6 +315,9 @@ local function clientTick(gstate, world)
     end
     if S.go and session.world == world then S.go = false end -- (arrived by the game's own travel)
     if gstate ~= 5 then return end
+    -- at a zone's exit gate: after the host to its next zone (onGuestExit, zoneExitTick)
+    M.zoneExitTick(world, session)
+    if S.state == "zone: at the exit" then return end
     -- the host's zone through the game's own save (zonesave.lua): the game loads it into this world again; then the
     -- usual import (its list finds every actor in place). The load keeps the game state at 5 all along: the new
     -- World object tells it is done. (This step came after the arrival step below, which took the state back to
@@ -458,45 +462,121 @@ local function garageExit()
 end
 M.gateClosed, M.gateOpened, M.exitTaken = 0, 0, 0
 M.garageExit = garageExit
+-- the player menu (the map, at the map table or an exit) on screen
+local function playerMenuOpen()
+    for _, w in ipairs(FindAllOf("UMG_PlayerMenu_Main_C") or {}) do
+        local ok, v = pcall(function() return w:IsInViewport() and w:IsVisible() end)
+        if ok and v then return true end
+    end
+    return false
+end
+-- the car inside a level transition's exit volume (the garage exit's drive-through, a zone exit gate)
+local function carInExit(ex, car)
+    local inside = false
+    pcall(function()
+        car = car or FindFirstOf("BP_CarManager_C").NewCarActor
+        local box = ex.Collision_Exit
+        local KML = StaticFindObject("/Script/Engine.Default__KismetMathLibrary")
+        local l = KML:InverseTransformLocation(box:K2_GetComponentToWorld(), car:K2_GetActorLocation())
+        local e = box:GetUnscaledBoxExtent()
+        inside = math.abs(l.X) <= e.X and math.abs(l.Y) <= e.Y and math.abs(l.Z) <= e.Z
+    end)
+    return inside
+end
+-- the car in an exit volume of the zone's open exit gates
+local function carInZoneExit()
+    for _, e in ipairs(FindAllOf("BP_LevelTransition_EnterExit_C") or {}) do
+        local okE, isExit = pcall(function() return e:IsValid() and e.ExitActive and not e.IsGarageExit end)
+        if okE and isExit and carInExit(e) then return true end
+    end
+    return false
+end
+-- The map the game opens at an exit (the progression manager's "Open Map UI": the junction pick) is never the
+-- guest's (owner's alpha 20 test: "do not show the guest the map at all, a loading screen instead"): the guest goes
+-- where the host goes. Closed while the guest drives out of its garage, arrives in a zone, or waits at a zone exit
+-- for the host's pick. (It opens a moment after the exit fired - the post-hook's close came too early: the map stayed
+-- open through the load and was open again in the zone. The game does not open it again once closed - probed.) The
+-- map table in the garage lobby stays the guest's to look at.
+local function mapGuard()
+    if S.role ~= "client" then return false end
+    local g = gameState()
+    if g == 4 then return S.go or S.joinPending or S.state == "joining" end
+    if g == 5 then return S.state ~= "playing" or S.followPending == true end
+    return false
+end
+M.mapClosed = 0
+local function closeMap(why)
+    if pcall(function() FindFirstOf("BP_ProgressionManager_C"):CloseMapUI() end) then
+        M.mapClosed = M.mapClosed + 1
+        S.mapClosedWhy = why
+    end
+end
 local function onGuestExit(fromGame)
-    if S.role ~= "client" or gameState() ~= 4 then return end
+    if S.role ~= "client" then return end
+    local g = gameState()
+    -- a zone's exit gate (owner's alpha 20 test: the guest picked a junction of its own and the two split): the guest
+    -- waits there for the host's pick, the screen dark, and follows the host to its zone (zoneExitTick)
+    if g == 5 then
+        if not S.followPending and S.state == "playing" then
+            S.followPending, S.followAt = true, nowS()
+            S.followFrom = (readFile(Link.docPath(chan, "inbox", "host-run.txt")) or ""):match("^[^\r\n]*")
+            M.zoneExits = (M.zoneExits or 0) + 1
+            S.state, S.note = "zone: at the exit", "at the zone's exit: waiting for the host's pick"
+        end
+        closeMap("zone exit")
+        return
+    end
+    if g ~= 4 then return end
     -- the game's own exit is travelling (an advanced save's exit does: to the junction planned on the map, the
     -- host's - mapsync gave it the host's plan)
     if fromGame then S.gameTravelAt = nowS() end
     -- the map the game opens for a pick: not for the guest, the host's map is where it goes
-    pcall(function() FindFirstOf("BP_ProgressionManager_C"):CloseMapUI() end)
+    closeMap("garage exit")
     if S.go or S.joinPending then
         S.joinPending = true
         M.exitTaken = M.exitTaken + 1
         S.note = "drove out: to the host's map"
     end
 end
+-- the exits' DoLevelTransition, hooked once for the class (every exit: the garage's and the zones')
+local function hookExits()
+    if S.exitHooked then return end
+    local any = FindFirstOf("BP_LevelTransition_EnterExit_C")
+    if not (any and any:IsValid()) then return end
+    S.exitHooked = true
+    local cls = any:GetClass():GetFullName():gsub("^%S+ ", "")
+    pcall(Hook, cls .. ":DoLevelTransition", function() end, function() pcall(onGuestExit, true) end)
+    local pm = FindFirstOf("BP_ProgressionManager_C")
+    local pmCls = pm and pm:GetClass():GetFullName():gsub("^%S+ ", "")
+    if pmCls and isFunction(pmCls .. ":Open Map UI") then
+        pcall(Hook, pmCls .. ":Open Map UI", function() end, function()
+            -- (a zone's exit gate opens the map without its DoLevelTransition on the guest - nextzone-test: the car in
+            -- the gate, the map open, the hook silent): the map opening with the car in an exit gate is the exit
+            if S.role == "client" and gameState() == 5 and S.state == "playing" and not S.followPending and carInZoneExit() then
+                pcall(onGuestExit, true)
+            end
+            if mapGuard() then closeMap("opened") end
+        end)
+    end
+end
 local function gateTick(gstate)
+    if gstate == 4 or gstate == 5 then pcall(hookExits) end
+    -- (a map that opened anyway: a hook missed, or the game's own way in)
+    if S.role == "client" and gstate == 5 and S.state == "playing" and not S.followPending and playerMenuOpen() and carInZoneExit() then
+        pcall(onGuestExit, true)
+    end
+    if mapGuard() and playerMenuOpen() then closeMap("tick") end
     if gstate ~= 4 or S.role ~= "client" then S.exitPath = nil return end
     local ex = garageExit()
     if not ex then return end
-    if not S.exitHooked then
-        S.exitHooked = true
-        local cls = ex:GetClass():GetFullName():gsub("^%S+ ", "")
-        pcall(Hook, cls .. ":DoLevelTransition", function() end, function() pcall(onGuestExit, true) end)
-    end
     local open = S.go or S.joinPending
     local active = false
     pcall(function() active = ex.ExitActive end)
     -- the car inside the exit's drive-through volume counts as driving out too: a new game's first garage (story)
     -- never called DoLevelTransition for an open exit (an advanced save did)
-    if open and active and not S.joinPending then
-        pcall(function()
-            local car = FindFirstOf("BP_CarManager_C").NewCarActor
-            local box = ex.Collision_Exit
-            local KML = StaticFindObject("/Script/Engine.Default__KismetMathLibrary")
-            local l = KML:InverseTransformLocation(box:K2_GetComponentToWorld(), car:K2_GetActorLocation())
-            local e = box:GetUnscaledBoxExtent()
-            if math.abs(l.X) <= e.X and math.abs(l.Y) <= e.Y and math.abs(l.Z) <= e.Z then
-                S.exitSeenAt = nowS()
-                onGuestExit(false)
-            end
-        end)
+    if open and active and not S.joinPending and carInExit(ex) then
+        S.exitSeenAt = nowS()
+        onGuestExit(false)
     end
     if open and not active then
         if pcall(function() ex:SetExit(false) end) then M.gateOpened = M.gateOpened + 1 end
@@ -504,6 +584,30 @@ local function gateTick(gstate)
         if pcall(function() ex:SetClosed() end) then M.gateClosed = M.gateClosed + 1 end
     end
 end
+-- The guest at a zone's exit gate: when the host has picked and arrived (its new descriptor), the guest follows it
+-- (Run.follow: the host's own junction). Driven out of the gate again before that: back to playing.
+local FOLLOW_MAX_S = 300
+local function zoneExitTick(world, session)
+    if not S.followPending then return end
+    local desc = (readFile(Link.docPath(chan, "inbox", "host-run.txt")) or ""):match("^[^\r\n]*")
+    if desc and desc ~= "" and desc ~= S.followFrom and session.world and session.world ~= world and session.world ~= "-" then
+        S.followPending = false
+        local ok, r = pcall(Run.follow, desc)
+        S.note = ok and tostring(r) or ("follow failed: " .. tostring(r))
+        M.follows = (M.follows or 0) + 1
+        S.state, S.joinAt = ok and "joining" or "playing", nowS()
+        return
+    end
+    -- still in the exit? (the host may take its time at the map; the car left the gate = not leaving after all)
+    local inside = carInZoneExit()
+    if inside then S.followOutAt = nil else S.followOutAt = S.followOutAt or nowS() end
+    if (S.followOutAt and nowS() - S.followOutAt > 4) or nowS() - (S.followAt or nowS()) > FOLLOW_MAX_S then
+        S.followPending, S.followOutAt = false, nil
+        if S.state == "zone: at the exit" then S.state = "playing" end
+        S.note = "left the zone's exit: playing on"
+    end
+end
+M.zoneExitTick = zoneExitTick
 -- The garage map (mapsync.lua): the host's map, junctions and conditions on the guests' map tables.
 --   * host in its garage with a peer: its route map -> outbox/host-map.tsv whenever it changed (forced at a new
 --     garage visit: the guest may have joined since);
@@ -512,13 +616,6 @@ end
 --   * guest in its garage out of the lobby (left it, or a game start): its own map back from the backup; the backup
 --     is dropped on its next own departure (that departure saves the restored map).
 local MAP_EVERY = 4 -- lobby ticks (2 s)
-local function playerMenuOpen()
-    for _, w in ipairs(FindAllOf("UMG_PlayerMenu_Main_C") or {}) do
-        local ok, v = pcall(function() return w:IsInViewport() and w:IsVisible() end)
-        if ok and v then return true end
-    end
-    return false
-end
 local function mapTick(gstate, world, peer)
     S.mapTicks = (S.mapTicks or 0) + 1
     if not peer then S.mapPeer = false end
@@ -779,6 +876,7 @@ function M.start(syncModule, runModule, chanDir)
     -- the radio's clock (twincar "Radio music") from the game's start: a track that begins is seen when it begins (a
     -- clock started by the player sync took a track already playing as beginning then)
     local okR, Radio = pcall(dofile, Sync.DIR .. "twincar.lua")
+    if okR and Radio then TwinMod = Radio end
     if okR and Radio then
         loop(100, function() pcall(Radio.clockTick, S.role ~= nil) end)
     end

@@ -1775,6 +1775,74 @@ function M.muteDoors(twin)
     M.stats.doorsMuted = (M.stats.doorsMuted or 0) + n
     return n
 end
+-- The driver's door while the other player sits at that wheel (owner's alpha 20 test: "with somebody at the wheel the
+-- door cannot be put on or taken off"): the door and its slot spot used to be hidden (K2_ShouldHighlight false: the
+-- game's E would get the player onto the taken seat - its own entry cannot be stopped from a hook), and with them the
+-- taking off / putting on. Now only their E handlers (open, get in) are parked while the seat is taken and put back
+-- once it is free; the highlight and the part's own interactive spot (taking the door off) stay.
+local parkedEntry = {} -- actor address -> { actor, list of { hc, del, obj, fn } }
+local function entryActors(car, n)
+    local r = {}
+    local d = M.door(car, n)
+    if d and d:IsValid() then r[#r + 1] = { a = d, dels = MUTE_DELS } end
+    local att = {}
+    pcall(function() car:GetAttachedActors(att, true) end)
+    for i = 1, #att do
+        local a = att[i]:get()
+        if a and a:IsValid() and a:GetClass():GetFName():ToString() == "BP_CarPart_Interactive_C" then
+            local out = {}
+            local okS = pcall(function() a:GetSlotComponent(out) end)
+            local sc = okS and out.SlotSceneComponent
+            local slot = sc and sc:IsValid() and sc.SlotName.TagName:ToString() or ""
+            if DOOR_SLOT[slot] == n then r[#r + 1] = { a = a, dels = CAT_DELS } end
+        end
+    end
+    return r
+end
+function M.parkEntry(car, n, park)
+    if not (car and car:IsValid()) then return 0 end
+    HCC = HCC or SFO("/Script/PenDriverPro.HighlightComponent")
+    local done = 0
+    if park then
+        for _, e in ipairs(entryActors(car, n)) do
+            local key = e.a:GetAddress()
+            if not parkedEntry[key] then
+                local list = {}
+                local comps = e.a:K2_GetComponentsByClass(HCC)
+                for i = 1, #comps do
+                    local hc = comps[i]:get()
+                    for _, dn in ipairs(e.dels) do
+                        pcall(function()
+                            for _, b in ipairs(hc[dn]:GetBindings() or {}) do
+                                local o = b.Object
+                                if o and o:IsValid() and o:GetAddress() == key then
+                                    local fn = b.FunctionName
+                                    hc[dn]:Remove(o, fn)
+                                    list[#list + 1] = { hc = hc, del = dn, obj = o, fn = fn:ToString() }
+                                end
+                            end
+                        end)
+                    end
+                end
+                parkedEntry[key] = { actor = e.a, list = list, car = car:GetAddress() }
+                done = done + #list
+            end
+        end
+    else
+        for key, p in pairs(parkedEntry) do
+            if p.car == car:GetAddress() then
+                for _, b in ipairs(p.list) do
+                    pcall(function() if b.hc:IsValid() and b.obj:IsValid() then b.hc[b.del]:Add(b.obj, b.fn) end end)
+                    done = done + 1
+                end
+                parkedEntry[key] = nil
+            end
+        end
+    end
+    M.stats.entryParked = (M.stats.entryParked or 0) + (park and done or 0)
+    return done
+end
+M.entryParked = function() local n = 0 for _ in pairs(parkedEntry) do n = n + 1 end return n end
 -- The twin's door the game highlights now (twin, door number), else nil
 DOOR_SLOT = { ["Car.Equip.Body.DoorsFL"] = 1, ["Car.Equip.Body.DoorsFR"] = 2, ["Car.Equip.Body.DoorsRL"] = 3,
     ["Car.Equip.Body.DoorsRR"] = 4, ["Car.Equip.Body.DoorsTrunk"] = 5 }
@@ -2248,12 +2316,16 @@ function M.startEntry(twin, door)
     local cm = manager()
     if not cm then return false end
     cm.NewCarActor = twin
+    if not door then return true end -- (an empty doorway: the walk in starts at finishEntry)
     local ok = pcall(function() door:StartEntry(true) end)
     if not ok then M.managerToOwn() end
     return ok
 end
 function M.finishEntry(pawn, door)
-    return pcall(function() pawn:CommandEnterCar(false, door, false) end)
+    if door then return pcall(function() pawn:CommandEnterCar(false, door, false) end) end
+    -- (no door: the game's way in without one - the walk to the seat socket, else put on it)
+    if pcall(function() pawn:CommandEnterCar(false, nil, false) end) then return true end
+    return pcall(function() pawn:CommandEnterCar(true, nil, false) end)
 end
 -- The owner's real door n: "open" | "shut" | "toggle" (open = its mesh simulates). Returns what was done.
 function M.doorOpen(car, n)

@@ -56,6 +56,18 @@ function ZoneSaveCheck($when, [int]$n) {
     $hz = ((Status $hchan).zs -split '/'); $cz = ((Status $cchan).zs -split '/')
     Check "${when}: the guest got the host's zone through its save" ($hz.Count -eq 4 -and [int]$hz[2] -ge 1 -and $cz.Count -eq 4 -and [int]$cz[3] -ge $n) "host zs=$($hz -join '/') | guest zs=$($cz -join '/')"
 }
+# (owner's alpha 20 test: the guest's drive-out travelled five times in one frame - "concurrent save/load on top of
+# LOADING LEVEL" - and its map to pick a junction stayed open through the load and in the zone)
+function TravelCheck($when, [int]$n) {
+    $log = "$inst\client\userdir\Saved\Logs\PenDriverPro.log"
+    $lines = @(Get-Content $log -ErrorAction SilentlyContinue)
+    $trav = @($lines | Where-Object { $_ -match 'Traveling to level' }).Count
+    $conc = @($lines | Where-Object { $_ -match 'concurrent save/load' }).Count
+    $cs = Status $cchan
+    Check "${when}: the guest travelled once per drive-out, to the host's junction" ($trav -eq $n -and $conc -eq 0 -and [int]$cs.travels -eq $n) "game log travels=$trav concurrent=$conc | mod travels=$($cs.travels) | $($cs.note)"
+    $menu = Send $cd "local v = 0 for _, w in ipairs(FindAllOf('UMG_PlayerMenu_Main_C') or {}) do pcall(function() if w:IsInViewport() and w:IsVisible() then v = v + 1 end end) end return 'menus=' .. v"
+    Check "${when}: no junction map open on the guest" ($menu -match 'menus=0') "$menu exitmap=$($cs.exitmap)"
+}
 function Gate($chan) { $g = (Status $chan).gate; if ($g) { $p = $g -split '/'; @{ closed = [int]$p[0]; opened = [int]$p[1]; taken = [int]$p[2] } } else { @{ closed = 0; opened = 0; taken = 0 } } }
 $script:pass = 0; $script:fail = 0
 function Check($name, [bool]$ok, $detail) {
@@ -126,6 +138,7 @@ $end = (Get-Date).AddSeconds(30)
 do { Start-Sleep 3; $h = Status $hchan; $c = Status $cchan } while (-not ($h.puppet -eq 'yes' -and $c.puppet -eq 'yes') -and (Get-Date) -lt $end)
 Check "both see each other in the zone" ($h.puppet -eq 'yes' -and $c.puppet -eq 'yes') "host: $($h.raw) | guest: $($c.raw)"
 ZoneSaveCheck "joined" 1
+TravelCheck "joined" 1
 CarsCheck "joined"
 
 "=== 3. late join: the guest goes home, leaves the lobby and comes back"
@@ -155,6 +168,7 @@ $end = (Get-Date).AddSeconds(30)
 do { Start-Sleep 3; $h = Status $hchan; $c = Status $cchan } while (-not ($h.puppet -eq 'yes' -and $c.puppet -eq 'yes') -and (Get-Date) -lt $end)
 Check "after the late join both see each other again" ($h.puppet -eq 'yes' -and $c.puppet -eq 'yes') "host: $($h.raw) | guest: $($c.raw)"
 ZoneSaveCheck "late join" 2
+TravelCheck "late join" 2
 CarsCheck "late join"
 
 "=== RESULT: $script:pass passed, $script:fail failed -> $(if ($script:fail -eq 0) { 'PASS' } else { 'FAIL' })"

@@ -3425,3 +3425,63 @@ same %-codes in order, missing keys listed (an error only for ru.lua), unused en
 outside lang/ (it is ASCII-only now: Ѐ-ӿ; the CI runner's ANSI code page broke the old literal range).
 build-alpha and deploy copy `Scripts\lang\`; lua-lint covers it. Checked offline (lua54: ru, ru-RU, en-US, de-DE ->
 en, pt_BR -> en, "../x" -> en) and in game: menu, f7, esc, startflow, session-net.
+
+## The owner's alpha 20 test (2026-11-07, host = owner, guest = friend, real Steam link)
+Reports: local/reports/a20-owner (r1 = guest, r2 = host; ping 13 ms, guest ~50 fps steady, mod 2-4 ms a frame; the
+crash dumps in them are old ones). The owner's list, and what was found / done:
+1. Map instability spots around the junctions differ. mapsync copied each leg's Instability, but the map's
+   UMG_RouteShape_Static_Instability draws only on the route's OnInstabilityUpdated (and its Construct): applyRows now
+   calls route:OnInstabilityUpdated() and UpdateInstabilityMaterial on the live widgets. Not seen with graphics yet.
+2. At the start the guest's junction map stayed open through the load and was open again in the zone; at the zone's
+   exit it got the map again, picked a junction of its own, and the two split (host leg 92 = Wilderness_Forest_22,
+   the guest's leg 92 = Scylla_02). Causes, from the game logs:
+   - Run.join pointed EVERY next leg of every route state at the host's map and called TravelToNextLeg: it travelled
+     once per route state, five "Traveling to level" in one frame (legs 1, 10, 13, 26, 60; "concurrent save/load on
+     top of LOADING LEVEL"), the route's current leg left at the last one; the guest's later junctions all led back to
+     the host's first zone.
+   - The map opens a moment AFTER DoLevelTransition (the post-hook's CloseMapUI came too early); at a zone exit gate
+     the guest's DoLevelTransition hook did not fire at all (nextzone-test), only "Open Map UI".
+   - In own-car mode the guest never followed the host (playersync: the host's L line = split).
+   Now: the descriptor's 5th field is the host's leg (its RouteShapeLeg name); Run.travelTo finds the same leg in the
+   guest's routes (WorldState first; the maps are the host's: mapsync), sets the host's MapLocation on that one leg
+   only if it differs, and does ONE BaseRouteState:TravelTo (join and follow). session: "Open Map UI" post-hook +
+   tick close the map while the guest drives out / arrives (mapGuard); the map opening with the guest's car in an
+   open zone exit gate (or the gate's DoLevelTransition) = the guest at the exit: state "zone: at the exit", screen
+   dark, followPending; when the host's descriptor changes and the host is in another world: Run.follow (one travel).
+   Out of the gate for 4 s or 300 s: back to playing. Status: exitmap=<maps closed>/<zone exits>/<follows>,
+   travels=<mod's travels>. Probed: CloseMapUI closes it, the game does not open it again while the car stays.
+   Exit PORTALS are the exits home (Select Exit Portal Actor + the car in it -> the garage), not next junctions.
+   Tests: startflow TravelCheck (one "Traveling to level" per drive-out in the guest's game log, no "concurrent", no
+   map open); new nextzone-test.ps1 (advanced save pair, lobby, drive-out, the guest first into the zone exit gate,
+   then the host picks: the same zone, the same leg, one travel more, no map, both cars).
+3. The other's car jerks. The twin seen from outside was moved by the apply loop (30 Hz) toward a sample extrapolated
+   along its velocity, pulled back at each new sample (10 Hz): now every frame in TD.twinFrame with the time-scaled
+   smoothing the driver's view had (TD.OUTSIDE_EVERY_FRAME). Collisions to check (collide / contact / runover).
+4. A door the guest took off and threw down stood in the air on the host and jumped on the guest: the host's DROP
+   world item (SpawnItemActor) did not simulate; now SetSimulatePhysics + WakeAllRigidBodies.
+5. No getting onto a back seat without its door: TD.twinEnter / TD.ownEnter refused without a door actor; now in
+   through the doorway (seat socket aimed, the context car, CommandEnterCar without a door, teleport as fallback).
+6. Wreck paint all orange-blue on the guest again: VP was applied once per place; now again whenever that wreck has
+   no DynamicMaterialInstances (ap_VP_again / ap_VP_no_mid counters). Not verified with graphics.
+7/9. Door chaos: a twin door's OnConstraintBroken handler destroys the OWN car's door of that number; it was muted
+   only with a full pose once a second - a door just put on the twin (by the owner's line or by hand) had it. Now
+   muted every 0.5 s in TD.equipTick and right after applyEquip. Item 7 (the host's door followed the guest's car in
+   the air) is likely the extra car below (a second real copy) - not reproduced yet.
+8. No putting on / taking off the driver's door while the other sat at that wheel: doorBlocked / catShow hid the door
+   and its slot spot (K2_ShouldHighlight false). Now only their Highlight E handlers (open / get in) are parked while
+   the seat is taken (twincar parkEntry, TD.entryPark at most once a second), the highlight and the taking off stay.
+10. The light differed: nextzone-test compares cmds/light-read.lua (tod, north, suns, sky, fog) on both sides.
+11. A tourist mine (BP_Hazard_Landmine_C) went off on the host only when the guest drove past: a guest claims a hazard
+   only once its copy moved. HZ.handOver (host, every second): hazards within 4000 of the guest and nearer to it by
+   HZ.MARGIN are granted to the guest at once (puppet here, HGRANT).
+12. See 2.
+Found on the way (open): "EXTRA CAR" on the guest right after the zone save's load (owner's log 00:11:01-00:11:11,
+then "twin spawned ... cars now 2": gone by itself). Neither save carries a BP_PlayerCarNew_C (save-dump of
+coop-host-zone.sav and the guest's departure save: none) - the game spawns the cars. In one nextzone run a second
+guest car (not moving, at the guest's arrival place) stayed in the first zone the whole stay; in the next zone it
+was clean. A first fix (remove any car that is not the manager's / a twin after the load) aimed at the wrong car (the
+manager pointed at the other one right then) - taken out. nextzone-test checks cars=2/1 on both within a minute.
+Light (item 10): the same on both sides in nextzone-test (tod equal, sun pitch/yaw equal, sun 2.02/2.01, sky
+2.37/2.36, fog 0.2602/0.2614) - the sync holds; the owner's brighter / darker look is likely each PC's own graphics
+(exposure, quality). nextzone-test: 13 of 16 at that run (the car check, the light check's strict compare - since
+5 % -, the extra counter), the transitions all pass: one travel each, same leg RouteShapeLeg_1 / RouteShapeLeg_39.
