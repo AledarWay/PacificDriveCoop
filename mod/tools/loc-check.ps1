@@ -20,7 +20,7 @@ foreach ($f in Get-ChildItem "$s\*.lua") {
             if (-not $keys[$m.Groups[1].Value]) { $bad += "NO ENGLISH $($f.Name):$n $($m.Groups[1].Value)" }
         }
         $rest = [regex]::Replace($code, 'L\("((?:[^"\\]|\\.)*)"\)', '')
-        foreach ($m in [regex]::Matches($rest, '"([^"]*[Ѐ-ӿ][^"]*)"')) { $bad += "NOT LOCALIZED $($f.Name):$n $($m.Groups[1].Value)" }
+        foreach ($m in [regex]::Matches($rest, '"([^"]*[\u0400-\u04FF][^"]*)"')) { $bad += "NOT LOCALIZED $($f.Name):$n $($m.Groups[1].Value)" }
     }
 }
 $bad | ForEach-Object { $_ }
