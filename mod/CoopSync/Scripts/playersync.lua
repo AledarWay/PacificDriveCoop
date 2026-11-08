@@ -104,6 +104,12 @@ function M.calibrate()
     while os.time() == t0 and os.clock() < guard do end
     clockBase = os.time() * 1000 - os.clock() * 1000
 end
+-- tests: this side's clock that many ms off (two PCs' clocks differ; on one PC the tests never saw it)
+function M.testClockSkew(ms)
+    if not clockBase then M.calibrate() end
+    clockBase = clockBase + (tonumber(ms) or 0)
+    return "clock skewed " .. tostring(ms) .. " ms"
+end
 function M.nowMs()
     if not clockBase then M.calibrate() end
     return math.floor(os.clock() * 1000 + clockBase)
@@ -340,7 +346,18 @@ local function seatRel(n)
 end
 local sockDelta -- character relative location minus TempSocket_Seat relative location (measured once)
 local function measureDriverSeat(rel, sockRel)
-    seats = { [1] = { X = rel.X, Y = rel.Y, Z = rel.Z }, [2] = { X = rel.X, Y = -rel.Y, Z = rel.Z },
+    -- (the game's own entry - native cars - walks the player in already attached to the car: its first frames are at
+    -- the door, outside. Measured there, every seat of the other's puppet was outside by the driver's door - owner's
+    -- alpha 21 test. Taken once the player stays still 1 s within the cabin)
+    if math.abs(rel.Y) > 80 or math.abs(rel.X) > 250 then TD.seatCand = nil st.seatOutside = (st.seatOutside or 0) + 1 return end
+    local now = M.nowMs()
+    if not TD.seatCand or (rel.X - TD.seatCand.X) ^ 2 + (rel.Y - TD.seatCand.Y) ^ 2 + (rel.Z - TD.seatCand.Z) ^ 2 > 4 then
+        TD.seatCand = { X = rel.X, Y = rel.Y, Z = rel.Z, at = now }
+        return
+    end
+    if now - TD.seatCand.at < 1000 then return end
+    TD.seatCand = nil
+    seats ={ [1] = { X = rel.X, Y = rel.Y, Z = rel.Z }, [2] = { X = rel.X, Y = -rel.Y, Z = rel.Z },
         [3] = { X = BACK_X, Y = rel.Y, Z = rel.Z }, [4] = { X = BACK_X, Y = -rel.Y, Z = rel.Z } }
     if sockRel then sockDelta = { X = rel.X - sockRel.X, Y = rel.Y - sockRel.Y, Z = rel.Z - sockRel.Z } end
     st.seatMeasured = string.format("%.1f,%.1f,%.1f", rel.X, rel.Y, rel.Z)
@@ -3182,8 +3199,21 @@ local function ensurePuppet(loc)
 end
 
 -- velocity from the previous sample (sender clock), used to extrapolate over the sample's age
+-- (the samples' times are the other PC's clock: its offset is the smallest receive-minus-send lately. The prediction's age by the sender's clock straight - nowMs() - time - was 0 or the cap whenever
+-- the two PCs' clocks differed: the other's car stood and jumped to each sample, 10 a second - owner's alpha 21 test;
+-- on one PC the clocks are the same, the tests never saw it)
 function M.withVelocity(prev, cur)
     cur.vel = { X = 0, Y = 0, Z = 0 }
+    if cur.time then
+        -- (the smallest of the last 2 s, as TD.carSample: a clock set anew on either PC is followed within 2 s)
+        local now = M.nowMs()
+        local hs = prev and prev.offs or {}
+        hs[#hs + 1] = { r = now, o = now - cur.time }
+        while #hs > 1 and hs[1].r < now - 2000 do table.remove(hs, 1) end
+        local o
+        for _, x in ipairs(hs) do if not o or x.o < o then o = x.o end end
+        cur.offs, cur.off = hs, o
+    end
     if prev and prev.time and cur.time > prev.time then
         local dt = (cur.time - prev.time) / 1000
         if dt > 0 and dt < 0.5 then
@@ -3199,7 +3229,7 @@ function M.withVelocity(prev, cur)
     return cur
 end
 local function predicted(tgt)
-    local age = math.min(math.max((M.nowMs() - tgt.time) / 1000, 0), EXTRAPOLATE_MAX)
+    local age = math.min(math.max((M.nowMs() - (tgt.off or 0) - tgt.time) / 1000, 0), EXTRAPOLATE_MAX)
     return { X = tgt.loc.X + tgt.vel.X * age, Y = tgt.loc.Y + tgt.vel.Y * age, Z = tgt.loc.Z + tgt.vel.Z * age }
 end
 
@@ -4418,6 +4448,11 @@ function M.teleportToOther()
     return L("tp.near", loc.X, loc.Y, loc.Z)
 end
 
+-- tests: the driver's seat measured again at the next entry (seat-measure-test)
+function M.testResetSeat()
+    seats, sockDelta, TD.seatCand, st.seatMeasured, st.seatOutside = nil, nil, nil, nil, 0
+    return "seat measure reset"
+end
 function M.selfInfo()
     local pawn = localPawn()
     if not pawn then return "pawn=none" end

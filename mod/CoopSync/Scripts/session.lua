@@ -315,6 +315,31 @@ local function clientTick(gstate, world)
     end
     if S.go and session.world == world then S.go = false end -- (arrived by the game's own travel)
     if gstate ~= 5 then return end
+    -- the host left this zone (its next zone, home) while the guest stays: the sync stops here. Before, the guest's
+    -- loops applied the host's next zone's lines in this world (nextzone-test, 2026-11-08: 528 events at once, the
+    -- host's twin at the new zone's spot, a crash ~10 s later in ProcessEvent from a Lua loop). 2 ticks (1 s) of the
+    -- other world first; the host's world here again (the same import) starts the sync again.
+    local syncing = S.state == "playing" or S.state == "zone: at the exit"
+    if syncing and not S.hostAway and session.world ~= world then
+        S.awayTicks = (S.awayTicks or 0) + 1
+        if S.awayTicks >= 2 then
+            State.stopped = true
+            pcall(Players.stop)
+            S.hostAway, S.awayTicks = true, 0
+            M.hostAwayStops = (M.hostAwayStops or 0) + 1
+            S.note = "the host left this zone (" .. tostring(session.world) .. "): sync stopped"
+        end
+    elseif not S.hostAway then
+        S.awayTicks = 0
+    end
+    if S.hostAway and S.zoneWorld ~= world then S.hostAway = nil end -- (a new world: the usual arrival)
+    if S.hostAway and syncing and session.world == world and tonumber(session.seq) == S.importedSeq then
+        S.hostAway = nil
+        State.start(Sync, "client", chan, S.list)
+        Players.start(Sync, "client", chan, { ownCar = S.mode == "car" })
+        Weather.start(Players, "client")
+        S.note = "the host is back in this zone: sync again"
+    end
     -- at a zone's exit gate: after the host to its next zone (onGuestExit, zoneExitTick)
     M.zoneExitTick(world, session)
     if S.state == "zone: at the exit" then return end
@@ -389,7 +414,7 @@ local function clientTick(gstate, world)
     end
     -- the host published this zone again (its "resync" in the debug menu): import it once more
     if S.state == "playing" and session.world == world and tonumber(session.seq) and tonumber(session.seq) ~= S.importedSeq then
-        State.stopped, Players.stopped = true, true
+        State.stopped, Players.stopped, S.hostAway = true, true, nil
         S.state, S.note = "zone: waiting for the host's list", "host resent the zone"
         return
     end
@@ -539,7 +564,8 @@ local function onGuestExit(fromGame)
     if g == 5 then
         if not S.followPending and S.state == "playing" then
             S.followPending, S.followAt = true, nowS()
-            S.followFrom = (readFile(Link.docPath(chan, "inbox", "host-run.txt")) or ""):match("^[^\r\n]*")
+            -- (the host already gone on: its descriptor now is where to go - the guest left behind follows it)
+            S.followFrom = S.hostAway and "" or (readFile(Link.docPath(chan, "inbox", "host-run.txt")) or ""):match("^[^\r\n]*")
             M.zoneExits = (M.zoneExits or 0) + 1
             S.state, S.note = "zone: at the exit", "at the zone's exit: waiting for the host's pick"
         end

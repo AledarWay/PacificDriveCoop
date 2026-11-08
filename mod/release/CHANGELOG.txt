@@ -17,6 +17,15 @@ The ARC map:
 - The ARC map in the car points the same way for both. Its view takes its turn from the zone's north once, when it
   appears; the guest's had appeared with its own north before the host's came. The guest now turns it to the host's.
 - A sky line from the host's next zone no longer turns the guest's north while the guest is still in the old one.
+A guest left behind:
+- When the host goes on to its next zone (or home) and the guest stays, the guest's sync stops in the old zone. Before,
+  the guest took the host's new zone's events there and the game crashed soon after. Driving into an exit later, the
+  guest follows the host to where it is.
+The other's car and puppet:
+- The other's car seen from outside moves smoothly again on two PCs. Its motion was predicted by the other PC's clock;
+  when the two clocks differed, the car stood and jumped forward several times a second.
+- The other player's puppet sits inside the car again, not outside by the driver's door. The seat was measured at the
+  moment the game's own entry had attached the player to the car while still standing at the door.
 The own car's back seat in the garage:
 - The guest can get onto its own back seat in the garage (the back door only opened).
 - On a back seat in the garage the key, the levers and the driver's door are out of reach, the way out is the back

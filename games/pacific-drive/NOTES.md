@@ -1,4 +1,4 @@
-﻿# Pacific Drive — co-op notes
+# Pacific Drive — co-op notes
 
 Playbook: https://github.com/cranebeaker/coop-anything (AGENTS.md). No `pacific-drive` entry in
 `data/directory.yaml` and no `games/pacific-drive/` folder as of 2026-10-20.
@@ -3545,3 +3545,28 @@ dumps in them are old, from October).
   "left the zone's exit: playing on") applied the host's next zone's events there (528 at once, a twin at the new
   zone's spot) and crashed ~10 s later (ProcessEvent from a Lua loop). The guest should not apply another world's
   lines.
+- **Fixed (2026-11-08)**: the guest's sync loops stopped only on the guest's own world change, never on the host's.
+  Now clientTick: playing / at the exit and host-session's world not this one for 2 ticks (1 s; the host writes
+  world=- the moment it leaves, long before its next zone's lines) -> State.stopped + Players.stop (the guest stops
+  sending too, so the host's new zone gets no old-zone lines either), S.hostAway, note "sync stopped". The host's
+  world here again with the same import -> the sync starts again. A guest left behind drives into an exit later: its
+  followFrom is empty, so the host's current descriptor is followed (before, followFrom = the host's already-new
+  descriptor: it would never follow). `staybehind-test.ps1`: 7/7 on the rerun; the first run's guest crashed in the
+  engine's async loading thread on the late follow ("Missing Dependency ... BP_Spawn_GasBarrel_C ... hasn't been
+  created yet", "Could not find SuperStruct") - the same family as the leg-seated crash above; no Lua ran in that
+  frame (the whole LoadMap was frame 998). 0 "Missing Dependency" in the other 20 logs of the day. Open, engine side.
+- **The other's car jerked, seen from outside (owner's alpha 21 test, "a few updates a second")**: predicted() took
+  the sample's age as nowMs() - time, the time being the SENDER's wall clock. Two PCs' clocks differ by up to
+  seconds: the age was 0 (no prediction: the twin stood and jumped to each 10 Hz sample) or the 0.3 s cap. One PC's
+  tests share the clock, never saw it. Now M.withVelocity keeps the smallest receive-minus-send of the last 2 s
+  (as TD.carSample) and the age is taken against that. `twin-outside-test.ps1` (CoopPlayers.testClockSkew on the
+  guest; the host drives, the guest on foot): the old age jerk 0.63 / 0.76 at +1500 / -1500 ms, the fix 0.11-0.14.
+  (The first try of the fix added a main-chunk local: playersync went over Lua's 200 locals - deploy's lua-lint
+  refused to copy; such state goes into TD.)
+- **The other's puppet outside by the driver's door (owner's alpha 21 test)**: measureDriverSeat (the seat geometry
+  for the other's puppet, from the own player at the wheel, once) took the first frame the pawn is attached to the
+  car. The game's own entry (native cars) attaches it at the door: `seat-measure-test.ps1` - the first attached
+  frame at rel 113,-131, seated 46,-46. Now taken only inside the cabin (|Y| < 80, |X| < 250) and still for 1 s.
+- **Quick suite after these (2026-11-08)**: all pass but nextzone (sun 5 %, known), contact (passed 12/12 alone),
+  cars: 'the guest's own car drives after all that' moved 8 / 14 - and 5 with this round's Lua reverted (control
+  run, also back-seat checks failing there): an older flake, not from these changes; open.
