@@ -60,6 +60,7 @@ $tests = @(
     @{ name = 'startflow';     quick = $true;  cmd = { & "$t\startflow-test.ps1" } },
     @{ name = 'nextzone';      quick = $true;  cmd = { & "$t\nextzone-test.ps1" } },
     @{ name = 'mapsync';       quick = $true;  cmd = { & "$t\mapsync-test.ps1" } },
+    @{ name = 'garage-seat';   quick = $true;  cmd = { & "$t\garage-seat-test.ps1" } },
     @{ name = 'gates';         quick = $true;  cmd = { & "$t\gates-test.ps1" } },
     @{ name = 'esc';           quick = $true;  cmd = { & "$t\esc-test.ps1" } },
     @{ name = 'contact';       quick = $true;  cmd = { & "$t\contact-test.ps1" } },

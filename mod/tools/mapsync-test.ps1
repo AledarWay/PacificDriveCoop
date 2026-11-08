@@ -6,7 +6,9 @@
 #   3. the guest leaves the lobby: its own map is back (rows equal to before the lobby);
 #   4. the guest drives out on its own: the backup of its map is dropped (that departure saved its own map).
 # Also the garage sky: in the lobby the guest's garage gets the host's time of day and weather (weathersync).
-param([switch]$Keep, [switch]$NetExe, [int]$Port = 47831, [string]$Save = "C:\PacificDriveCoop\local\advsave\odsave9.sav")
+param([switch]$Keep, [switch]$NetExe, [int]$Port = 47831, [string]$Save = "C:\PacificDriveCoop\local\advsave\odsave9.sav",
+    # the guest from another save (owner's alpha 21 test: a new game's guest showed far fewer junctions than the host)
+    [string]$GuestSave = "C:\PacificDriveCoop\local\advsave\early-garage.sav")
 $root = "C:\PacificDriveCoop"; $t = "$root\mod\tools"; $inst = "$root\local\instances"
 $hd = "$inst\host\coopdev"; $cd = "$inst\client\coopdev"
 $map = "Map = dofile('C:/PacificDriveCoop/mod/CoopSync/Scripts/mapsync.lua')"
@@ -25,7 +27,8 @@ function WaitMap($chan, [int]$i, [int]$atLeast, [int]$sec) {
 }
 function NetCtl($chan, [string]$line) { Add-Content "$chan\net-control.txt" $line -Encoding ascii }
 # the rows of a game's route map into a file (the same export the host sends)
-function Rows($dir, [string]$file) { Send $dir "$map return tostring(Map.export('$($file.Replace('\', '/'))', true))" | Out-Null; Get-Content $file }
+# (without the roads' E rows: those are the map menu's widgets, there only once a side opened its map - compared below)
+function Rows($dir, [string]$file) { Send $dir "$map return tostring(Map.export('$($file.Replace('\', '/'))', true))" | Out-Null; Get-Content $file | Where-Object { $_ -notmatch "^E`t" } }
 function Same($a, $b) { $d = @(Compare-Object $a $b); @{ ok = ($d.Count -eq 0 -and $a.Count -gt 100); n = $d.Count; first = ($d | Select-Object -First 2 | ForEach-Object { "$($_.SideIndicator) $("$($_.InputObject)".Substring(0, [Math]::Min(120, "$($_.InputObject)".Length)))" }) -join ' | ' } }
 $script:pass = 0; $script:fail = 0
 function Check($name, [bool]$ok, $detail) {
@@ -44,7 +47,7 @@ $rc = NetExeStart $cchan Guest
 
 "=== 0. both from the advanced save, home to their garages"
 foreach ($x in @(@{ tag = 'host'; chan = $hchan; dir = $hd }, @{ tag = 'client'; chan = $cchan; dir = $cd })) {
-    $env:COOPSYNC_CHAN = $x.chan.Replace('\', '/'); $env:COOPSYNC_NET = NetSpec $(if ($x.tag -eq 'host') { 'Host' } else { 'Guest' }); & "$t\start-save.ps1" -Tag $x.tag -Save $Save -Slot 9 | Select-Object -Last 1
+    $env:COOPSYNC_CHAN = $x.chan.Replace('\', '/'); $env:COOPSYNC_NET = NetSpec $(if ($x.tag -eq 'host') { 'Host' } else { 'Guest' }); & "$t\start-save.ps1" -Tag $x.tag -Save $(if ($x.tag -eq 'client' -and $GuestSave) { $GuestSave } else { $Save }) -Slot 9 | Select-Object -Last 1
     "  $($x.tag): " + (Send $x.dir "$run return Run.goHome(false, 0)")
     & "$t\wait-state.ps1" -State 4 -Dir $x.dir -TimeoutSec 240 | Select-Object -Last 1 | ForEach-Object { "  $($x.tag): $_" }
 }
@@ -82,6 +85,19 @@ $nodes = "local n, b = 0, 0 for _, w in ipairs(FindAllOf('UMG_PlannerInteraction
 Start-Sleep 6
 $hn = KV (Send $hd $nodes); $gn = KV (Send $cd $nodes)
 Check "the guest's map takes no junction clicks, the host's does" ([int]$gn.nodes -gt 0 -and [int]$gn.bound -eq 0 -and [int]$hn.bound -gt 0 -and [int]((Status $cchan).mapblock) -gt 0) "host: $($hn.raw) | guest: $($gn.raw) mapblock=$((Status $cchan).mapblock)"
+# (owner's alpha 21 test: a new game's guest saw far fewer junctions and roads than the advanced host - its own story
+# hides them - and hovering a junction and holding the button made the guest depart alone)
+$visCount = "local n = 0 FindFirstOf('BP_ProgressionManager_C').WorldState.LegStates:ForEach(function(k, v) if v:get():ShouldBeVisibleOnMap() then n = n + 1 end end) return 'visible=' .. n"
+$hv = KV (Send $hd $visCount); $gv = KV (Send $cd $visCount)
+Check "the guest's map shows the junctions the host's shows (the guest a new game)" ([int]$hv.visible -gt 0 -and $hv.visible -eq $gv.visible) "host $($hv.raw) | guest $($gv.raw) gmap=$((Status $cchan).gmap)"
+# the roads: with both maps open, the guest's road widgets drawn as the host's (set every second while open)
+$roads = "local on, n = 0, 0 for _, w in ipairs(FindAllOf('UMG_RouteShape_Edge_C') or {}) do if w:IsValid() then n = n + 1 if w.CachedShouldRender then on = on + 1 end end end return string.format('roads=%d of=%d', on, n)"
+$end = (Get-Date).AddSeconds(20)
+do { Start-Sleep 2; $hr = KV (Send $hd $roads); $gr = KV (Send $cd $roads) } while ($hr.roads -ne $gr.roads -and (Get-Date) -lt $end)
+Check "the guest's map draws the host's roads" ([int]$hr.roads -gt 0 -and $hr.roads -eq $gr.roads) "host $($hr.raw) | guest $($gr.raw) gmap=$((Status $cchan).gmap)"
+$canTravel = "local m = FindFirstOf('UMG_PlayerMenu_RunMap_C') local t = {} m:CanTravelHovered(t) return 'can=' .. tostring(t['Can Nav'])"
+$gt = KV (Send $cd $canTravel)
+Check "the guest's map cannot start a trip (hover + hold)" ($gt.can -eq 'false' -and [int](((Status $cchan).gmap -split '/')[2]) -gt 0) "guest $($gt.raw) gmap=$((Status $cchan).gmap)"
 Send $hd "pcall(function() FindFirstOf('BP_ProgressionManager_C'):CloseMapUI() end) return 'closed'" | Out-Null
 Send $cd "pcall(function() FindFirstOf('BP_ProgressionManager_C'):CloseMapUI() end) return 'closed'" | Out-Null
 

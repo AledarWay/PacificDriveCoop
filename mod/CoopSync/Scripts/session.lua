@@ -187,8 +187,8 @@ local function writeStatus(gstate, world)
         local ok, r = pcall(Players.report)
         puppet = ok and (tostring(r):match("puppet=(%S+)") or "?") or "?"
     end
-    writeFile(chan .. "/status.txt", string.format("role=%s mode=%s state=%s world=%s gstate=%d seq=%d go=%s puppet=%s unpaused=%d weather=%s map=%d/%d/%d gate=%d/%d/%d hitch=%s anim=%s zs=%s twins=%d mapblock=%d cars=%s extra=%d chk=%d cover=%d/%d exitmap=%d/%d/%d travels=%d note=%s\n",
-        tostring(S.role), S.mode, (S.state:gsub("%s", "_")), world, gstate, S.seq, tostring(S.go), puppet, M.pauseLifted, Weather and Weather.short() or "-", M.mapSent or 0, M.mapApplied or 0, M.mapRestores or 0, M.gateClosed or 0, M.gateOpened or 0, M.exitTaken or 0, Hitch.short(), (Players and Players.puppetAnim and Players.puppetAnim()) or "-", zoneSaveShort(), twinCount(), M.plannerUnbound or 0, M.carsSeen, M.extraCars or 0, CoopSyncChecklist and CoopSyncChecklist.rows or 0, M.covered or 0, S.coverShown and 1 or 0, M.mapClosed or 0, M.zoneExits or 0, M.follows or 0, (Run and Run.stats and Run.stats.travels) or 0, ((S.note or ""):gsub("%s", "_"))))
+    writeFile(chan .. "/status.txt", string.format("role=%s mode=%s state=%s world=%s gstate=%d seq=%d go=%s puppet=%s unpaused=%d weather=%s map=%d/%d/%d gate=%d/%d/%d hitch=%s anim=%s zs=%s twins=%d mapblock=%d cars=%s extra=%d chk=%d cover=%d/%d exitmap=%d/%d/%d travels=%d gmap=%s note=%s\n",
+        tostring(S.role), S.mode, (S.state:gsub("%s", "_")), world, gstate, S.seq, tostring(S.go), puppet, M.pauseLifted, Weather and Weather.short() or "-", M.mapSent or 0, M.mapApplied or 0, M.mapRestores or 0, M.gateClosed or 0, M.gateOpened or 0, M.exitTaken or 0, Hitch.short(), (Players and Players.puppetAnim and Players.puppetAnim()) or "-", zoneSaveShort(), twinCount(), M.plannerUnbound or 0, M.carsSeen, M.extraCars or 0, CoopSyncChecklist and CoopSyncChecklist.rows or 0, M.covered or 0, S.coverShown and 1 or 0, M.mapClosed or 0, M.zoneExits or 0, M.follows or 0, (Run and Run.stats and Run.stats.travels) or 0, M.guestMap and string.format("%d/%d/%d/%d", M.guestMap.legs, M.guestMap.edges, M.guestMap.travel, M.guestMap.reveal) or "-", ((S.note or ""):gsub("%s", "_"))))
 end
 
 -- zone ready = generator done for READY_TICKS ticks and MIN_ZONE_S after arriving
@@ -428,8 +428,28 @@ local function hookPause()
     return ok and "pause hook" or ("pause hook failed: " .. tostring(e))
 end
 -- fallback while the session runs: a paused world (another pause path) is unpaused on the next tick
+-- The session ending under an open pause menu (owner's alpha 21 test: after leaving the lobby the pause menu no longer
+-- closed - neither Esc nor Continue; esc-test step 5): the menu was opened as a pause the mod lifted, and the game's Esc
+-- / Continue close it only from a paused world. So the world is paused again then, as the menu expects.
+local function pauseMenuOpen()
+    for _, m in ipairs(FindAllOf("PDP_PauseMenu_C") or {}) do
+        local ok, v = pcall(function() return m:IsValid() and m:GetFullName():find("/Engine/Transient", 1, true) and m:IsVisible() end)
+        if ok and v then return true end
+    end
+end
 local function keepRunning()
-    if not coopActive() then return end
+    local active = coopActive()
+    if S.coopWas and not active then
+        pcall(function()
+            if pauseMenuOpen() then
+                local GS = StaticFindObject("/Script/Engine.Default__GameplayStatics")
+                GS:SetGamePaused(FindFirstOf("PlayerController"), true)
+                M.pauseRestored = (M.pauseRestored or 0) + 1
+            end
+        end)
+    end
+    S.coopWas = active
+    if not active then return end
     local GS = StaticFindObject("/Script/Engine.Default__GameplayStatics")
     local pc = FindFirstOf("PlayerController")
     pcall(function()
@@ -620,6 +640,11 @@ local function mapTick(gstate, world, peer)
     S.mapTicks = (S.mapTicks or 0) + 1
     if not peer then S.mapPeer = false end
     if gstate ~= 4 then S.mapWorld, S.mapSig, S.departing = nil, nil, nil return end
+    -- the guest's roads as the host's while its map is open (the widgets' cached answers, reset by the game on changes)
+    if S.role == "client" and S.mapTicks % 2 == 0 and not S.mapRestored and Map.visible and playerMenuOpen() then
+        local ok, n = pcall(Map.applyEdges)
+        if ok and M.guestMap then M.guestMap.edges = M.guestMap.edges + n end
+    end
     local backup = chan .. "/map-backup.tsv"
     -- the host's departure marks its first leg visited while still in the garage: such a map left the guest no
     -- leg to drive out to (startflow FAIL) -> no exports once the host departs, no applies while the guest goes
@@ -698,6 +723,46 @@ local function plannerClicks(block)
     end
 end
 
+-- The guest's map in the lobby (owner's alpha 21 test, a new game's guest with an advanced host):
+--   * it showed far fewer junctions and roads: the leg data were the host's, but the game hides what the player's own
+--     story has not reached (BP_LegStateBase ShouldBeVisibleOnMap / the edge widget's Should Render Line test the
+--     global whiteboard's progress). The host sends its answer per leg (mapsync V rows); the guest's answers are
+--     replaced by it while its map is the host's (a hook's return value / out-param replaces the function's);
+--     the roads (the edge widgets' cached answers) are set to the host's while the map is open (mapsync applyEdges);
+--   * hovering a junction and holding the button made the guest's own game depart alone (traced: TravelTo, "on the
+--     way" - the click unbinding below misses the hold): the run map's CanTravelHovered answers false for a guest in
+--     the garage, and a junction cannot be marked for a scan (CanReveal / CanRevealAndHasCharge false).
+local RUNMAP = "/Game/UI/Inventory/PlayerMenu/UMG_PlayerMenu_RunMap.UMG_PlayerMenu_RunMap_C"
+local LEGBP = "/Game/Systems/Routes/States/BP_LegStateBase.BP_LegStateBase_C"
+local LEGW = "/Game/UI/RunUI/Elements/UMG_RouteShape_Leg.UMG_RouteShape_Leg_C"
+-- (not inside the mod's own TravelTo - runsync.travelTo: these hooks' return values broke its return)
+local function guestInGarage() return S.role == "client" and not CoopSyncTravelling and gameState() == 4 end
+local function mirrorVisible(legState)
+    local vis = guestInGarage() and not S.mapRestored and Map and Map.visible
+    if not vis then return nil end
+    local ok, key = pcall(function() return legState.ShapeLeg:GetFName():ToString() end)
+    if not ok or vis[key] == nil then return nil end
+    return vis[key]
+end
+-- (the first callback: UE4SS runs it after the function's body - NOTES "UE4SS pre-hook = after body" - where its
+-- return value / out-param replaces the function's; the probes' hooks were these)
+local function hookGuestMap()
+    M.guestMap = { legs = 0, edges = 0, travel = 0, reveal = 0 }
+    local G = M.guestMap
+    Hook(LEGBP .. ":ShouldBeVisibleOnMap", function(ctx)
+        local v = mirrorVisible(ctx:get())
+        if v ~= nil then G.legs = G.legs + 1 return v end
+    end)
+    Hook(RUNMAP .. ":CanTravelHovered", function(_, canNav)
+        if guestInGarage() then pcall(function() canNav:set(false) end) G.travel = G.travel + 1 end
+    end)
+    for _, fn in ipairs({ "CanReveal", "CanRevealAndHasCharge" }) do
+        Hook(LEGW .. ":" .. fn, function(_, can)
+            if guestInGarage() then pcall(function() can:set(false) end) G.reveal = G.reveal + 1 end
+        end)
+    end
+end
+
 local function lobbyTick(gstate, world)
     if gstate == 1 then
         if not S.menuLeft then
@@ -726,6 +791,7 @@ local function lobbyTick(gstate, world)
         end)
     end
     pcall(plannerClicks, gstate == 4 and S.role == "client")
+    if not S.guestMapHooked then S.guestMapHooked = true pcall(hookGuestMap) end
 end
 
 -- hooks of the flow: the host's departure from the garage starts the run for the lobby; loading a save or starting a

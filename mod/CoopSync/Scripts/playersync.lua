@@ -1244,7 +1244,12 @@ local CONTROL_CLS = { BP_Carpart_Shifter_Base_C = true, BP_CarPart_Internal_Radi
 function TD.passengerMayReach(hc)
     -- (the garage lobby: no seats kept there - the host's own key / levers / radio were denied, owner's alpha 18 test;
     -- a stopped session: single player again)
-    if garage or M.stopped or not (TD.native and hc and hc:IsValid()) then return true end
+    -- (on a back seat of its own car there - the mod's entry, TD.ownEnter - the passenger rules hold: owner's alpha 21
+    -- test, the key / levers / the driver's door were all there from the back seat in the garage)
+    if M.stopped or not (hc and hc:IsValid()) then return true end
+    if garage then
+        if not (TD.seatNow and TD.seatNow.n ~= 1) then return true end
+    elseif not TD.native then return true end
     local owner = hc:GetOwner()
     local car = owner and Native.carOf(owner)
     if not car then return true end -- (not of a car: the world)
@@ -1345,7 +1350,7 @@ function TD.doorTick()
         end
     end
     if TD.doorPress and now - TD.doorPress.ms >= TD.HOLD_MS then
-        if not TD.native then TD.sendDoor(TD.doorPress.n, "toggle") end -- (native: a hold is the game's own)
+        if not TD.native and not TD.doorPress.own then TD.sendDoor(TD.doorPress.n, "toggle") end -- (native: a hold is the game's own)
         TD.doorPress = nil
     end
     if inGhost and inGhost.enterAt and now >= inGhost.enterAt then
@@ -1461,6 +1466,13 @@ function TD.catShow(cat)
 end
 function TD.onHighlightPress(isPress)
     if M.stopped or isPress ~= true or inGhost then return end
+    -- (the garage lobby: the guest's start there is not native - its back doors only opened, owner's alpha 21 test: "the
+    -- friend could not get onto his own back seat in the garage"; the own car's back seat for both there)
+    if garage and not TD.native then
+        local on = TD.ownBackDoorAimed()
+        if on then TD.doorPress = { own = true, tag = myTag(), n = on, ms = M.nowMs() } end
+        return
+    end
     if TD.native then
         -- (native cars: the game gets in by the driver's door only - a back door it just opens. A tap at a back door of the
         -- other's car whose seat is free gets the player in there with the game's own entry, TD.twinEnter)
@@ -2069,6 +2081,15 @@ end
 function M.twinModule() return Twin end
 -- the own car's back door aimed at (3 / 4) or nil (cars-test)
 function M.ownBackDoorAimed() return TD.ownBackDoorAimed() end
+-- (tests: the seat this side's player sits on now, and whether it may reach a highlight of its own car by name)
+function M.seatNowN() return TD.seatNow and TD.seatNow.n or 0 end
+function M.ownSeatDevice(n) local own = Twin.ownCar() return tostring(own and seatDevice(own, n)) end
+function M.mayReachOwn(name)
+    local own = Twin.ownCar()
+    local hc = own and own[name]
+    if not (hc and hc:IsValid()) then return "no " .. name end
+    return tostring(TD.passengerMayReach(hc))
+end
 function M.twinCtlInfo()
     local function ltw(c) local t = c and c.ltw return t and TD.fmtLtw(t) or "-" end
     return string.format("twin_ctl_sent=%d ctl_applied=%d host_ctl=%s guest_ctl=%s host_ltw=%s guest_ltw=%s own_ltw=%s last_ltw_sent=%s last_ltw_done=%s",
@@ -2725,6 +2746,30 @@ function TD.sendOwn(car)
         if not ok then err(x[1] .. ": " .. tostring(e)) end
     end
 end
+-- The own car's back seat in the garage (owner's alpha 21 test: from the back seat there every control was the
+-- driver's, the way out was the driver's door, and the next time at the wheel put the player on that back seat again -
+-- the seat bookkeeping below ran in the zone only): seated there, the passenger rules, its exit at its door and the
+-- pedals off (wheelFrame); out again, the seat socket and the exit back at the wheel.
+function TD.garageSeat(pawn, par)
+    local own = Twin.ownCar()
+    local inOwn = par and own and par:GetAddress() == own:GetAddress()
+    if inOwn and TD.ownSeat then
+        TD.ownSeat.seated = true
+        local n = TD.ownSeat.n
+        pcall(TD.placeExit, own, n)
+        TD.seatNow = { car = Sync.ref(own), n = n }
+    elseif inOwn then
+        if TD.seatNow and TD.seatNow.n ~= 1 then pcall(TD.placeExit, own, 1) end
+        TD.seatNow = { car = Sync.ref(own), n = 1 }
+    else
+        if TD.ownSeat and (TD.ownSeat.seated or M.nowMs() - TD.ownSeat.since > 4000) then
+            if own then pcall(TD.aimSeatSocket, own, 1) pcall(TD.placeExit, own, 1) end
+            TD.ownSeat = nil
+            st.garageSeatBack = (st.garageSeatBack or 0) + 1
+        end
+        TD.seatNow = nil
+    end
+end
 local function sendTick()
     local pawn = localPawn()
     if garage then
@@ -2735,6 +2780,7 @@ local function sendTick()
             local sits = par and Sync.clsName(par):find("^BP_PlayerCar") ~= nil
             append(outFile, string.format("P\t%d\t%s\t%d\t-", M.nowMs(), xform(pawn), sits and 1 or 0))
             st.sent = st.sent + 1
+            pcall(TD.garageSeat, pawn, sits and par or nil)
         end
         -- the music: the host's radio / garage stereo for both
         if not (CoopSyncRadioHook and CoopSyncRadioHook.done and CoopSyncRadioHook.seekDone and CoopSyncRadioHook.seek == TD.onRandomSeek) then pcall(TD.hookRadio) end
@@ -3927,7 +3973,13 @@ function TD.releaseBrake(car, v)
     st.brakeReleased = (st.brakeReleased or 0) + 1
 end
 local function wheelFrame()
-    if garage then return end
+    if garage then
+        if TD.ownSeat and TD.ownSeat.seated then
+            local own = Twin.ownCar()
+            if own then pcall(writeInput, own, ZERO) end
+        end
+        return
+    end
     pcall(twinControls)
     -- (on a back seat of the own car: the game's car input still goes to the car - its pedals / wheel held off, every
     -- frame as the car BP rewrites them; the other player at the wheel drives it from its side)
@@ -4221,7 +4273,8 @@ function M.start(syncModule, r, channelDir, opts)
         return t
     end
     TD.aimed, TD.nativeDoors, TD.sweepAt, TD.slotOf = nil, nil, 0, {}
-    if TD.native then pcall(TD.hookSlotLookup) pcall(TD.hookPassengerReach) end
+    if TD.native then pcall(TD.hookSlotLookup) end
+    if TD.native or garage then pcall(TD.hookPassengerReach) end
     pcall(Twin.forgetGone)
     -- the own car drives itself again (an earlier start may have puppeted it: vehicle controller tick off)
     pcall(function()

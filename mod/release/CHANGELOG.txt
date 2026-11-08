@@ -4,6 +4,32 @@
 Newest first. The installed mod's version is in files\VERSION.txt of the zip.
 
 
+0.1.0-alpha22 (being prepared)
+------------------------------
+After the owner's alpha 21 test with a friend (host with an advanced save, guest with a new game).
+The garage map:
+- The guest's map table shows the host's junctions and roads. Before, a guest early in the story saw far fewer:
+  the junction data were the host's, but the game hides what the player's own story has not reached. The host now
+  sends what its map shows, and the guest's map draws that while it is in the lobby.
+- The guest can no longer start a trip from the map by hovering a junction and holding the button (its game drove
+  off alone), and cannot mark junctions for a scan there. Hovering still shows a junction's details.
+The own car's back seat in the garage:
+- The guest can get onto its own back seat in the garage (the back door only opened).
+- On a back seat in the garage the key, the levers and the driver's door are out of reach, the way out is the back
+  door, and the next time at the wheel is the driver's seat again (before, it put the player on the back seat).
+The pause menu:
+- Leaving the lobby (or the session ending) while the pause menu is open no longer leaves the menu stuck: Esc and
+  Continue close it again.
+Tests: the map test starts the guest from a new game's garage and checks the junctions, the roads and the blocked
+trip; a new garage-seat test; the Esc test leaves the session with the menu open.
+Known issues:
+- The anchor in both players' hands is still not reproduced in the tests (a stable anchor on a pedestal, the
+  game's own long grab on the other side gives nobody an item). Please send a report right after it happens.
+- The ARC map's north: both games have the same north in the tests, yet the owner saw the ARC maps turned 90 degrees
+  against each other. Not reproduced yet.
+- The instability glow on the guest's garage map can still differ a little from the host's.
+
+
 0.1.0-alpha21 (2026-11-07)
 --------------------------
 After the owner's alpha 20 test with a friend (host and guest on two PCs).

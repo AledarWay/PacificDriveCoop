@@ -3485,3 +3485,46 @@ Light (item 10): the same on both sides in nextzone-test (tod equal, sun pitch/y
 2.37/2.36, fog 0.2602/0.2614) - the sync holds; the owner's brighter / darker look is likely each PC's own graphics
 (exposure, quality). nextzone-test: 13 of 16 at that run (the car check, the light check's strict compare - since
 5 % -, the extra counter), the transitions all pass: one travel each, same leg RouteShapeLeg_1 / RouteShapeLeg_39.
+
+## The owner's alpha 21 test (2026-11-08): findings
+
+Host with an advanced save, guest (friend) with a new game; reports `local/reports/a21` (host side only; the crash
+dumps in them are old, from October).
+- **Garage map, fewer junctions at a new-game guest**: the leg rows were equal (mapsync-test diff 0 even with the
+  owner's 2024 early save `local/advsave/early-garage.sav` as the guest), yet the map drew 20 junctions against the
+  host's 42 and few roads. The drawing asks the player's own story: `BP_LegStateBase_C:ShouldBeVisibleOnMap` (through
+  "Is Visible Via Adjacency", LegPassesWhitelist_* on the global whiteboard's progress) per junction, and each road
+  widget `UMG_RouteShape_Edge_C` caches `CachedShouldRender` / `CachedIsOnMap` / `Render Mode` (its "Should Render
+  Line" is not called again while the map is open). Tried and useless: copying RevealFlags / NavigateFlags (recomputed
+  natively at every map opening), Max Reveal Depth / bAllowHighwayNavigation, ActiveElementCache, SetRouteState. Fix:
+  the host's export adds `V <leg> <0|1>` (its ShouldBeVisibleOnMap) and `E <from>><to> <render> <onmap> <mode>` (its
+  road widgets, once its map menu exists; the quick signature notices that); the guest returns the host's answer from a
+  hook on ShouldBeVisibleOnMap and writes the road widgets' cached fields once a second while its map is open.
+- **UE4SS: the first callback of RegisterHook is the one whose return value / out-param counts** (it runs after the
+  body - "pre-hook = after body"); logic put in the second one never changed anything (counters stayed 0).
+- **Guest departing from the map**: hovering a junction and holding the button ran TravelTo on the guest (traced,
+  the loading screen came) - the click unbinding misses the hold. `UMG_PlayerMenu_RunMap_C:CanTravelHovered` ->
+  false for a guest in the garage; `UMG_RouteShape_Leg_C:CanReveal` / `CanRevealAndHasCharge` -> false (no scan marks).
+- **Pause menu stuck after leaving the lobby**: reproduced (esc-test step 5): the co-op pause had lifted the pause;
+  once the session ends the game's Esc / Continue do nothing in an unpaused world under an open menu. Fix: on the
+  session's end with the pause menu open, `SetGamePaused(true)` (session keepRunning).
+- **Own back seat in the garage** (items 1-3): the garage start is native for the host only; the host's back-door tap
+  seated it, but the seat bookkeeping (TD.seatNow, the exit spot, the seat socket back) ran in the zone send tick only
+  - so all controls, the driver's exit, and the next entry on that back seat; the guest (not native) got no entry at
+  all. Fix: TD.garageSeat from the garage send tick, the reach rules and the back-door press in the garage for both.
+  garage-seat-test 10/10 (both roles; the advanced car's back right fuel tank taken off for it).
+- **Anchor in both hands**: a stable anchor (`BP_Spawn_Anchor_Stable_S/M/L_C`, Wilderness_Forest_15 =
+  `advsave/forest15.sav`) - "Long Grab Complete" on the other side hands nobody an item (near or far). A real hold-E
+  grab was not reached in a test (aiming at the pedestal's anchor failed: the bounds are the whole pole); the player's
+  carried item is `PDP_MainCharacter_C.CurrentPickedUpItem`; `p["Exit Car"](p, false, true)` gets a test player out.
+  Open.
+- **ARC map north**: the Gobbler map (`BP_GobblerMapview_C`, its camera `MinimapInternal_Camera_C`) had equal values
+  on both sides in range-test (actor yaw 90 both, north 180 synced). The owner's two ARC maps were turned 90 degrees
+  against each other. Open.
+- Quick suite after the alpha 22 fixes (2026-11-08): new mapsync 13/13, garage-seat 10/10, esc 7/7. startflow /
+  nextzone: the guest travelled twice - Run.travelTo's rs:TravelTo failed with "StrProperty can only be set to a
+  string ... TravelTo:ReturnValue" (the Lua stack holding booleans): the new guest-map hooks (ShouldBeVisibleOnMap
+  returns a value) ran inside that call and broke its return; the join's pcall failed, JOIN_RETRY_S joined again.
+  Now CoopSyncTravelling is set around the mod's TravelTo and guestInGarage() is false then. Alone: startflow 30/30,
+  range 10/10 (saw in step, flaky in the suite), cars 38/39 (step 9 moved 290 of 300, the known flake), nextzone
+  14/16 (only the known extra guest car after the zone load).

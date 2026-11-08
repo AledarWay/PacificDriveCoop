@@ -301,7 +301,13 @@ function M.travelTo(desc)
     if not same then leg:OverrideMapLocation(ml) end
     M.stats.travels = (M.stats.travels or 0) + 1
     M.stats.lastTravel = how
-    rs:TravelTo(leg, 0)
+    -- (the guest's garage map hooks return values - ShouldBeVisibleOnMap, session.lua; one of them run inside this call
+    -- broke its return: "StrProperty can only be set to a string", the join failed, retried and travelled twice -
+    -- quick suite 2026-11-08, startflow / nextzone. They keep out while this travel runs)
+    CoopSyncTravelling = true
+    local okT, eT = pcall(function() rs:TravelTo(leg, 0) end)
+    CoopSyncTravelling = false
+    if not okT then error(eT, 0) end
     return string.format("%s%s -> %s", how, same and "" or " (map set)", d.map:match("[^/]+$") or d.map)
 end
 

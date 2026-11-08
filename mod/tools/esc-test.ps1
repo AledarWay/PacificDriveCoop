@@ -70,5 +70,16 @@ $w = Lua "local GS = StaticFindObject('/Script/Engine.Default__GameplayStatics')
 Key 'Escape'
 Check "co-op pause leaves the world running" ($w -match 'paused=false') $w
 
+"=== 5. the session ends while the pause menu is open (owner's alpha 21 test: after leaving the lobby the game paused and"
+"       the pause menu no longer closed - neither Esc nor Continue)"
+$gp = "local GS = StaticFindObject('/Script/Engine.Default__GameplayStatics') return 'paused=' .. tostring(GS:IsGamePaused(FindFirstOf('PlayerController')))"
+Key 'Escape'; $o = Pause
+Add-Content "$chan\control.txt" "stop" -Encoding ascii; Start-Sleep 3
+$w1 = Lua $gp
+Key 'Escape'; $c1 = Pause; $w2 = Lua $gp
+Key 'Escape'; $o2 = Pause; $w3 = Lua $gp
+Key 'Escape'; $c2 = Pause; $w4 = Lua $gp
+Check "out of the session the open pause menu closes with Esc, opens and closes again (a real pause again)" ($o.vis -and -not $c1.vis -and $w2 -match 'paused=false' -and $o2.vis -and $w3 -match 'paused=true' -and -not $c2.vis -and $w4 -match 'paused=false') "open: $($o.raw) | stop: $w1 | esc: $($c1.raw) $w2 | esc: $($o2.raw) $w3 | esc: $($c2.raw) $w4"
+
 "=== RESULT: $script:pass passed, $script:fail failed -> $(if ($script:fail -eq 0) { 'PASS' } else { 'FAIL' })"
 if (-not $Keep) { Get-Process PenDriverPro-Win64-Shipping -ErrorAction SilentlyContinue | Stop-Process -Force }

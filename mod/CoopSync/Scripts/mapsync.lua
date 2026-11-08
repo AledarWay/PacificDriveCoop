@@ -74,6 +74,53 @@ local function legs(route)
     return r
 end
 
+-- The map's roads (UMG_RouteShape_Edge_C widgets of the player menu, one per road and menu): each caches whether it
+-- is drawn and its style (Cache Results: CachedShouldRender / CachedIsOnMap / Render Mode), from the player's own story
+-- like the junctions. "<from leg>><to leg>" -> widget
+local function edgeKey(w)
+    local a = w["Source Leg State"].ShapeLeg:GetFName():ToString()
+    local c = w["Target Leg State"].ShapeLeg:GetFName():ToString()
+    return a .. ">" .. c
+end
+local function edgeRows(out)
+    local seen = {}
+    for _, w in ipairs(FindAllOf("UMG_RouteShape_Edge_C") or {}) do
+        pcall(function()
+            if not w:IsValid() then return end
+            local k = edgeKey(w)
+            if seen[k] then return end
+            seen[k] = true
+            out[#out + 1] = string.format("E\t%s\t%s\t%s\t%d", k, b(w.CachedShouldRender), b(w.CachedIsOnMap), w["Render Mode"])
+        end)
+    end
+end
+-- Guest: its roads drawn as the host's (E rows), or - the host's map menu not built yet - a road where both its
+-- junctions show (V rows). Returns the number of widgets set.
+function M.applyEdges()
+    if not M.visible then return 0 end
+    local n = 0
+    for _, w in ipairs(FindAllOf("UMG_RouteShape_Edge_C") or {}) do
+        pcall(function()
+            if not w:IsValid() then return end
+            local k = edgeKey(w)
+            local e = M.edges and M.edges[k]
+            local render, onMap, mode
+            if e then render, onMap, mode = e[1], e[2], e[3]
+            else
+                local a, c = k:match("^(.-)>(.*)$")
+                render = M.visible[a] and M.visible[c] and true or false
+                onMap = render
+            end
+            if w.CachedShouldRender ~= render then w.CachedShouldRender = render end
+            if w.CachedIsOnMap ~= onMap then w.CachedIsOnMap = onMap end
+            if mode and w["Render Mode"] ~= mode then w["Render Mode"] = mode end
+            n = n + 1
+        end)
+    end
+    M.edgesSet = (M.edgesSet or 0) + n
+    return n
+end
+
 -- rows of the route: header, per leg L, per whiteboard tag W
 function M.rows()
     local route = M.route()
@@ -87,6 +134,11 @@ function M.rows()
             tostring(l.RevealState), tostring(l.Instability), tostring(l.AnchorRequirement), pathOf(l.DestinationRoute),
             pathOf(l.MapLocation), #mods > 0 and table.concat(mods, ",") or "-", pathOf(l.CoreJunctionModifier),
             pathOf(l.CoreFeatureCachedRM) }, "\t")
+        -- whether the junction shows on this side's map (owner's alpha 21 test: a new game's guest saw far fewer
+        -- junctions and roads than the host - the same legs, but the game hides what the player's own story has not
+        -- reached: LegPassesWhitelist_* on the global whiteboard's progress; the guest draws the host's answer, session)
+        local okV, vis = pcall(function() return l:ShouldBeVisibleOnMap() end)
+        if okV then out[#out + 1] = string.format("V\t%s\t%s", e.key, b(vis)) end
         local wb = l.LegWhiteboard
         if wb and wb:IsValid() then
             local tags = wb:GetAllTags(false)
@@ -101,6 +153,7 @@ function M.rows()
             if paths ~= "-" then out[#out + 1] = table.concat({ "P", e.key, f, paths }, "\t") end
         end
     end
+    edgeRows(out)
     return out
 end
 
@@ -140,6 +193,9 @@ function M.quickSig()
         parts[#parts + 1] = tostring(l.RevealState) .. tostring(l.Discovered) .. tostring(l.Active) .. tostring(l.Instability)
             .. (l.MapLocation and l.MapLocation:IsValid() and "m" or "-") .. #l.AppliedModifiers
     end)
+    -- (the map menu's roads appear once the host first opens its map: exported then, not 30 s later)
+    local okE, roads = pcall(function() local w = FindFirstOf("UMG_RouteShape_Edge_C") return w and w:IsValid() end)
+    parts[#parts + 1] = (okE and roads) and "E" or "-"
     return table.concat(parts, ",")
 end
 
@@ -175,6 +231,7 @@ function M.applyRows(rows)
     local tags = {} -- key -> { {name, value} }
     local pools = {} -- key -> { field -> paths } (a pool without a row: empty)
     local n, miss = 0, {}
+    local vis, edges
     for _, line in ipairs(rows) do
         local t = split(line)
         if t[1] == "R" then
@@ -183,6 +240,12 @@ function M.applyRows(rows)
         elseif t[1] == "W" then
             tags[t[2]] = tags[t[2]] or {}
             table.insert(tags[t[2]], { t[3], tonumber(t[4]) or 0 })
+        elseif t[1] == "V" then
+            vis = vis or {}
+            vis[t[2]] = t[3] == "1"
+        elseif t[1] == "E" then
+            edges = edges or {}
+            edges[t[2]] = { t[3] == "1", t[4] == "1", tonumber(t[5]) }
         elseif t[1] == "P" then
             pools[t[2]] = pools[t[2]] or {}
             pools[t[2]][t[3]] = t[4]
@@ -245,6 +308,7 @@ function M.applyRows(rows)
         pcall(function() if w:IsValid() then w:UpdateInstabilityMaterial() end end)
     end
     M.instabilityRedrawn = (M.instabilityRedrawn or 0) + 1
+    M.visible, M.edges = vis, edges
     return n, miss
 end
 
@@ -273,6 +337,7 @@ function M.restore(backupPath)
     local rows = readLines(backupPath)
     if not rows then return nil, "no backup" end
     local n, miss = M.applyRows(rows)
+    M.visible, M.edges = nil, nil -- (the own map: drawn by the guest's own game again)
     if not n then return nil, miss end
     return string.format("map: own map back (%d legs)", n)
 end
@@ -282,7 +347,7 @@ function M.forget(backupPath) os.remove(backupPath) end
 function M.summary()
     local rows = M.rows()
     if not rows then return "no route" end
-    local a, d, s, m, w = 0, 0, 0, 0, 0
+    local a, d, s, m, w, v = 0, 0, 0, 0, 0, 0
     for _, line in ipairs(rows) do
         local t = split(line)
         if t[1] == "L" then
@@ -290,9 +355,11 @@ function M.summary()
             if t[4] == "1" then d = d + 1 end
             if t[7] ~= "0" then s = s + 1 end
             if t[12] ~= "-" then for _ in t[12]:gmatch("[^,]+") do m = m + 1 end end
+        elseif t[1] == "V" then
+            if t[3] == "1" then v = v + 1 end
         elseif t[1] == "W" then w = w + 1 end
     end
-    return string.format("active=%d discovered=%d scanned=%d mods=%d tags=%d", a, d, s, m, w)
+    return string.format("active=%d discovered=%d scanned=%d mods=%d tags=%d visible=%d", a, d, s, m, w, v)
 end
 
 return M
