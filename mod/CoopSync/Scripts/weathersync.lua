@@ -48,6 +48,29 @@ end
 local function manager() return FindFirstOf("BP_ToDManager_C") end
 local function director() return FindFirstOf("BP_ToDDirector_C") end
 local function short(o) return (o:GetFullName():gsub("^%S+ ", "")) end
+-- this world's name (the persistent level's map), and the ARC map view in it
+local function worldName()
+    local pc = FindFirstOf("PlayerController")
+    local p = pc and pc.Pawn
+    if not (p and p:IsValid()) then return nil end
+    return p:GetFullName():match("^%S+%s+/[^.]*%.([^:]+):PersistentLevel")
+end
+-- (FindAllOf walks every object, ~3.5 ms: the views found are kept, looked up again every 20 s or when one is gone)
+-- (an actor of the last world stays IsValid until the GC: only the views of this world)
+local mvCache, mvAt, mvWorld = {}, -100, nil
+local function mapviews()
+    local w = worldName()
+    local fresh = os.clock() - mvAt < 20 and w == mvWorld
+    for _, a in ipairs(mvCache) do if not a:IsValid() then fresh = false end end
+    if fresh then return mvCache end
+    local r = {}
+    for _, a in ipairs(FindAllOf("BP_GobblerMapview_C") or {}) do
+        if a:IsValid() and w and a:GetFullName():find("." .. w .. ":PersistentLevel", 1, true) then r[#r + 1] = a end
+    end
+    mvCache, mvAt, mvWorld = r, os.clock(), w
+    return r
+end
+local function mapview() return mapviews()[1] end
 
 -- the override struct's member names carry the blueprint's GUID suffixes
 local O = {
@@ -93,6 +116,12 @@ local function snapshot()
     -- the north: random?, its pick's yaw, the yaw in use
     f[#f + 1] = string.format("%d,%.1f,%.1f", m.DataBlock_IsUsingRandomNorth and 1 or 0, m.DataBlock_PickedRandomNorth.Yaw,
         m["Current North As Rotator"].Yaw)
+    -- the ARC map's view and the world it is in (owner's alpha 21 test: the ARC maps turned 90 degrees between the
+    -- two): BP_GobblerMapview_C takes its yaw from the north once, when it spawns (Rocky_07: north 180, yaw -90) - a
+    -- north set afterwards leaves it as it was; and a line from the host's next zone must not turn the guest's
+    local mv = mapview()
+    f[#f + 1] = mv and string.format("%.1f", mv:K2_GetActorRotation().Yaw) or "-"
+    f[#f + 1] = worldName() or "-"
     return table.concat(f, "\t")
 end
 
@@ -165,7 +194,10 @@ function M.apply(t)
         st.clouds = (st.clouds or 0) + 1
     end
     local rnd, pick, yaw = (t[17] or ""):match("^(%d),([-%d.]+),([-%d.]+)$")
-    if rnd and math.abs((m["Current North As Rotator"].Yaw - tonumber(yaw) + 180) % 360 - 180) > 0.5 then
+    -- (a line from another world - the host already in its next zone - leaves the north and the ARC map alone)
+    if t[19] and t[19] ~= "-" and t[19] ~= worldName() then st.applied = st.applied + 1 return end
+    local before = m["Current North As Rotator"].Yaw
+    if rnd and math.abs((before - tonumber(yaw) + 180) % 360 - 180) > 0.5 then
         m.DataBlock_IsUsingRandomNorth = rnd == "1"
         m.DataBlock_PickedRandomNorth = { Pitch = 0, Yaw = tonumber(pick), Roll = 0 }
         if rnd == "1" then
@@ -176,6 +208,22 @@ function M.apply(t)
             if sim and sim:IsValid() then sim:K2_SetActorRotation({ Pitch = 0, Yaw = tonumber(yaw), Roll = 0 }, false) end
         end
         st.north = (st.north or 0) + 1
+        -- (into the report: owner's alpha 21 test, the ARC map turned 90 degrees between the two)
+        if CoopSyncHitch and (st.north <= 5 or st.north % 20 == 0) then
+            CoopSyncHitch.note(string.format("north %d: %.1f -> host %s (random %s, pick %s), now %.1f", st.north, before, yaw, rnd, pick,
+                m["Current North As Rotator"].Yaw))
+        end
+    end
+    local mvYaw = tonumber(t[18])
+    if mvYaw then
+        for _, mv in ipairs(mapviews()) do
+            local y = mv:K2_GetActorRotation().Yaw
+            if math.abs((y - mvYaw + 180) % 360 - 180) > 0.5 then
+                mv:K2_SetActorRotation({ Pitch = 0, Yaw = mvYaw, Roll = 0 }, false)
+                st.mapview = (st.mapview or 0) + 1
+                if CoopSyncHitch and st.mapview <= 5 then CoopSyncHitch.note(string.format("ARC map view %d: %.1f -> host %.1f", st.mapview, y, mvYaw)) end
+            end
+        end
     end
     st.applied = st.applied + 1
 end
@@ -218,7 +266,11 @@ function M.release()
 end
 
 -- for the session's status line: lines sent (host) / applied (guest)
-function M.short() return string.format("%d/%d", st.sent, st.applied) end
+function M.short()
+    -- (and the north in use here, with how many times the guest set the host's: "sent/applied/<yaw>:<sets>")
+    local ok, y = pcall(function() return manager()["Current North As Rotator"].Yaw end)
+    return string.format("%d/%d/%s:%d", st.sent, st.applied, ok and string.format("%.0f", y) or "-", st.north or 0)
+end
 
 function M.info()
     local ok, snap = pcall(snapshot)

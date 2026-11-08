@@ -3528,3 +3528,20 @@ dumps in them are old, from October).
   Now CoopSyncTravelling is set around the mod's TravelTo and guestInGarage() is false then. Alone: startflow 30/30,
   range 10/10 (saw in step, flaky in the suite), cars 38/39 (step 9 moved 290 of 300, the known flake), nextzone
   14/16 (only the known extra guest car after the zone load).
+- **ARC map north (alpha 21 item 6), 2026-11-08**: the ARC view `BP_GobblerMapview_C` (its `MapView` a
+  MapViewComponent, relative rotation 0) gets its yaw from the north once, at spawn (Rocky_07: north 180 -> yaw -90;
+  a north set later, as range-test does, leaves it at 90). The guest's spawned with its own north before the W lines
+  set the host's: the earlier checks compared the ToD north only. W now carries the host's view yaw and its world
+  (fields 18 / 19); the guest turns its views (this world's only - the last world's stay IsValid till the GC) to that
+  yaw, and skips north / view for a line of another world (seen: the guest still in the old zone took the host's
+  next zone's north 180). Status weather=sent/applied/<north>:<sets>; north and view sets go to hitches.log.
+  light-read.lua read CurrentTrueNorth (a vector) as a number: north / todyaw were never read - fixed, + arcyaw.
+  nextzone-test: north + view equal in both zones, the guest's view turned 90 comes back (17/19: the known extra
+  car, sun intensity 5.5 %). range 11/11, mapsync 13/13, session 11/11.
+- **The report's channel tails were stale**: the in-game network does not write host.fast & co; the owner's alpha 21
+  report carried a host.fast from 2026-10-24 (no north field) - a false lead. collect-report now leaves out a tail
+  older than 12 h (noted in info.txt).
+- Found on the way (open): a guest left in the old zone (the test sent the host through another gate; the guest's
+  "left the zone's exit: playing on") applied the host's next zone's events there (528 at once, a twin at the new
+  zone's spot) and crashed ~10 s later (ProcessEvent from a Lua loop). The guest should not apply another world's
+  lines.

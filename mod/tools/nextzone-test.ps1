@@ -26,6 +26,27 @@ function ExitMap($chan) { $p = ((Status $chan).exitmap -split '/'); @{ closed = 
 # the junction (RouteShapeLeg) each side's run is on, from its own descriptor
 function LegOf($dir) { $d = Send $dir "$run local d = Run.describe() return d and (d:match('[^\t]+$') or '-') or 'none'"; $d }
 function Menus($dir) { Send $dir "local v = 0 for _, w in ipairs(FindAllOf('UMG_PlayerMenu_Main_C') or {}) do pcall(function() if w:IsInViewport() and w:IsVisible() then v = v + 1 end end) end return 'menus=' .. v" }
+# the north (owner's alpha 21 test: the ARC map turned 90 degrees between the two; a quick suite's nextzone had the
+# guest's sun yaw 180 off the host's): the manager's pick / the yaw in use, its true-north vector, the ToD actors'
+# yaw - the same on both within 20 s
+function NorthSame([string]$where) {
+    $end = (Get-Date).AddSeconds(20)
+    do {
+        $a = KV (Send $hd $lr); $b = KV (Send $cd $lr)
+        $same = $a.north -and $a.north -eq $b.north -and $a.truenorth -eq $b.truenorth -and $a.arcyaw -and $a.arcyaw -ne '-' -and $a.arcyaw -eq $b.arcyaw
+        if ($same) { break }; Start-Sleep 3
+    } while ((Get-Date) -lt $end)
+    $wi = "guest weather=$((Status $cchan).weather) host weather=$((Status $hchan).weather)"
+    Check "$($where): the same north on both (the ARC map's)" $same "host north=$($a.north) true=$($a.truenorth) arc=$($a.arcyaw) | guest north=$($b.north) true=$($b.truenorth) arc=$($b.arcyaw) | $wi"
+    if ($where -eq 'first zone') {
+        # (the guest's ARC map spawned with its own north: turned 90 off here, the host's view comes back to it)
+        $tw = Send $cd "local w = FindFirstOf('PlayerController').Pawn:GetFullName():match('^%S+%s+/[^.]*%.([^:]+):PersistentLevel') local n = 0 for _, a in ipairs(FindAllOf('BP_GobblerMapview_C') or {}) do if a:IsValid() and a:GetFullName():find('.' .. w .. ':PersistentLevel', 1, true) then local r = a:K2_GetActorRotation() a:K2_SetActorRotation({ Pitch = 0, Yaw = r.Yaw + 90, Roll = 0 }, false) n = n + 1 end end return 'turned ' .. n"
+        "  guest's ARC map view: $tw"
+        $end = (Get-Date).AddSeconds(15)
+        do { Start-Sleep 2; $a = KV (Send $hd $lr); $b = KV (Send $cd $lr) } while ($a.arcyaw -ne $b.arcyaw -and (Get-Date) -lt $end)
+        Check "the guest's ARC map turned off the host's comes back to it" ($tw -match 'turned [1-9]' -and $a.arcyaw -eq $b.arcyaw) "$tw | host arc=$($a.arcyaw) guest arc=$($b.arcyaw) | guest weather=$((Status $cchan).weather)"
+    }
+}
 function GuestTravels() {
     $lines = @(Get-Content "$inst\client\userdir\Saved\Logs\PenDriverPro.log" -ErrorAction SilentlyContinue)
     @{ travels = @($lines | Where-Object { $_ -match 'Traveling to level' }).Count; concurrent = @($lines | Where-Object { $_ -match 'concurrent save/load' }).Count }
@@ -98,6 +119,7 @@ function Near($a, $b, [double]$rel) { $x = [double]($a -replace '[^\d.\-]', '');
 $sunH = ($hlt.suns -split '/'); $sunC = ($clt.suns -split '/')
 $sunOk = $sunH.Count -ge 4 -and $sunH[0] -eq $sunC[0] -and $sunH[1] -eq $sunC[1] -and (Near $sunH[2] $sunC[2] 0.05)
 Check "the same light on both: time of day, sun direction and strength, sky, fog (5 %)" ($dt -lt 0.003 -and $sunOk -and (Near $hlt.sky $clt.sky 0.05) -and (Near $hlt.fog $clt.fog 0.05)) "tod $($hlt.tod)/$($clt.tod) sun $($hlt.suns) / $($clt.suns)"
+NorthSame 'first zone'
 $world1 = $h.world
 
 "=== 2. the guest drives into the zone's exit gate first"
@@ -133,6 +155,8 @@ Check "both see each other and the other's car in the new zone" ($h.twins -eq '1
 $end = (Get-Date).AddSeconds(60)
 do { $h = Status $hchan; $c = Status $cchan; if ($h.cars -eq '2/1' -and $c.cars -eq '2/1') { break }; Start-Sleep 3 } while ((Get-Date) -lt $end)
 Check "no extra car on either side in the new zone" ($h.cars -eq '2/1' -and $c.cars -eq '2/1') "host cars=$($h.cars) extra seen=$($h.extra) | guest cars=$($c.cars) extra seen=$($c.extra)"
+
+NorthSame 'next zone'
 
 "=== RESULT: $script:pass passed, $script:fail failed -> $(if ($script:fail -eq 0) { 'PASS' } else { 'FAIL' })"
 if (-not $Keep) {

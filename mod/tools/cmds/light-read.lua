@@ -9,8 +9,23 @@ pcall(function()
     local t = {}
     m["Get Current Time Of Day"](m, t)
     add("tod", string.format("%.4f", t["Returned Time Of Day"]))
-    add("north", r2(m.CurrentTrueNorth))
+end)
+-- (the north: CurrentTrueNorth is a vector - read as a number it failed and both fields were missing)
+pcall(function()
+    local m = FindFirstOf("BP_ToDManager_C")
+    add("north", string.format("%d,%.1f,%.1f", m.DataBlock_IsUsingRandomNorth and 1 or 0, m.DataBlock_PickedRandomNorth.Yaw, m["Current North As Rotator"].Yaw))
+    local v = m.CurrentTrueNorth
+    add("truenorth", string.format("%.2f,%.2f", v.X, v.Y))
+    -- (the ARC map's view: its yaw comes from the north when it spawns)
+    local w = FindFirstOf("PlayerController").Pawn:GetFullName():match("^%S+%s+/[^.]*%.([^:]+):PersistentLevel")
+    local mv = "-"
+    for _, a in ipairs(FindAllOf("BP_GobblerMapview_C") or {}) do
+        if a:IsValid() and w and a:GetFullName():find("." .. w .. ":PersistentLevel", 1, true) then mv = r2(a:K2_GetActorRotation().Yaw) end
+    end
+    add("arcyaw", mv)
     add("todyaw", r2(m:K2_GetActorRotation().Yaw))
+    local sim = m.ToDSimulationActor
+    if sim and sim:IsValid() then add("simyaw", r2(sim:K2_GetActorRotation().Yaw)) end
 end)
 local suns = {}
 for _, c in ipairs(FindAllOf("DirectionalLightComponent") or {}) do

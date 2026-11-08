@@ -1,4 +1,4 @@
-﻿CoopSync for Pacific Drive - version history
+CoopSync for Pacific Drive - version history
 ============================================
 
 Newest first. The installed mod's version is in files\VERSION.txt of the zip.
@@ -13,6 +13,10 @@ The garage map:
   sends what its map shows, and the guest's map draws that while it is in the lobby.
 - The guest can no longer start a trip from the map by hovering a junction and holding the button (its game drove
   off alone), and cannot mark junctions for a scan there. Hovering still shows a junction's details.
+The ARC map:
+- The ARC map in the car points the same way for both. Its view takes its turn from the zone's north once, when it
+  appears; the guest's had appeared with its own north before the host's came. The guest now turns it to the host's.
+- A sky line from the host's next zone no longer turns the guest's north while the guest is still in the old one.
 The own car's back seat in the garage:
 - The guest can get onto its own back seat in the garage (the back door only opened).
 - On a back seat in the garage the key, the levers and the driver's door are out of reach, the way out is the back

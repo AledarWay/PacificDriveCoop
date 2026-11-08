@@ -59,7 +59,14 @@ function TakeGame($saved, $chan, $pre) {
     Get-ChildItem "$saved\Crashes" -Directory -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 3 |
         ForEach-Object { $c = $_; Get-ChildItem $c.FullName -File | Where-Object { $_.Length -lt 200MB } | ForEach-Object { Take $_.FullName "${pre}crashes\$($c.Name)\$($_.Name)" } }
     foreach ($f in 'status.txt', 'net-status.txt', 'menu-status.txt', 'control.txt', 'net-control.txt', 'net.log', 'coopnet.log', 'relay.log', 'hitches.log', 'coopsync.log') { Take "$chan\$f" "${pre}channel\$f" }
-    foreach ($f in 'host.events', 'client.requests', 'host.fast', 'client.fast') { Take "$chan\$f" "${pre}channel\$f.tail" 2000 }
+    # (the in-game network does not write these: a file of an old file-channel session stayed and passed for this one's
+    # - the owner's alpha 21 report had host.fast from October. Older than 12 hours: only noted)
+    foreach ($f in 'host.events', 'client.requests', 'host.fast', 'client.fast') {
+        $it = Get-Item "$chan\$f" -ErrorAction SilentlyContinue
+        if (-not $it) { continue }
+        if ($it.LastWriteTime -lt (Get-Date).AddHours(-12)) { Add-Content (Join-Path $work 'info.txt') "${pre}$f left out: old, $($it.LastWriteTime.ToString('yyyy-MM-dd HH:mm'))" -Encoding utf8; continue }
+        Take "$chan\$f" "${pre}channel\$f.tail" 2000
+    }
     Get-ChildItem "$chan\inbox", "$chan\outbox\sent", $chan -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'host-session*' -or $_.Name -like 'host-run*' -or $_.Name -like 'host-gates*' } |
         ForEach-Object { Take $_.FullName "${pre}channel\$($_.Directory.Name)-$($_.Name)" }
 }
