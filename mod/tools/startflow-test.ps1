@@ -126,7 +126,11 @@ do {
     if (-not $hostUp -and $h.state -eq 'hosting') { $hostUp = ((Get-Date) - $t0).TotalSeconds }
 } while (-not ($guestIn -and $hostUp) -and (Get-Date) -lt $end)
 Check "host publishes its zone" ($h.state -eq 'hosting') $h.raw
-Check "the guest travels while the host's zone generates (not after it)" ($guestIn -and $hostUp -and $guestIn -le $hostUp) ("guest in the zone after {0:N0} s, host's list after {1:N0} s" -f $guestIn, $hostUp)
+# (owner, 2026-11-09: "only real work, no waits just in case"): the host published 25 s after arriving at the least
+# (MIN_ZONE_S) though its zone was ready at once - the guest waited for it. Now as soon as the zone is ready: the
+# host's timeline (hitches.log) - the time in "zone: generating" before "hosting"
+$gen = @(Select-String -Path "$hchan\hitches.log" -Pattern 'timeline \+([\d.]+) hosting ' | ForEach-Object { [double]::Parse($_.Matches[0].Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture) })
+Check "the host publishes its zone as soon as it is ready (no fixed wait)" ($gen.Count -ge 1 -and ($gen | Measure-Object -Maximum).Maximum -le 10) ("in 'zone: generating' {0} s; guest in the zone after {1:N0} s, host's list after {2:N0} s" -f ($gen -join '/'), $guestIn, $hostUp)
 $c = WaitFor $cchan { param($s) $s.state -eq 'playing' } 480
 $playing = ((Get-Date) - $t0).TotalSeconds
 Check "the guest was brought to the host's map and syncs" ($c.state -eq 'playing' -and $c.world -eq $h.world) ("guest: $($c.raw) | host: $($h.raw) | playing after {0:N0} s" -f $playing)

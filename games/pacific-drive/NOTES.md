@@ -3653,3 +3653,48 @@ the parts kept their material's own orange-blue.
 - paint-test step 2: every wreck's parts have as many painted materials with the same Palette_Paint_Color on both
   sides (38/38, 30 with painted parts, `ap_VP_part`=223). Seen with graphics (COOPTEST_GRAPHICS=1): the same red
   CivCar and burnt-red stripped car on both screens.
+
+### The guest's departure: a loading screen, the world paused, waits cut (2026-11-09)
+
+Owner, alpha 21 test: the guest saw the junction map open and close, then a black screen under which it could still
+walk, saw the items' highlights, heard the zone - anomalies attacked it while the two were joined; the join was slow.
+"Only real work, no waits just in case"; "events from the host instead of waiting".
+
+- **Timeline**: session.lua writes every change of state / game state / world into hitches.log
+  (`N <time> timeline +<s in the previous one> <state> g=<gstate> <world>`), plus the map closes, the pause, the
+  zone's first ready moment, the drive-out's waits. nextzone-test before (guest, gate -> playing, 2 min 3 s): 4 s
+  exit wait, 42 s own zone, 38 s the host's zone load, 11 s "generating" after it (3 + 3 s fixed), 14 s import (4.5 s
+  of work at 6 ms a frame), 10 s fixed before the cleanup, 4 s cleanup. The host: its zone ready **0.0 s** after
+  arriving (both zones), yet published 27 s later (MIN_ZONE_S 25 + 6 ready ticks) - on the guest's path at the
+  zone exit (the guest starts its own travel only when the host is in).
+- **Cut**: MIN_ZONE_S 25 -> 0, READY_TICKS 6 -> 2 (startflow now checks "zone: generating" <= 10 s on the host);
+  a zone loaded from the host's save is ready at the first zoneReady; the 2 s floor after UserLoadGame dropped (the
+  new World object is the event); CLEANUP_AFTER_S 10 -> 3; the import / cleanup jobs take 40 ms a frame under the
+  loading screen (spawnsync `M.sliceMs`, 6 while playing); the garage exit's fixed 3 s (the game's own travel?) is
+  the TravelTo hook now (`S.gameTravelSeen`: the game's own travel shows in the exit's frame; none = our join).
+  Second leg after it: host's zone in -> the guest playing 13 s after the host's zone save was loaded (import 3.5 s,
+  cleanup 2.6 s).
+- **Loading screen**: the game's own `/Game/UI/System/LoadingScreen.LoadingScreen_C` (PenDriverUI
+  LoadingScreenUserWidget, "В ПУТИ..." with the car throbber) made by WidgetBlueprintLibrary:Create and
+  AddToViewport(10000): over the HUD, the highlights and the junction map (the map opened under it - seen with
+  graphics). Added again in each new world (the viewport's widgets go with the world). Raised at once in the exit's
+  hooks (DoLevelTransition, Open Map UI) and when the guest's car is in the garage exit; the camera fade stays under
+  it. Its CurrentStateText can be set (FText from UTF-8 works) but a long text is cut on the right: left as the
+  game's own (localized).
+- **Pause**: GameplayStatics:SetGamePaused on the guest while nothing of its world is needed (coverPause): its own
+  generated zone while the host's save comes, the host's zone loading and importing, the zone exit waiting for the
+  host's pick. Not in the garage, not while a zone the guest keeps generates (no host save), not after the import
+  (3 s + cleanup, under the screen, input ignored). Probed: UE4SS loops (LoopInGameThreadWithDelay) run in a paused
+  world; UserLoadGame from a paused world works and takes as long (32 s vs 32 s, two each); the new world comes
+  unpaused (paused again on the next tick). keepRunning (the co-op pause's unpause) leaves this pause alone.
+- **Not the host's zone**: the guest's world not the host's for 10 s under the screen -> the screen and the pause
+  lifted (a note in the timeline). Seen in nextzone-test: when the host's junction (RouteShapeLeg_54) is a
+  stabilizer zone (Rural_Forest_Stabilizer_Cerberus_05), the guest's travel with the host's MapLocation set
+  (OverrideMapLocation) still loads its own roll (Wilderness_Swamp_04, Rural_Swamp_ZoneRepeater_Chimera_09) - an old
+  gap, open. (Probing the leg states with FindAllOf("BaseLegState") + ShapeLeg:GetFName crashed the game twice -
+  access violation in GetFName, a dead object: not catchable by pcall.)
+- **Skipping the guest's own zone** (owner's question): a save made in the garage with the host's Map spliced in
+  loads the garage again - the level comes from the run state the departure writes (META Level / MapLocation /
+  ShapeLeg, global_states OutOnRun, the route manager's CurrentLeg, AllLegsVisited, TraveledEdges, ...; save-dump
+  trees, garage vs departure save). Not done: with the host's 25 s gone, the own zone's load (~25 s at a zone exit)
+  is now the biggest part of the guest's path.

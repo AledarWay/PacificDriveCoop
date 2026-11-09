@@ -508,6 +508,8 @@ end
 -- cursor in job), M.overBudget() tells it the frame's time is up. Run directly (tests), every step runs to its end
 -- at once. A job ends by itself when the world changes (a travel).
 local SLICE_MS = 6 -- (10: the steps overran it, 18-23 ms of import per frame on the guest - F lines)
+-- (under the guest's loading screen the frame rate does not matter: session.lua sets M.sliceMs = LOAD_SLICE_MS then)
+M.sliceMs = SLICE_MS
 local sliceEnd
 function M.overBudget() return sliceEnd ~= nil and os.clock() > sliceEnd end
 M.jobs = 0
@@ -531,7 +533,7 @@ function M.runJob(label, steps, onDone)
         if job.done then return end
         if M.worldAddr() ~= world then job.done = true finish(false, "world changed") return end
         local t0 = os.clock()
-        sliceEnd = t0 + SLICE_MS / 1000
+        sliceEnd = t0 + (M.sliceMs or SLICE_MS) / 1000
         while job.i <= #steps do
             local ok, fin = pcall(steps[job.i], job)
             if not ok then sliceEnd = nil job.done = true finish(false, fin) return end

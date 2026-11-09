@@ -42,6 +42,16 @@ Abandoned cars' parts:
 - The abandoned cars' doors, panels, hood and trunk have the host's paint on the guest. Before, they all stood in
   the same orange-blue on the guest (only the body had the host's paint): the guest's copies of the parts were
   never painted.
+Leaving together (the guest's drive-out and the next junction):
+- The guest sees the game's own loading screen ("on the way...") instead of a black screen, from the moment it drives
+  into the exit until it is in the host's zone and synced. The junction map no longer flashes up under it.
+- The guest's world is paused while it loads to the host, and its controls are off: it can no longer walk about,
+  see highlights or be attacked by anomalies under the screen. If the guest ends up in another zone than the host's,
+  the screen lifts after 10 s instead of keeping the player blind.
+- Faster join: the host shares its zone as soon as it is ready (it waited 25 s every time before), and the guest
+  drops its fixed waits (after the load, before the cleanup, at the garage exit) and imports faster under the
+  loading screen. In the tests the guest is in the next zone about 13 s after the host's zone has loaded, instead
+  of about 40 s.
 The own car's back seat in the garage:
 - The guest can get onto its own back seat in the garage (the back door only opened).
 - On a back seat in the garage the key, the levers and the driver's door are out of reach, the way out is the back
@@ -53,7 +63,8 @@ Tests: the map test starts the guest from a new game's garage and checks the jun
 trip; a new garage-seat test; the Esc test leaves the session with the menu open; a new instability test (the
 host's storm on the guest); the light check in the next-zone test compares both games at the same moments; a new
 part-break test (an abandoned car's parts sawed and broken off from both sides); the paint test also
-compares the abandoned cars' parts' paint.
+compares the abandoned cars' parts' paint; the start-flow test checks that the host
+shares its zone without a fixed wait.
 Known issues:
 - The anchor in both players' hands is still not reproduced in the tests (a stable anchor on a pedestal, the
   game's own long grab on the other side gives nobody an item). Please send a report right after it happens.

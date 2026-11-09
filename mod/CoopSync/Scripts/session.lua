@@ -56,11 +56,13 @@ local function loop(ms, fn)
 end
 
 local TICK_MS = 500
-local READY_TICKS = 6        -- zoneReady for 3 s in a row
+local READY_TICKS = 2        -- zoneReady for 1 s in a row (6 before)
 local JOIN_RETRY_S = 30      -- a guest still in its garage this long after joining joins again
-local MIN_ZONE_S = 25        -- and at least this long after arriving (the generator's first waves)
-local SAVED_ZONE_S = 3       -- (the guest in the host's zone loaded from its save: no waves)
-local CLEANUP_AFTER_S = 10   -- import -> cleanup
+-- and at least this long after arriving: 25 s before ("the generator's first waves"); the timeline (2026-11-09) had the
+-- host's zone ready 0.0 s after arriving in both zones of nextzone-test - 27 s of the guest's wait for nothing
+local MIN_ZONE_S = 0
+local LOAD_SLICE_MS = 40     -- the jobs' ms per frame under the guest's loading screen (6 while playing)
+local CLEANUP_AFTER_S = 3    -- import -> cleanup (the imported actors' own spawns on their first frames; 10 s before)
 
 local S = { role = nil, mode = "car", go = false, state = "idle", seq = 0, note = "" }
 local chan, ctlOff = nil, 0
@@ -196,7 +198,11 @@ end
 local function zoneSettled()
     local ok, ready = pcall(Sync.zoneReady)
     S.readyTicks = (ok and ready) and (S.readyTicks or 0) + 1 or 0
-    return S.readyTicks >= READY_TICKS and nowS() - (S.arrived or 0) >= (S.fromSave and SAVED_ZONE_S or MIN_ZONE_S)
+    -- (the timeline: when the generator was first done here)
+    if S.readyTicks == 1 then pcall(Hitch.note, string.format("timeline zone ready %.1f s after arriving", nowS() - (S.arrived or 0))) end
+    -- a zone loaded from the host's save is whole: ready once is enough (owner, 2026-11-09: only real work)
+    if S.fromSave then return S.readyTicks >= 1 end
+    return S.readyTicks >= READY_TICKS and nowS() - (S.arrived or 0) >= (tonumber(os.getenv("COOPTEST_MIN_ZONE_S") or "") or MIN_ZONE_S)
 end
 local function worldAddr()
     local ok, a = pcall(function() local w = FindFirstOf("World") return w and w:IsValid() and w:GetAddress() end)
@@ -260,6 +266,7 @@ end
 
 local function clientTick(gstate, world)
     local session = kv(readFile(Link.docPath(chan, "inbox", "host-session.txt")))
+    S.lastSession = session
     if gstate == 4 then
         -- home again: its own sky (not in the lobby: there the garage follows the host's sky, lobbyTick)
         if S.zoneWorld and not S.garageWorld then Weather.release() end
@@ -282,14 +289,19 @@ local function clientTick(gstate, world)
         end
         if not S.joinPending then S.state = "garage: the gate is open" return end
         if not session.seq or session.world == "-" then S.state = "garage: waiting for the host's zone" return end
+        local function why(w) if S.garageWhy ~= w then S.garageWhy = w pcall(Hitch.note, "timeline drive-out waits: " .. w) end end
         -- the game's own exit fired: it travels by itself (left the garage within a moment: the step above the
         -- garage block) - no second travel (owner, alpha 19 item 6: both in one frame, "concurrent save/load on top
         -- of LOADING LEVEL", and the guest had its car twice, the controls jumping between them). Still here after
         -- 3 s: the exit only opened the map (a new game's) - our join then.
-        if S.gameTravelAt and nowS() - S.gameTravelAt < 3 then return end
+        -- (owner, 2026-11-09: events, not waits just in case - a fixed 3 s here before): the game's own travel is seen
+        -- by the TravelTo hook in the frame of the exit; none seen = the exit only opened the map, our join at once
+        if S.gameTravelAt and S.gameTravelSeen and S.gameTravelSeen > S.gameTravelAt - 1 and nowS() - S.gameTravelAt < 15 then why("the game's own travel") return end
         -- (the drive-through volume saw the car first: the game's own exit gets a moment to fire)
-        if S.exitSeenAt and nowS() - S.exitSeenAt < 1.2 then return end
-        S.gameTravelAt, S.exitSeenAt = nil, nil
+        if S.exitSeenAt and nowS() - S.exitSeenAt < 1.2 then why("the exit's own event") return end
+        S.garageWhy = nil
+        pcall(Hitch.note, "timeline drive-out: our join")
+        S.gameTravelAt, S.exitSeenAt, S.gameTravelSeen = nil, nil, nil
         S.go, S.joinPending = false, false
         -- the game's own travel to the host's map with the own car
         local ok, r = pcall(Run.join, Link.docPath(chan, "inbox", "host-run.txt"))
@@ -349,7 +361,7 @@ local function clientTick(gstate, world)
     -- "generating" at once: the guest then waited the generator's 25 s again in a zone that comes whole from the
     -- save - most of the guest's minute in the owner's alpha 19 test.)
     if S.state == "zone: loading the host's" then
-        if nowS() - (S.zoneLoadAt or 0) < 2 then return end
+        -- (the new World object is the event: no fixed 2 s first)
         if worldAddr() == S.loadWorld and nowS() - (S.zoneLoadAt or 0) < 120 then return end
         S.state, S.justLoaded, S.zoneWorld = "zone: generating", true, nil -- (the arrival step again: gates, clock)
         if ZoneSave.s.state == "guest loading" then ZoneSave.s.state = "guest loaded" end
@@ -474,7 +486,7 @@ local function keepRunning()
         end)
     end
     S.coopWas = active
-    if not active then return end
+    if not active or S.coverPaused then return end
     local GS = StaticFindObject("/Script/Engine.Default__GameplayStatics")
     local pc = FindFirstOf("PlayerController")
     pcall(function()
@@ -554,6 +566,7 @@ local function closeMap(why)
     if pcall(function() FindFirstOf("BP_ProgressionManager_C"):CloseMapUI() end) then
         M.mapClosed = M.mapClosed + 1
         S.mapClosedWhy = why
+        pcall(Hitch.note, "timeline map closed (" .. tostring(why) .. ")")
     end
 end
 local function onGuestExit(fromGame)
@@ -569,6 +582,7 @@ local function onGuestExit(fromGame)
             M.zoneExits = (M.zoneExits or 0) + 1
             S.state, S.note = "zone: at the exit", "at the zone's exit: waiting for the host's pick"
         end
+        if S.state == "zone: at the exit" then M.raiseCover() end
         closeMap("zone exit")
         return
     end
@@ -576,10 +590,12 @@ local function onGuestExit(fromGame)
     -- the game's own exit is travelling (an advanced save's exit does: to the junction planned on the map, the
     -- host's - mapsync gave it the host's plan)
     if fromGame then S.gameTravelAt = nowS() end
+    pcall(Hitch.note, "timeline garage exit (" .. (fromGame and "the exit's event" or "the car in its volume") .. ", go=" .. tostring(S.go) .. ")")
     -- the map the game opens for a pick: not for the guest, the host's map is where it goes
     closeMap("garage exit")
     if S.go or S.joinPending then
         S.joinPending = true
+        M.raiseCover()
         M.exitTaken = M.exitTaken + 1
         S.note = "drove out: to the host's map"
     end
@@ -601,7 +617,16 @@ local function hookExits()
             if S.role == "client" and gameState() == 5 and S.state == "playing" and not S.followPending and carInZoneExit() then
                 pcall(onGuestExit, true)
             end
-            if mapGuard() then closeMap("opened") end
+            -- (the guest's garage exit opened the map: the game is not travelling by itself - our join at once, not
+            -- after the 3 s that wait for the game's own travel)
+            if S.role == "client" and gameState() == 4 and S.joinPending and S.gameTravelAt then
+                S.gameTravelAt, S.exitSeenAt = nil, nil
+                pcall(Hitch.note, "timeline the exit opened the map: our join")
+            end
+            if mapGuard() then
+                if S.joinPending or S.state == "joining" or S.state == "zone: at the exit" then M.raiseCover() end
+                closeMap("opened")
+            end
         end)
     end
 end
@@ -830,6 +855,8 @@ local function hookFlow()
         if S.role == "host" and gameState() == 4 then netCmd("start") S.departing = true S.note = "run started: the lobby comes along" end
         -- a guest's own pick of a junction (the map at the gate, or the map table) still ends on the host's map
         if S.role == "client" and gameState() == 4 then
+            -- (the game's own travel, not the mod's: the drive-out waits for it instead of joining - clientTick)
+            if not CoopSyncTravelling then S.gameTravelSeen = nowS() pcall(Hitch.note, "timeline the game travels by itself") end
             pcall(function()
                 local ml = Run.hostMapLocation(Link.docPath(chan, "inbox", "host-run.txt"))
                 if ml then dest:get():OverrideMapLocation(ml) M.guestPicksRedirected = (M.guestPicksRedirected or 0) + 1 end
@@ -899,28 +926,109 @@ end
 -- guest should never see a random zone" - it stood ~1 min in its own generated zone, then saw the load and the
 -- import fill in). The camera's fade, held: the HUD stays on top. Set every frame while on (each level load makes
 -- a new camera manager); at most COVER_MAX_S (a sync that never ends must not leave the player blind).
+-- (owner, 2026-11-09: "the map opened and closed at once, then the black screen - and the guest could still walk, saw
+-- the items' highlights, heard the zone; anomalies attacked it under the black screen; a loading screen instead, the
+-- guest's game paused while it loads to the host"): the game's own loading screen (LoadingScreen_C, "on the way...")
+-- over everything from the moment the guest drives into an exit (before the game's junction map opens: it opens under
+-- it and is closed), and the world paused while nothing of it is needed (coverPause), the input ignored.
 local COVER_MAX_S = 240
-local function coverWanted(gstate)
+local LOAD_SCREEN = "/Game/UI/System/LoadingScreen.LoadingScreen_C"
+local WRONG_WORLD_S = 10
+local function coverWanted(gstate, world)
     if S.role ~= "client" then return false end
     local st = S.state or ""
     local on = st == "joining" or st:find("^zone:") ~= nil
-    if on and gstate == 4 and st == "joining" and not S.coverSince then on = false end -- (only once it left)
+    -- in the garage: once the guest drove into the exit (the junction map opens a moment after - under the screen)
+    if gstate == 4 then on = S.joinPending == true or st == "joining" end
+    -- a zone that is not the host's (nextzone-test 2026-11-09: the host's junction, but the game loaded the guest's own
+    -- zone for it - a stabilizer zone on the host's side): nothing of the host's comes here - not left blind and paused
+    local ses = S.lastSession or {}
+    local wrong = on and gstate == 5 and st ~= "zone: loading the host's" and st ~= "joining" and ses.world and ses.world ~= "-" and ses.world ~= world
+    if wrong then S.wrongSince = S.wrongSince or nowS() else S.wrongSince = nil end
+    if S.wrongSince and nowS() - S.wrongSince > WRONG_WORLD_S then
+        if not S.wrongNoted then S.wrongNoted = true pcall(Hitch.note, "timeline not the host's zone (" .. tostring(world) .. " / host " .. tostring(ses.world) .. "): screen lifted") end
+        M.wrongWorld = (M.wrongWorld or 0) + 1
+        on = false
+    else S.wrongNoted = nil end
     if not on then S.coverSince = nil return false end
     S.coverSince = S.coverSince or nowS()
     return nowS() - S.coverSince < COVER_MAX_S
+end
+-- the world paused under the screen where the zone needs no ticking: the guest's own generated zone while the host's
+-- comes (it is replaced), the host's zone loaded until the import is in (its actors spawn the same paused), the zone's
+-- exit waiting for the host's pick. Not in the garage (the game's own travel runs there), not while a zone the guest
+-- keeps generates (no host save: its generator must run), not after the import (the imported actors' first frames,
+-- the cleanup, the sync start - a few seconds under the screen).
+local function coverPause(gstate)
+    if not S.cover or gstate ~= 5 then return false end
+    local st = S.state or ""
+    if st == "zone: at the exit" or st == "zone: loading the host's" or st == "zone: importing" then return true end
+    if st == "joining" or st == "zone: generating" or st == "zone: waiting for the host's list" then
+        if S.fromSave then return true end
+        local ses = S.lastSession or {}
+        local noSave = ses.list and ses.list ~= "-" and not ses.zsave -- (the host published without a zone save)
+        return zoneSaveOn() and not S.zoneLoadedSeq and not noSave
+    end
+    return false
+end
+local function coverPC()
+    local pc = S.coverPC
+    if not (pc and pc:IsValid()) then pc = FindFirstOf("PlayerController") S.coverPC = pc end
+    return pc
 end
 local function coverFrame()
     local want = S.cover
     if want == S.coverShown and not want then return end
     local ok = pcall(function()
-        local pc = S.coverPC
-        if not (pc and pc:IsValid()) then pc = FindFirstOf("PlayerController") S.coverPC = pc end
-        local cm = pc.PlayerCameraManager
-        if want then cm:SetManualCameraFade(1.0, { R = 0, G = 0, B = 0, A = 1 }, false) else cm:StopCameraFade() end
+        local pc = coverPC()
+        if want then
+            local w = S.coverW
+            local shown = false
+            pcall(function() shown = w and w:IsValid() and w:IsInViewport() end)
+            if not shown then
+                -- (a new world drops the viewport's widgets: added again; the camera fade under it as before, the
+                -- screen dark even if the widget cannot be made)
+                local okW = pcall(function()
+                    local c = StaticFindObject(LOAD_SCREEN)
+                    if not (c and c:IsValid()) then LoadAsset((LOAD_SCREEN:gsub("%.[^.]+$", ""))) c = StaticFindObject(LOAD_SCREEN) end
+                    local WBL = StaticFindObject("/Script/UMG.Default__WidgetBlueprintLibrary")
+                    w = WBL:Create(pc, c, pc)
+                    w:AddToViewport(10000)
+                    S.coverW = w
+                end)
+                M.coverScreens = (M.coverScreens or 0) + (okW and 1 or 0)
+                pcall(function() pc.PlayerCameraManager:SetManualCameraFade(1.0, { R = 0, G = 0, B = 0, A = 1 }, false) end)
+                pcall(function() pc:SetIgnoreMoveInput(true) pc:SetIgnoreLookInput(true) end)
+            end
+        else
+            pcall(function() if S.coverW and S.coverW:IsValid() then S.coverW:RemoveFromParent() end end)
+            S.coverW = nil
+            pcall(function() pc.PlayerCameraManager:StopCameraFade() end)
+            pcall(function() pc:ResetIgnoreInputFlags() end)
+        end
     end)
     if ok then S.coverShown = want end
 end
-M.coverInfo = function() return string.format("cover=%s since=%s", tostring(S.cover), tostring(S.coverSince)) end
+-- the world's pause under the screen (every tick: a new world comes unpaused)
+local function coverPauseTick(gstate)
+    local want = coverPause(gstate)
+    local GS = StaticFindObject("/Script/Engine.Default__GameplayStatics")
+    pcall(function()
+        local pc = FindFirstOf("PlayerController")
+        local paused = GS:IsGamePaused(pc)
+        if want and not paused then GS:SetGamePaused(pc, true) M.coverPauses = (M.coverPauses or 0) + 1
+        elseif not want and paused and S.coverPaused then GS:SetGamePaused(pc, false) end
+    end)
+    if want ~= (S.coverPaused or false) then pcall(Hitch.note, "timeline " .. (want and "paused" or "unpaused") .. " under the loading screen") end
+    S.coverPaused = want
+end
+-- raised at once (the exit's hooks): the junction map the game opens next is under it
+function M.raiseCover()
+    if S.role ~= "client" then return end
+    S.cover, S.coverSince = true, S.coverSince or nowS()
+    coverFrame()
+end
+M.coverInfo = function() return string.format("cover=%s since=%s paused=%s", tostring(S.cover), tostring(S.coverSince), tostring(S.coverPaused)) end
 
 local function tick()
     readControl()
@@ -937,7 +1045,23 @@ local function tick()
     if ZoneSave then pcall(ZoneSave.tick) end
     if S.role == "host" then hostTick(gstate, world)
     elseif S.role == "client" then clientTick(gstate, world) end
-    S.cover = coverWanted(gstate)
+    -- the timeline (owner, 2026-11-09: "the guest's join takes long - check the timings for needless waits"): every
+    -- change of the state, the game state or the world into the hitch log, and the last ones for the tests
+    local sig = string.format("%s|%s|%s", tostring(S.state), tostring(gstate), tostring(world))
+    if sig ~= S.tlSig then
+        local t = nowS()
+        local line = string.format("%.1f %s g=%s %s", t - (S.tlAt or t), tostring(S.state), tostring(gstate), tostring(world))
+        S.tlSig, S.tlAt = sig, t
+        pcall(Hitch.note, "timeline +" .. line)
+        M.timeline = M.timeline or {}
+        M.timeline[#M.timeline + 1] = string.format("%.1f:%s", t, line)
+        if #M.timeline > 60 then table.remove(M.timeline, 1) end
+    end
+    S.cover = coverWanted(gstate, world)
+    -- the import / cleanup jobs take a bigger slice of each frame while the guest's screen is covered (its frame rate
+    -- unseen): the same work in fewer frames (owner, 2026-11-09: 4.5 s of import spread over 14 s)
+    pcall(function() Sync.sliceMs = S.cover and LOAD_SLICE_MS or nil end)
+    if S.role == "client" or S.coverPaused then pcall(coverPauseTick, gstate) end
     -- (the controller looked up again every tick: a level load leaves the old one valid-looking for a while)
     if S.cover then M.covered, S.coverPC = (M.covered or 0) + 1, FindFirstOf("PlayerController") end
     pcall(carWatch, gstate)
