@@ -1319,13 +1319,25 @@ function CoopSyncPaint.handle(t)
     local key = x .. "," .. y .. "," .. z
     -- (applied once per place before; owner's alpha 20 test: all the guest's wrecks orange-blue again - a wreck whose
     -- dynamic materials are gone again, or never built, is done again on the host's next line, every 20 s)
+    if not (P.list and os.clock() - P.list.at < 1) then
+        -- (and each wreck's attached parts, by the wreck's address: the parts' paint below)
+        local parts = {}
+        for _, p in ipairs(FindAllOf("LootableTemplatePart") or {}) do
+            local okA, a = pcall(function() return p:IsValid() and p:GetAttachParentActor() end)
+            if okA and a and a:IsValid() then
+                local k = a:GetAddress()
+                parts[k] = parts[k] or {}
+                parts[k][#parts[k] + 1] = p
+            end
+        end
+        P.list = { at = os.clock(), l = paintList(), parts = parts }
+    end
     local was = P.applied[key]
     if was and was.v == pp .. dp and Sync.alive(was.car) then
         local okN, nm = pcall(function() return #was.car.DynamicMaterialInstances end)
-        if okN and nm > 0 then return end
+        if okN and nm > 0 then P.paintParts(was) return end
         count("ap_VP_again")
     end
-    if not (P.list and os.clock() - P.list.at < 1) then P.list = { at = os.clock(), l = paintList() } end
     local best, bd
     for _, e in ipairs(P.list.l) do
         local d2 = (e.l.X - x * 10) ^ 2 + (e.l.Y - y * 10) ^ 2 + (e.l.Z - z * 10) ^ 2
@@ -1341,9 +1353,40 @@ function CoopSyncPaint.handle(t)
         car:SetupMaterials()
         car:SetupTintOnVehicleAndParts()
     end)
-    P.applied[key] = { v = pp .. dp, car = car }
+    P.applied[key] = { v = pp .. dp, car = car, pal = pal, dec = dec, done = {} }
     local okN, nm = pcall(function() return #car.DynamicMaterialInstances end)
     count(ok and (okN and nm > 0 and "ap_VP" or "ap_VP_no_mid") or "ap_VP_failed")
+    P.paintParts(P.applied[key])
+end
+-- The parts' paint (owner, 2026-11-09: "all the guest's abandoned cars orange-blue - for a long time"; the palettes and
+-- the body's materials above were the same since alpha 19, the doors / panels / hood / trunk still in their material's
+-- own orange-blue): a part is painted by its BP_TintableComponent from its item's tint property, which the wreck's
+-- SetupTintOnVehicleAndParts sets for the parts in its AttachedParts - empty on the guest, whose parts lootsync
+-- attached again (probed: the host's door material with 7 colour parameters, the guest's with none). Each part's
+-- tintable component gets the wreck's palettes (SetPaint / SetDecal, as the game's paint does), once per part: a part
+-- attached later (an import again) is painted on the host's next line.
+function CoopSyncPaint.paintParts(e)
+    local P = CoopSyncPaint
+    if not P.tintCls then
+        local any = FindFirstOf("BP_TintableComponent_C")
+        if not (any and any:IsValid()) then return end
+        P.tintCls = any:GetClass()
+    end
+    local list = P.list and P.list.parts and P.list.parts[e.car:GetAddress()] or {}
+    for _, p in ipairs(list) do
+        local k = Sync.alive(p) and (p:GetAddress() .. p:GetFName():ToString()) -- (a freed address is used again)
+        if k and not e.done[k] then
+            e.done[k] = true
+            local tc = p:GetComponentByClass(P.tintCls)
+            if tc and tc:IsValid() then
+                local okT = pcall(function()
+                    tc:SetPaint(e.pal, {})
+                    if e.dec then tc:SetDecal(e.dec, {}) end
+                end)
+                count(okT and "ap_VP_part" or "ap_VP_part_failed")
+            end
+        end
+    end
 end
 
 -- Gameplay events (owner, alpha 19 items 10 / 15: "anomaly clouds at different places on the map", "the guest got a
@@ -2023,6 +2066,20 @@ function WRK.tick()
         end
     end
     if role ~= "host" then
+        -- (lines whose part was not there yet - lootsync attaches the host's parts over a few frames; part-break-test
+        -- 2026-11-09: two parts kept the guest's own health until the host's next full list 30 s later): once a
+        -- second, the index built again, for up to 60 s
+        if next(WRK.missed) and now - (WRK.missedAt or -1e9) >= 1 then
+            WRK.missedAt, WRK.indexAt = now, -1e9
+            local list = {}
+            for k, e in pairs(WRK.missed) do list[#list + 1] = { k, e } end
+            for _, x in ipairs(list) do
+                local k, e = x[1], x[2]
+                local okA, r = pcall(WRK.apply, e.t)
+                WRK.missed[k] = (okA and r == "nopart" and now - e.at < 60) and e or nil
+                if okA and r ~= "nopart" then WRK.lateApplied = (WRK.lateApplied or 0) + 1 end
+            end
+        end
         -- the guest's parts are the host's attached by lootsync (AttachTemplatePart), never set up to break by the
         -- game: CanBeBreaking false (0 of 169; the host's 169 of 169), so once the health was gone more hits did
         -- nothing. Set at the start and every WRK.SWEEP_S for parts attached since; before any hit counts: the game
@@ -2075,6 +2132,7 @@ function WRK.apply(t)
             return (math.abs(ch - h) >= 0.1 or math.abs(cb - b) >= 0.1) and "set" or "same"
         end
     end
+    if role ~= "host" then local old = WRK.missed[k] WRK.missed[k] = { t = t, at = old and old.at or os.clock() } end
     return "nopart"
 end
 end
@@ -2724,7 +2782,7 @@ function M.start(syncModule, r, channelDir, hostListPath)
     if not okW then err("wreck part hook: " .. tostring(eW)) end
     -- (the host's first full list 3 s in: the guest imported the host's parts before this start, with its own health)
     W.dirty, W.mine, W.last, W.index, W.allAt, W.sent, W.applied = {}, {}, {}, nil, os.clock() - W.ALL_S + 3, 0, 0
-    W.sweepAt, W.breakable = -1e9, 0
+    W.sweepAt, W.breakable, W.missed, W.missedAt, W.lateApplied = -1e9, 0, {}, nil, 0
     local okK, eK = pcall(hookKnocks)
     if not okK then err("knock hooks: " .. tostring(eK)) end
     if not okX then err("exit hook: " .. tostring(eX)) end

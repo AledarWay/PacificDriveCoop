@@ -3632,3 +3632,24 @@ part could not be broken"; "the parts' breakage is not synced".
 - Seen on the way, not the owner's report: a part of the other's car (its twin) behaves the same - the white bar goes on
   the twin, the red never starts, the owner's next state line puts the health back (twin damage is the owner's
   business, stage B). Sawing the friend's car's parts would need the hit sent to the owner.
+
+### Abandoned cars' paint: the parts (2026-11-09)
+
+Owner, alpha 21 test: "all the guest's abandoned cars have the same orange-blue paint, for a long time". The VP sync
+(alpha 19) gave the guest the host's palettes and the body's dynamic materials (paint-test checked only those), but
+the parts kept their material's own orange-blue.
+
+- Probed with `cmds/wreck-look.lua` (materials and colour parameters of a wreck's body and parts; WL_LOOK puts the
+  player in front of it for a screenshot): the body was the same on both sides; the host's door material had 7 vector
+  parameters (Palette_Paint_Color ...), the guest's none.
+- How the game paints a part: `SetupTintOnVehicleAndParts` (locals show it) loops `GetAllTemplateParts` / the wreck's
+  `AttachedParts` and sets the tint item property (GetItemProperties / SetItemProperty) of each part's item; the part's
+  `BP_TintableComponent_C` (an ItemPropertyComponent) paints its meshes from it. On the guest `AttachedParts` is
+  empty (lootsync attached the host's parts again). Filling `AttachedParts` and calling SetupMaterials /
+  SetupTintOnVehicleAndParts / ReattachParts / K2_PostAttachItems, or the part's own SetupMaterials, did not paint.
+- Fix: `CoopSyncPaint.paintParts` calls each attached part's tintable component `SetPaint(palette, {})` /
+  `SetDecal(decal, {})` (2 params: the palette class, a ColorTag struct) once per part; a part attached later is
+  painted on the host's next VP line (every 20 s).
+- paint-test step 2: every wreck's parts have as many painted materials with the same Palette_Paint_Color on both
+  sides (38/38, 30 with painted parts, `ap_VP_part`=223). Seen with graphics (COOPTEST_GRAPHICS=1): the same red
+  CivCar and burnt-red stripped car on both screens.

@@ -81,7 +81,7 @@ $h = Parts $hd; $g = Parts $cd
 Check "guest: the host's sawing shows on its copy" ($h[$p2].h -lt $h0 -and $g.ContainsKey($p2) -and [math]::Abs($g[$p2].h - $h[$p2].h) -le 0.2) "host $p2=$($h[$p2].h)/$($h[$p2].bh) (was $h0) | guest $($g[$p2].h)/$($g[$p2].bh)"
 
 "=== 5. no errors"
-$stat = "local W = CoopSyncWreck return string.format('sent=%d applied=%d breakable=%d', W.sent or 0, W.applied or 0, W.breakable or 0)"
+$stat = "local W = CoopSyncWreck return string.format('sent=%d applied=%d late=%d breakable=%d', W.sent or 0, W.applied or 0, W.lateApplied or 0, W.breakable or 0)"
 "  host: " + (Send $hd $stat) + " | guest: " + (Send $cd $stat)
 $errQ = "local r = CoopSyncState.report() return r:match('ERRORS: (.*)') or 'none'"
 $e1 = Send $hd $errQ; $e2 = Send $cd $errQ

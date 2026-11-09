@@ -20,7 +20,7 @@ local MESH = StaticFindObject("/Script/Engine.MeshComponent")
 local function mats(a, label)
     local comps = a:K2_GetComponentsByClass(MESH)
     for i = 1, #comps do
-        local m = comps[i]
+        local m = comps[i].get and comps[i]:get() or comps[i]
         local okM, mat = pcall(function() return m:GetMaterial(0) end)
         if okM and mat and mat:IsValid() then
             local cls = mat:GetClass():GetFName():ToString()
