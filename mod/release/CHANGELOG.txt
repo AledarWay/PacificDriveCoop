@@ -48,6 +48,8 @@ Leaving together (the guest's drive-out and the next junction):
 - The guest's world is paused while it loads to the host, and its controls are off: it can no longer walk about,
   see highlights or be attacked by anomalies under the screen. If the guest ends up in another zone than the host's,
   the screen lifts after 10 s instead of keeping the player blind.
+- The guest follows the host into story zones (a stabilizer zone): the host told the guest the junction's ordinary
+  zone while its game loaded the story's zone there, and the guest ended up somewhere else.
 - Faster join: the host shares its zone as soon as it is ready (it waited 25 s every time before), and the guest
   drops its fixed waits (after the load, before the cleanup, at the garage exit) and imports faster under the
   loading screen. In the tests the guest is in the next zone about 13 s after the host's zone has loaded, instead

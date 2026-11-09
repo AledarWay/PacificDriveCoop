@@ -60,7 +60,10 @@ local function zoneRoute()
     for _, rs in ipairs(routeStates()) do
         local ok, leg, ml = pcall(function() return rs.CurrentLeg, rs.CurrentLeg.MapLocation end)
         if ok and leg and leg:IsValid() and ml and ml:IsValid() then
-            if okW and ml:GetFName():ToString() == "MLoc_" .. world then return rs, leg, ml end
+            -- (the map its travel loaded: a chart's override, named MLoc_<world>_Q03 and the like)
+            local eff = M.legMap(leg)
+            local okE, en = pcall(function() return eff:GetFName():ToString() end)
+            if okW and okE and (en == "MLoc_" .. world or en:sub(1, #world + 6) == "MLoc_" .. world .. "_") then return rs, leg, ml end
             first = first or { rs, leg, ml }
         end
     end
@@ -78,9 +81,23 @@ function M.where()
     return string.format("seed=%d state=%d world=%s", gi.MasterSeed, gi.CurrentGameplayState, gi:GetWorld():GetFName():ToString())
 end
 
+-- The map a leg's travel really loads: its chart's map override when it has one (a story leg - nextzone-test 2026-11-09:
+-- the host's leg MapLocation MLoc_Wilderness_Swamp_12, its chart's CP_MapSettings override the stabilizer zone the
+-- host's game loaded, Rural_Forest_Stabilizer_Cerberus_05; the guest sent to Swamp_12 got its own zone), else its own.
+function M.legMap(leg)
+    local ok, use, ov = pcall(function()
+        local u, o, m = {}, {}, {}
+        leg:ProcessChartPropertiesForMapSelection(u, o, m, {}, {})
+        return o.IsUsingMapOverride, m.MapOverride
+    end)
+    if ok and use and ov and ov:IsValid() then return ov, true end
+    return leg.MapLocation, false
+end
 function M.describe()
     local leg, ml = currentZoneLeg()
     if not leg then return nil, "not in a zone (no current leg with a map)" end
+    local ov, isOv = M.legMap(leg)
+    if isOv then ml = ov end
     local mods = {}
     pcall(function()
         for i = 1, #leg.AppliedModifiers do
@@ -298,7 +315,11 @@ function M.travelTo(desc)
     if not rs then return nil, "no leg to travel to" end
     local same = false
     pcall(function() same = leg.MapLocation and leg.MapLocation:IsValid() and leg.MapLocation:GetFullName() == ml:GetFullName() end)
+    local function mlName() local ok, s = pcall(function() local m = leg.MapLocation return (m and m:IsValid()) and m:GetFName():ToString() or "nil" end) return ok and s or "?" end
+    local before = mlName()
     if not same then leg:OverrideMapLocation(ml) end
+    -- (the timeline: a stabilizer zone the guest did not get, nextzone-test 2026-11-09)
+    if CoopSyncHitch then pcall(CoopSyncHitch.note, string.format("timeline travel: %s, map %s -> %s (host's %s)", how, before, mlName(), d.map:match("[^/.]+$") or d.map)) end
     M.stats.travels = (M.stats.travels or 0) + 1
     M.stats.lastTravel = how
     -- (the guest's garage map hooks return values - ShouldBeVisibleOnMap, session.lua; one of them run inside this call

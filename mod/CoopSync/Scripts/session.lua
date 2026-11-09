@@ -850,8 +850,15 @@ end
 
 -- hooks of the flow: the host's departure from the garage starts the run for the lobby; loading a save or starting a
 -- new game leaves it
+-- a name for the logs: GetFName on a null object (an unset MapLocation) crashes the game past pcall (an access
+-- violation in UE4SS's GetFName - two probes and a nextzone host, 2026-11-09): IsValid first
+function CoopSyncObjName(o)
+    local ok, s = pcall(function() return (o and o:IsValid()) and o:GetFName():ToString() or "nil" end)
+    return ok and s or "?"
+end
 local function hookFlow()
     pcall(Hook, "/Script/PenDriverPro.BaseRouteState:TravelTo", function(_, dest)
+        do local ok, s = pcall(function() local l = dest:get() return CoopSyncObjName(l.ShapeLeg) .. " " .. CoopSyncObjName(l.MapLocation) end) pcall(Hitch.note, "timeline TravelTo: " .. (ok and s or "?")) end
         if S.role == "host" and gameState() == 4 then netCmd("start") S.departing = true S.note = "run started: the lobby comes along" end
         -- a guest's own pick of a junction (the map at the gate, or the map table) still ends on the host's map
         if S.role == "client" and gameState() == 4 then
@@ -871,6 +878,11 @@ local function hookFlow()
                 S.mapRestored = false
             end
         end
+    end)
+    -- (the timeline: a leg's map chosen again by the game - the guest did not get the host's stabilizer zone)
+    pcall(Hook, "/Game/Systems/Routes/States/BP_LegStateBase.BP_LegStateBase_C:SelectMapLocation", function() end, function(self)
+        local ok, s = pcall(function() local l = self:get() return CoopSyncObjName(l.ShapeLeg) .. " " .. CoopSyncObjName(l.MapLocation) end)
+        pcall(Hitch.note, "timeline the game chose a leg's map: " .. (ok and s or "?"))
     end)
     for _, fn in ipairs({ "UserLoadGame", "UserNewGame" }) do
         pcall(Hook, "/Game/Systems/Managers/BP_SaveGameManager.BP_SaveGameManager_C:" .. fn, function()

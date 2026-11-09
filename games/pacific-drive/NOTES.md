@@ -3690,8 +3690,16 @@ walk, saw the items' highlights, heard the zone - anomalies attacked it while th
 - **Not the host's zone**: the guest's world not the host's for 10 s under the screen -> the screen and the pause
   lifted (a note in the timeline). Seen in nextzone-test: when the host's junction (RouteShapeLeg_54) is a
   stabilizer zone (Rural_Forest_Stabilizer_Cerberus_05), the guest's travel with the host's MapLocation set
-  (OverrideMapLocation) still loads its own roll (Wilderness_Swamp_04, Rural_Swamp_ZoneRepeater_Chimera_09) - an old
-  gap, open. (Probing the leg states with FindAllOf("BaseLegState") + ShapeLeg:GetFName crashed the game twice -
+  (OverrideMapLocation) still loads its own roll (Wilderness_Swamp_04, Rural_Swamp_ZoneRepeater_Chimera_09). **Found and
+  fixed** (same day): the host's descriptor was wrong, not the guest's travel. The host's leg kept its rolled
+  MapLocation (MLoc_Wilderness_Swamp_12) while its game loaded the leg's chart override (CP_MapSettings,
+  MapLocationOverride - the story's stabilizer, MLoc_Rural_Forest_Stabilizer_Cerberus_05_SR / _Q03), and Run.describe
+  published the rolled one. Run.legMap(leg) = ProcessChartPropertiesForMapSelection's MapOverride when it is used, else
+  the MapLocation; describe publishes it, zoneRoute matches MLoc_<world> or MLoc_<world>_*. One instance: a leg with
+  no map given the stabilizer's _SR or _Q03 by OverrideMapLocation travels there (no SelectMapLocation at the travel).
+  nextzone-test with the host on the stabilizer: 19/19. The timeline logs every travel (	imeline travel:, TravelTo:,
+  the game choosing a leg's map); CoopSyncObjName(o) names objects for logs (IsValid first: GetFName on an unset
+  MapLocation crashed a nextzone host). (Probing the leg states with FindAllOf("BaseLegState") + ShapeLeg:GetFName crashed the game twice -
   access violation in GetFName, a dead object: not catchable by pcall.)
 - **Skipping the guest's own zone** (owner's question): a save made in the garage with the host's Map spliced in
   loads the garage again - the level comes from the run state the departure writes (META Level / MapLocation /
