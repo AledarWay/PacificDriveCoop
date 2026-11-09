@@ -29,6 +29,10 @@ Start-Sleep 4
 Start-Sleep 2
 foreach ($skew in 0, 1500, -3000) {
     "  guest: " + (Send $cd "return CoopPlayers.testClockSkew($skew)")
+    # (the bot drives straight on: by the third run the car had left the road and stood wedged on a slope - mean 2,
+    # pitch -31. Each run starts from the first one's spot and heading, on the same road)
+    if ($skew -eq 0) { "  host start kept: " + (Send $hd "local car = CoopPlayers.twinModule().ownCar() local l, r = car:K2_GetActorLocation(), car:K2_GetActorRotation() TO_START = { l = { X = l.X, Y = l.Y, Z = l.Z + 30 }, r = { Pitch = 0, Yaw = r.Yaw, Roll = 0 } } return string.format('%.0f,%.0f yaw %.0f', l.X, l.Y, r.Yaw)") }
+    else { "  host back at the start: " + (Send $hd "local car = CoopPlayers.twinModule().ownCar() car:K2_SetActorLocationAndRotation(TO_START.l, TO_START.r, false, {}, true) pcall(function() car:GetRootComponent():SetPhysicsLinearVelocity({ X = 0, Y = 0, Z = 0 }, false, nil) car:GetRootComponent():SetPhysicsAngularVelocityInDegrees({ X = 0, Y = 0, Z = 0 }, false, nil) end) local l = car:K2_GetActorLocation() return string.format('%.0f,%.0f', l.X, l.Y)"); Start-Sleep 2 }
     "  host: " + (Send $hd "return CoopPlayers.botDrive(9)")
     Start-Sleep 3
     Send $hd "SM_TWIN = false SM_S = 4 $smooth" | Out-Null; Send $cd "SM_TWIN = true SM_S = 4 $smooth" | Out-Null

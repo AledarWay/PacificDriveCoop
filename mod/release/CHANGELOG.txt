@@ -26,6 +26,14 @@ The other's car and puppet:
   when the two clocks differed, the car stood and jumped forward several times a second.
 - The other player's puppet sits inside the car again, not outside by the driver's door. The seat was measured at the
   moment the game's own entry had attached the player to the car while still standing at the door.
+The instability and the sky:
+- The zone's instability storm comes for both. When the host's instability timer runs out (the siren, the walls
+  closing in), the guest gets the same storm at the same place and the same ARC storm state. Before, each game ran
+  its own timer and the guest's did not go off with the host's. The guest's own timer can no longer go off first:
+  it follows the host's instability (the ARC shows the host's) and its storm comes only from the host.
+- The sun and the fog follow the host's more closely: the host sends its sky 4 times a second instead of every 2 s.
+  The fog and the sun swing back and forth with the weather, and the guest was up to 2 s behind (up to 10 % brighter
+  or darker at a moment); now within about 1 %.
 The own car's back seat in the garage:
 - The guest can get onto its own back seat in the garage (the back door only opened).
 - On a back seat in the garage the key, the levers and the driver's door are out of reach, the way out is the back
@@ -34,7 +42,8 @@ The pause menu:
 - Leaving the lobby (or the session ending) while the pause menu is open no longer leaves the menu stuck: Esc and
   Continue close it again.
 Tests: the map test starts the guest from a new game's garage and checks the junctions, the roads and the blocked
-trip; a new garage-seat test; the Esc test leaves the session with the menu open.
+trip; a new garage-seat test; the Esc test leaves the session with the menu open; a new instability test (the
+host's storm on the guest); the light check in the next-zone test compares both games at the same moments.
 Known issues:
 - The anchor in both players' hands is still not reproduced in the tests (a stable anchor on a pedestal, the
   game's own long grab on the other side gives nobody an item). Please send a report right after it happens.

@@ -117,8 +117,13 @@ $hlt = KV (Send $hd $lr); $clt = KV (Send $cd $lr)
 $dt = [Math]::Abs([double]$hlt.tod - [double]$clt.tod); $dt = [Math]::Min($dt, 1 - $dt)
 function Near($a, $b, [double]$rel) { $x = [double]($a -replace '[^\d.\-]', ''); $y = [double]($b -replace '[^\d.\-]', ''); [Math]::Abs($x - $y) -le [Math]::Max(0.01, [Math]::Abs($x) * $rel) }
 $sunH = ($hlt.suns -split '/'); $sunC = ($clt.suns -split '/')
-$sunOk = $sunH.Count -ge 4 -and $sunH[0] -eq $sunC[0] -and $sunH[1] -eq $sunC[1] -and (Near $sunH[2] $sunC[2] 0.05)
-Check "the same light on both: time of day, sun direction and strength, sky, fog (5 %)" ($dt -lt 0.003 -and $sunOk -and (Near $hlt.sky $clt.sky 0.05) -and (Near $hlt.fog $clt.fog 0.05)) "tod $($hlt.tod)/$($clt.tod) sun $($hlt.suns) / $($clt.suns)"
+$sunOk = $sunH.Count -ge 4 -and $sunH[0] -eq $sunC[0] -and $sunH[1] -eq $sunC[1]
+# (the strength side by side: both games sample on the PC's clock every 250 ms, paired by time - the two probes above
+# are seconds apart while the fog and the sun swing; 2026-11-08 the guest was 2 s behind, up to 10 % off)
+$lp = (& "$t\light-sample.ps1" -Sec 15 -Quiet | Where-Object { $_ -match '^LIGHTPAIR' } | Select-Object -Last 1)
+$lpk = KV ("$lp" -replace '^LIGHTPAIR ', '')
+$pairOk = [int]$lpk.n -ge 30 -and [double]$lpk.sun -le 0.05 -and [double]$lpk.fog -le 0.05
+Check "the same light on both: time of day, sun direction; sun strength and fog side by side over 15 s (5 %)" ($dt -lt 0.003 -and $sunOk -and $pairOk) "tod $($hlt.tod)/$($clt.tod) sun $($hlt.suns) / $($clt.suns) | paired: $lp"
 NorthSame 'first zone'
 $world1 = $h.world
 

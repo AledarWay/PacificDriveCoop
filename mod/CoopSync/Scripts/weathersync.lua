@@ -20,7 +20,9 @@ local Hook = CoopSyncHook or dofile((debug.getinfo(1, "S").source:match("^@(.*[/
 local SFO = StaticFindObject
 if CoopNative_HasPath then SFO = function(p) if CoopNative_HasPath(p) then return StaticFindObject(p) end return nil end end
 
-local SEND_MS = 2000
+-- (was 2000: the fog and the sun swing over ~30 s - wind, gusts - and the guest stepped 2 s behind the host, sun and
+-- fog up to 10 % off side by side, 2026-11-08 light-sample.ps1; a W line is ~300 bytes)
+local SEND_MS = 500
 local TOD_DRIFT = 0.001 -- of a day (~a game minute and a half): closer than this is left alone
 local OVERRIDE_TAG = "CoopSync"
 local FN = "/Game/Systems/Directors/BP_ToDDirector.BP_ToDDirector_C:"

@@ -3570,3 +3570,39 @@ dumps in them are old, from October).
 - **Quick suite after these (2026-11-08)**: all pass but nextzone (sun 5 %, known), contact (passed 12/12 alone),
   cars: 'the guest's own car drives after all that' moved 8 / 14 - and 5 with this round's Lua reverted (control
   run, also back-seat checks failing there): an older flake, not from these changes; open.
+- **The instability storm on the host only (owner's alpha 21 test: "at an unstable junction my siren started and the
+  instability came, my friend's not")**: BP_StormManager_C runs the instability timer on each side
+  (TimeBeforeInstabilityStarts, ShouldTickInstability; 720 s in Wilderness_Forest_13/14 from the advanced save, false
+  near the garage / on the story's Rural_Forest_Radio map) and at its end calls SpawnRoyaleStorm(location, fromTimer,
+  gateway) -> BP_ZoneStormRoyale_C (walls, its WeakStormOverrideValue timeline darkens the sky) and
+  ChangeStormTimerState (the ARC's state, 0 none ... 3). Not reproduced by the natural timer in the tests (it did not
+  tick even with DbgActEvt_EnableNewInstabilityTimer); SpawnRoyaleStorm by hand on the host: storm there, none on
+  the guest. A second SpawnRoyaleStorm while one is up does nothing. A pre-hook (= after the body) on both functions
+  sees the arguments. Fix: statesync CoopSyncStorm - host sends `STORM x,y,z fromTimer gatewayKey` / `STST n` at the
+  call and every 10 s; the guest spawns the storm with its manager when it has none, sets the state (quiet: no echo).
+  Status field `storm=sent/done/have`. `instability-test.ps1` (the staybehind lobby + drive-out, then the host's
+  state 2 + storm): same spot (75734,-40493 both), state 2 on both, the repeats reach the guest (have=2, done=1), one
+  storm on the host. 6/6. (Test commands run in the coopdev mod's Lua state: package.loaded.statesync there is
+  another, empty instance - read the session's status line instead.)
+- **The guest's own timer first (owner: "the guest's storm must not start earlier")**: `cmds/storm-timer-probe.lua` (each
+  call, the fields after it, the calls hooked meanwhile): the game calls InstabilityTimerTick all the time; with the
+  timer on (OnPlayerLeaveStartingArea, SetupInstabilityTimer -> CalculateInstabilityTimer(leg)) the instability grows
+  (IncrementStormInstability) and "Check Instability" calls SpawnInstabilityStorm once it is past
+  FinalInstabilityTollerance (rolled with a variance per side). GetInstabilityTollerance reads that field;
+  IncrementStormInstability takes negative steps. (SpawnInstabilityStorm by hand spawned nothing, even 12 s on.)
+  Fix: the host sends `STI <instability> <tolerance>` every second; the guest takes the tolerance and holds its own
+  instability at the host's, never within 2 % of the tolerance (also every 0.25 s on its own frames): its check never
+  fires, the storm only from the host's STORM line; the ARC's instability is the host's. Status `storm=` gets a 4th
+  field (holds). instability-test: guest tolerance 1000 -> the host's 60000, instability 3000 = host's; the guest's
+  +100000 and a check 1.5 s later -> held back to 3000, no storm on either side; then the host's storm as before. 8/8.
+  The exit pick's storm stays each side's own (both pick the same portal, EXIT).
+- **The sun's strength 5 % off in nextzone (2026-11-08)**: in-game sampling on both games every 250 ms on the PC's clock
+  (`light-sample.ps1`, os.time calibrated on its second change), paired by time: the fog and the sun swing over ~30 s
+  (wind) and the guest followed 1-2 s behind - up to 10 % off side by side (W lines every SEND_MS = 2000). Also the
+  old check read the two games seconds apart. Fix: SEND_MS 500; the nextzone check compares the paired samples over
+  15 s (max <= 5 %): 0.7 % / 1.0 % in two runs. After an arrival the guest keeps its own sky until its sync starts
+  (~1 min in a hand run: its own preset, tod 0.663 vs 0.690), then matches at once.
+- Two hand-probe pairs crashed / closed: the guest in Rocky_07 70 s after a quick follow (engine tick AV, no Lua in the
+  stack's top; after many storm probes on the host), and both games gone at once without a crash report (outside?).
+  nextzone once: the guest's car left the exit gate while waiting (> 4 s out: "playing on"), then the host left and
+  the stay-behind stop hid that note - now a hitch note says why the guest left the exit. The rerun passed the follow.

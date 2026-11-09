@@ -187,8 +187,8 @@ local function writeStatus(gstate, world)
         local ok, r = pcall(Players.report)
         puppet = ok and (tostring(r):match("puppet=(%S+)") or "?") or "?"
     end
-    writeFile(chan .. "/status.txt", string.format("role=%s mode=%s state=%s world=%s gstate=%d seq=%d go=%s puppet=%s unpaused=%d weather=%s map=%d/%d/%d gate=%d/%d/%d hitch=%s anim=%s zs=%s twins=%d mapblock=%d cars=%s extra=%d chk=%d cover=%d/%d exitmap=%d/%d/%d travels=%d gmap=%s note=%s\n",
-        tostring(S.role), S.mode, (S.state:gsub("%s", "_")), world, gstate, S.seq, tostring(S.go), puppet, M.pauseLifted, Weather and Weather.short() or "-", M.mapSent or 0, M.mapApplied or 0, M.mapRestores or 0, M.gateClosed or 0, M.gateOpened or 0, M.exitTaken or 0, Hitch.short(), (Players and Players.puppetAnim and Players.puppetAnim()) or "-", zoneSaveShort(), twinCount(), M.plannerUnbound or 0, M.carsSeen, M.extraCars or 0, CoopSyncChecklist and CoopSyncChecklist.rows or 0, M.covered or 0, S.coverShown and 1 or 0, M.mapClosed or 0, M.zoneExits or 0, M.follows or 0, (Run and Run.stats and Run.stats.travels) or 0, M.guestMap and string.format("%d/%d/%d/%d", M.guestMap.legs, M.guestMap.edges, M.guestMap.travel, M.guestMap.reveal) or "-", ((S.note or ""):gsub("%s", "_"))))
+    writeFile(chan .. "/status.txt", string.format("role=%s mode=%s state=%s world=%s gstate=%d seq=%d go=%s puppet=%s unpaused=%d weather=%s map=%d/%d/%d gate=%d/%d/%d hitch=%s anim=%s zs=%s twins=%d mapblock=%d cars=%s extra=%d chk=%d cover=%d/%d exitmap=%d/%d/%d travels=%d gmap=%s storm=%s note=%s\n",
+        tostring(S.role), S.mode, (S.state:gsub("%s", "_")), world, gstate, S.seq, tostring(S.go), puppet, M.pauseLifted, Weather and Weather.short() or "-", M.mapSent or 0, M.mapApplied or 0, M.mapRestores or 0, M.gateClosed or 0, M.gateOpened or 0, M.exitTaken or 0, Hitch.short(), (Players and Players.puppetAnim and Players.puppetAnim()) or "-", zoneSaveShort(), twinCount(), M.plannerUnbound or 0, M.carsSeen, M.extraCars or 0, CoopSyncChecklist and CoopSyncChecklist.rows or 0, M.covered or 0, S.coverShown and 1 or 0, M.mapClosed or 0, M.zoneExits or 0, M.follows or 0, (Run and Run.stats and Run.stats.travels) or 0, M.guestMap and string.format("%d/%d/%d/%d", M.guestMap.legs, M.guestMap.edges, M.guestMap.travel, M.guestMap.reveal) or "-", (CoopSyncStorm and string.format("%d/%d/%d/%d", CoopSyncStorm.sent or 0, CoopSyncStorm.done or 0, CoopSyncStorm.have or 0, CoopSyncStorm.held or 0) or "-"), ((S.note or ""):gsub("%s", "_"))))
 end
 
 -- zone ready = generator done for READY_TICKS ticks and MIN_ZONE_S after arriving
@@ -648,9 +648,12 @@ local function zoneExitTick(world, session)
     local inside = carInZoneExit()
     if inside then S.followOutAt = nil else S.followOutAt = S.followOutAt or nowS() end
     if (S.followOutAt and nowS() - S.followOutAt > 4) or nowS() - (S.followAt or nowS()) > FOLLOW_MAX_S then
+        local why = S.followOutAt and "car out of the gate" or "waited too long"
         S.followPending, S.followOutAt = false, nil
         if S.state == "zone: at the exit" then S.state = "playing" end
         S.note = "left the zone's exit: playing on"
+        -- (into the report: a later note - the host gone on - hides this one in the status line)
+        pcall(Hitch.note, "left the zone's exit (" .. why .. "): playing on")
     end
 end
 M.zoneExitTick = zoneExitTick

@@ -813,6 +813,13 @@ local function clientApply(t)
         count(not a and "ap_EXIT_unmapped" or CoopSyncExit.apply(a) and "ap_EXIT" or "ap_EXIT_failed")
         return
     end
+    if op == "STORM" or op == "STST" or op == "STI" then
+        local okS, r = pcall(CoopSyncStorm.apply, t)
+        if op ~= "STI" then count("ap_" .. op .. "_" .. (okS and tostring(r) or "error")) end
+        -- (for the session's status line: storms spawned here from the host's / lines skipped, one up already)
+        if op == "STORM" and (r == "done" or r == "have") then CoopSyncStorm[r] = (CoopSyncStorm[r] or 0) + 1 end
+        return
+    end
     if op == "M" and HZ.mine[t[2]] then count("ap_M_mine") return end -- (sent before the host granted it)
     if op == "U" then
         local key, loot = t[2], t[3] or ""
@@ -1761,6 +1768,142 @@ function EXIT.apply(p)
     return ok
 end
 
+-- The instability storm (owner's alpha 21 test: "at an unstable junction my siren started and the instability came, my
+-- friend's not"). Each side's storm manager (BP_StormManager_C) runs its own instability timer; when it runs out the
+-- manager calls SpawnRoyaleStorm(location, fromTimer, gateway) - BP_ZoneStormRoyale_C, the walls closing in, its weak
+-- storm darkening the sky (WeakStormOverride) - and ChangeStormTimerState (the ARC's storm state). The guest's did not
+-- fire with the host's. A second SpawnRoyaleStorm while one is up does nothing (probed 2026-11-08). Now the host's go
+-- to the guest:
+--   STORM <x,y,z> <fromTimer 0/1> <gateway key | ->   host -> guest at the spawn, again every STORM.ALL_S while up
+--   STST <state>                                      host -> guest on a change, again every STORM.ALL_S
+-- (all in one table: statesync's main chunk is near Lua's 200 locals)
+CoopSyncStorm = CoopSyncStorm or { hooked = false, quiet = false }
+local STORM = CoopSyncStorm
+STORM.ALL_S = 10
+STORM.FN = "/Game/Systems/Managers/BP_StormManager.BP_StormManager_C:"
+function STORM.line(loc, fromTimer, gw)
+    local key = (gw and gw:IsValid()) and Sync.ref(gw) or "-"
+    return string.format("STORM\t%.1f,%.1f,%.1f\t%d\t%s", loc.X, loc.Y, loc.Z, fromTimer and 1 or 0, key)
+end
+function STORM.on(kind, a, b, c)
+    if M.stopped or not role then return end
+    if role ~= "host" then count("own_" .. kind) return end -- (the guest's own timer: counted)
+    if kind == "STORM" then
+        local loc, ft, gw = a:get(), b:get(), nil
+        pcall(function() gw = c:get() end)
+        send("host.events", STORM.line(loc, ft, gw))
+        STORM.sent = (STORM.sent or 0) + 1
+    else
+        local s = tonumber(a:get())
+        STORM.state = s
+        send("host.events", "STST\t" .. tostring(s))
+    end
+    count("ev_" .. kind)
+end
+function STORM.hook()
+    STORM.notify = STORM.on
+    if STORM.hooked then return end
+    for _, f in ipairs({ "SpawnRoyaleStorm", "ChangeStormTimerState" }) do
+        if not isFunction(STORM.FN .. f) then error("no " .. STORM.FN .. f) end
+    end
+    STORM.hooked = true
+    -- (a pre-hook here runs after the body: the storm is up when it sends)
+    Hook(STORM.FN .. "SpawnRoyaleStorm", function(_, loc, ft, gw)
+        if STORM.quiet or not STORM.notify then return end
+        pcall(STORM.notify, "STORM", loc, ft, gw)
+    end)
+    Hook(STORM.FN .. "ChangeStormTimerState", function(_, s)
+        if STORM.quiet or not STORM.notify then return end
+        pcall(STORM.notify, "STST", s)
+    end)
+end
+-- The guest's own timer must not go off before the host's (owner, 2026-11-08). The timer (probed): the game calls
+-- InstabilityTimerTick all along; while it runs the instability grows (IncrementStormInstability) and "Check
+-- Instability" calls SpawnInstabilityStorm once it is past the tolerance (FinalInstabilityTollerance, rolled with a
+-- random variance on each side - the guest's could be the lower one). So the host sends both every STORM.STI_S:
+--   STI <instability> <tolerance>   host -> guest
+-- and the guest takes the host's tolerance and holds its own instability at the host's, never closer than
+-- STORM.MARGIN to the tolerance: its check never fires, the storm comes from the host's STORM line (and the ARC's
+-- instability shows the host's). The hold runs on the guest's frames too (its own timer between two lines).
+STORM.STI_S, STORM.MARGIN = 1, 0.02
+function STORM.inst(m)
+    local it = {}
+    m:GetCurrentInstabilityTime(it)
+    return tonumber(it.CurrentInstabilityTime) or 0
+end
+function STORM.hold(m, want)
+    local tol = tonumber(m.FinalInstabilityTollerance) or 0
+    if tol <= 0 then return "notol" end
+    local cur = STORM.inst(m)
+    local lim = tol * (1 - STORM.MARGIN)
+    want = math.min(want or cur, lim)
+    if math.abs(want - cur) < 0.5 then return "same" end
+    m:IncrementStormInstability(want - cur)
+    STORM.held = (STORM.held or 0) + 1
+    return "held"
+end
+-- host: the storm that is up and the state, again every STORM.ALL_S (a guest that missed a line, a resync)
+function STORM.tick()
+    local now = os.clock()
+    if role ~= "host" then
+        -- (the guest: its own instability under the tolerance between two of the host's lines)
+        if now - (STORM.holdAt or -1e9) < 0.25 then return end
+        STORM.holdAt = now
+        local m = first("BP_StormManager_C")
+        if m and m:IsValid() then STORM.hold(m, nil) end
+        return
+    end
+    if now - (STORM.stiAt or -1e9) >= STORM.STI_S then
+        STORM.stiAt = now
+        local m = first("BP_StormManager_C")
+        if m and m:IsValid() then
+            send("host.events", string.format("STI\t%.2f\t%.2f", STORM.inst(m), tonumber(m.FinalInstabilityTollerance) or 0))
+        end
+    end
+    if now - (STORM.at or -1e9) < STORM.ALL_S then return end
+    STORM.at = now
+    local m = first("BP_StormManager_C")
+    if not (m and m:IsValid()) then return end
+    local s = m.SpawnedStormIfValid
+    if s and s:IsValid() then
+        local gw
+        pcall(function() gw = s.SummonedExitGateway end)
+        send("host.events", STORM.line(s:K2_GetActorLocation(), s.TimerSpawn, gw))
+        count("ev_STORM_all")
+        STORM.sent = (STORM.sent or 0) + 1
+    end
+    send("host.events", "STST\t" .. tostring(m.CurrentStormState))
+end
+-- guest: the host's storm here (none up yet) / the host's storm state
+function STORM.apply(t)
+    local m = first("BP_StormManager_C")
+    if not (m and m:IsValid()) then return "nomanager" end
+    if t[1] == "STI" then
+        local tol = tonumber(t[3])
+        if tol and tol > 0 then m.FinalInstabilityTollerance = tol end
+        STORM.hostInst = tonumber(t[2])
+        return STORM.hold(m, STORM.hostInst)
+    end
+    if t[1] == "STST" then
+        local s = tonumber(t[2])
+        if not s or m.CurrentStormState == s then return "same" end
+        STORM.quiet = true
+        local ok = pcall(function() m:ChangeStormTimerState(s) end)
+        STORM.quiet = false
+        return ok and "done" or "failed"
+    end
+    local cur = m.SpawnedStormIfValid
+    if cur and cur:IsValid() then return "have" end
+    local x, y, z = (t[2] or ""):match("^([-%d.]+),([-%d.]+),([-%d.]+)$")
+    if not z then return "bad" end
+    local gw = (t[4] and t[4] ~= "-") and resolve(t[4]) or nil
+    STORM.quiet = true
+    local ok = pcall(function() m:SpawnRoyaleStorm({ X = tonumber(x), Y = tonumber(y), Z = tonumber(z) }, t[3] == "1", gw) end)
+    STORM.quiet = false
+    cur = m.SpawnedStormIfValid
+    return (ok and cur and cur:IsValid()) and "done" or "failed"
+end
+
 -- Fuel barrels (owner, alpha 18 item 37: "a fuel barrel's level differs"). A gas barrel (BP_Spawn_GasBarrel_C, in the
 -- spawn list) rolls its fuel at BeginPlay (RandomizeFuel: each side's copy its own) and keeps it in its
 -- BP_FuelableComponent (GetFuelStatus / "Set Fuel"; the actor's IP_Fuelable_Fuel stays the first roll - probed
@@ -2446,6 +2589,9 @@ function M.start(syncModule, r, channelDir, hostListPath)
     LH.dirty, LH.inv, LH.on = {}, false, true
     local okG, eG = pcall(hookGobbler)
     local okX, eX = pcall(hookExit)
+    local okSt, eSt = pcall(STORM.hook)
+    if not okSt then err("storm hooks: " .. tostring(eSt)) end
+    STORM.at, STORM.sent, STORM.done, STORM.have = nil, 0, 0, 0
     local okK, eK = pcall(hookKnocks)
     if not okK then err("knock hooks: " .. tostring(eK)) end
     if not okX then err("exit hook: " .. tostring(eX)) end
@@ -2476,6 +2622,8 @@ function M.start(syncModule, r, channelDir, hostListPath)
         local okS, eS = pcall(STRAY.tick)
         if not okS then err("stray: " .. tostring(eS)) end
         local okF, eF = pcall(FUEL.tick)
+        local okSt, eSt = pcall(STORM.tick)
+        if not okSt then err("storm: " .. tostring(eSt)) end
         local okR, eR = pcall(RANGE.tick)
         if not okR then err("range: " .. tostring(eR)) end
         local okT, eT = pcall(TOUR.tick)
