@@ -3742,3 +3742,21 @@ behaved the other way round".
   each car (5 reads); with the guest at the wheel of the host's car the same. 5/5.
 - Not covered: the moment's parameters of the car that is not the context (a car driven by the other player's input
   while this side sits in the other one: its Speed / slopes stay as last written).
+### The other's car's gas cap (2026-11-10)
+Owner: "the friend's car's fuel tank does nothing - let us siphon from it (as from abandoned cars) and fill it".
+- The car's cap is `BP_CarPart_GasCap_C` (SLOT Internal.GasCap) with `BP_FuelableComponent_GasCap_C` (CarActor: its
+  car; GetFuelTanks(out FuelTankItems, NumFuelTanks, HasFuelTank): that car's tank items - the twin's own on a twin).
+  Its GetFuelStatus / "Give Fuel" / "Take Fuel" (overrides) go to the car manager's tanks - the local player's own:
+  the guest's twin cap showed the guest's 6 (the host had 12), "Give Fuel" 3 filled the guest's own tank. Its
+  fuelable actions: CanBeRefueled, not CanBeSiphoned.
+- UE4SS hooks on a BP function run after the body, and their out params can be set (`p:set(v)`: the caller gets it;
+  probed on GetFuelStatus).
+- Fix (gascap.lua, for a cap whose CarActor is the twin): GetFuelStatus -> the twin's tanks summed; GetFuelableActions
+  (the base class's, the cap's by its class) -> can be siphoned; Give / Take -> the body's amount back to the own car
+  (SiphonAllFuelTanks / RefuelAllFuelTanks), the asked one into / out of the twin's tanks' components. A rise there
+  goes to the owner as before (twincar EY f); a siphon goes down, which watchState never sends (wear, drain): now told
+  (Twin.noteSiphon -> EY with a negative delta).
+- Test `gascap-test.ps1` (collide setup): the cap shows the host's 10, not the guest's 4, siphonable; a canister
+  (TransferFuel, steps of 0.5) pours 3 -> host +3, siphons 2 -> host -2, the guest's own unchanged; the host pours 2
+  into the guest's car -> guest +2. 4/4. Not covered: holding a canister at the cap by hand (the test calls
+  TransferFuel, what the hold ends in - assumed from the names).

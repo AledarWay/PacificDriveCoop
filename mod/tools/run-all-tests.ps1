@@ -36,6 +36,7 @@ $tests = @(
     @{ name = 'anchor';        quick = $true;  cmd = { & "$t\anchor-test.ps1" } },
     @{ name = 'fuelcan';       quick = $true;  cmd = { & "$t\fuelcan-test.ps1" } },
     @{ name = 'tuning';        quick = $true;  cmd = { & "$t\tuning-test.ps1" } },
+    @{ name = 'gascap';        quick = $true;  cmd = { & "$t\gascap-test.ps1" } },
     @{ name = 'portal';        quick = $true;  cmd = { & "$t\portal-test.ps1" } },
     @{ name = 'knock';         quick = $true;  cmd = { & "$t\knock-test.ps1" } },
     @{ name = 'paint';         quick = $true;  cmd = { & "$t\paint-test.ps1" } },

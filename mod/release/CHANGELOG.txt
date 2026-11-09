@@ -62,6 +62,9 @@ Cars:
 - Each car drives by its own parts. Both cars took their engine and tire values from one place in the game, written by
   whichever car was last; in the other's car a player drove on the own car's parts (your upgraded car and your
   friend's starting one behaved the other way round). Now each car has its own, and the other's car gets its owner's.
+- The other's car's fuel tank works: its gas cap shows that car's fuel, a canister fills it and can siphon from it
+  (as from an abandoned car), and the owner's tank changes. Before, it showed your own car's fuel and a canister
+  filled your own car.
 Fuel canisters:
 - A canister put down on the ground has the same fuel for both. Before, the other player's copy came empty.
 The pause menu:
@@ -73,7 +76,7 @@ host's storm on the guest); the light check in the next-zone test compares both 
 part-break test (an abandoned car's parts sawed and broken off from both sides); the paint test also
 compares the abandoned cars' parts' paint; the start-flow test checks that the host
 shares its zone without a fixed wait; a new fuel canister test; a new tuning test (each car on its own tires, the host on
-offroad ones, also with the guest at the wheel of the host's car).
+offroad ones, also with the guest at the wheel of the host's car); a new gas cap test (filling and siphoning the other's car).
 Known issues:
 - The anchor in both players' hands is still not reproduced in the tests (a stable anchor on a pedestal, the
   game's own long grab on the other side gives nobody an item). Please send a report right after it happens.
@@ -451,13 +454,7 @@ After the real alpha 6 test. The on-foot mode is frozen - each plays in their ow
 - The other player's model moves smoothly (no jerks, no falling through, no hops), and sits down in the garage
   when the other sits in a car.
 - After coming home the guest's car could "stick" to its place from the zone and not drive - fixed.
-- Cars:
-- Each car drives by its own parts. Both cars took their engine and tire values from one place in the game, written by
-  whichever car was last; in the other's car a player drove on the own car's parts (your upgraded car and your
-  friend's starting one behaved the other way round). Now each car has its own, and the other's car gets its owner's.
-Fuel canisters:
-- A canister put down on the ground has the same fuel for both. Before, the other player's copy came empty.
-The pause menu: in co-op Esc closes the pause again (the menu used to stick), Esc closes the F7 panel too; the
+- The pause menu: in co-op Esc closes the pause again (the menu used to stick), Esc closes the F7 panel too; the
   button column no longer jumps in width.
 
 0.1.0-alpha6 (2026-10-24)
@@ -475,13 +472,7 @@ The host's map and sky in the garage.
 0.1.0-alpha5 (2026-10-24)
 -------------------------
 The game start reworked (the real alpha 4 test could not connect).
-- Cars:
-- Each car drives by its own parts. Both cars took their engine and tire values from one place in the game, written by
-  whichever car was last; in the other's car a player drove on the own car's parts (your upgraded car and your
-  friend's starting one behaved the other way round). Now each car has its own, and the other's car gets its owner's.
-Fuel canisters:
-- A canister put down on the ground has the same fuel for both. Before, the other player's copy came empty.
-The pause menu: buttons like the game's, the Co-op item shows at once, friends page by page (7 each, those in
+- The pause menu: buttons like the game's, the Co-op item shows at once, friends page by page (7 each, those in
   Pacific Drive first), closing the pause on a submenu no longer breaks the menu.
 - The F7 panel: a separate window with the lobby and debug (resync, teleport, report, state) - a fallback if the
   pause menu breaks. Debug removed from the pause menu.

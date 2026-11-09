@@ -825,8 +825,28 @@ function M.watchState(twin)
             e.state[slot] = seen
         end
     end
+    -- (fuel siphoned here from the twin's tanks - gascap.lua: downwards, so not seen above)
+    for _, x in ipairs(e.siphoned or {}) do out[#out + 1] = x end
+    e.siphoned = nil
     M.stateStats.local_ = M.stateStats.local_ + #out
     return out
+end
+-- fuel taken out of one of the twin's tanks by the local player (the other's car's gas cap): to the owner with the
+-- next EY lines (the tank's component: the twin's part's BP_FuelableComponent_C)
+function M.noteSiphon(twin, comp, amount)
+    local e = twin and equipOf[twin:GetAddress()]
+    local cont = e and Sync.deref(e.cont)
+    if not (cont and comp and amount and amount > 0) then return false end
+    for slot, cur in pairs(stateOf(cont)) do
+        local f = cur.comps.f
+        if f and f:GetAddress() == comp:GetAddress() then
+            e.siphoned = e.siphoned or {}
+            table.insert(e.siphoned, { slot = slot, kind = "f", delta = -amount })
+            if e.state and e.state[slot] then e.state[slot].f = cur.v.f end
+            return true
+        end
+    end
+    return false
 end
 -- Owner side: the other player repaired / refuelled / charged (or siphoned) a part of this car on its twin
 function M.ownerState(slot, kind, delta)
