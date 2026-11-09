@@ -34,6 +34,8 @@ $tests = @(
     @{ name = 'leg-behind';    quick = $false; cmd = { & "$t\leg-test.ps1" -Scenario behind } },
     @{ name = 'hazard';        quick = $false; cmd = { & "$t\hazard-test.ps1" } },
     @{ name = 'anchor';        quick = $true;  cmd = { & "$t\anchor-test.ps1" } },
+    @{ name = 'fuelcan';       quick = $true;  cmd = { & "$t\fuelcan-test.ps1" } },
+    @{ name = 'tuning';        quick = $true;  cmd = { & "$t\tuning-test.ps1" } },
     @{ name = 'portal';        quick = $true;  cmd = { & "$t\portal-test.ps1" } },
     @{ name = 'knock';         quick = $true;  cmd = { & "$t\knock-test.ps1" } },
     @{ name = 'paint';         quick = $true;  cmd = { & "$t\paint-test.ps1" } },

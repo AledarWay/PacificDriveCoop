@@ -246,7 +246,7 @@ local function hookContainers()
                     local o = ctx:get():GetOuter()
                     if not (o and o:IsValid()) then return end
                     local n = o:GetFullName()
-                    if n:find("^BP_InventoryManager_C ") then LH.inv = true
+                    if n:find("^BP_InventoryManager_C ") then LH.inv = true LH.fuelInv = true
                     else LH.dirty[n:gsub("^%S+ ", "")] = true end
                 end)
             end)
@@ -329,6 +329,8 @@ local function hostHandle(t)
         local loc = { X = tonumber(t[3]), Y = tonumber(t[4]), Z = tonumber(t[5]) }
         local xf = { Translation = loc, Rotation = Sync.quat(tonumber(t[6]) or 0, tonumber(t[7]) or 0, tonumber(t[8]) or 0), Scale3D = { X = 1, Y = 1, Z = 1 } }
         local ok, a = pcall(Loot.spawnWorldItem, t[2], xf)
+        -- a canister's fuel (the item's own: a new one of the archetype comes empty)
+        if ok and a and tonumber(t[9]) then CoopSyncFuel.set(a, tonumber(t[9])) end
         -- (it falls here as it fell there: a world item spawned this way - a car door the guest took off and threw
         -- down - stood in the air on the host, and its positions pulled the guest's falling one up again and again;
         -- owner's alpha 20 test)
@@ -807,6 +809,8 @@ local function clientApply(t)
     if op == "WPH" then local okW, r = pcall(CoopSyncWreck.apply, t) count("ap_WPH_" .. (okW and tostring(r) or "error")) return end
     if op == "FUEL" then
         local a = resolve(t[2])
+        -- (a canister the host just dropped: its copy here may still be spawning - set when it comes)
+        if not a then CoopSyncFuel.pend[t[2]] = { v = tonumber(t[3]), at = os.clock() } end
         count(not a and "ap_FUEL_unmapped" or CoopSyncFuel.set(a, tonumber(t[3])) and "ap_FUEL" or "ap_FUEL_failed")
         return
     end
@@ -1955,14 +1959,21 @@ end
 -- 2026-11-02); siphoning it changed only that side's. Each side reads its barrels every second; one changed here (not
 -- by the other side's line) goes over and the other side sets its copy. The host sends all of them every 30 s too.
 --   FUEL <key> <fuel>   (host -> guest on the events, guest -> host on the requests)
+-- Fuel canisters on the ground too (owner, 2026-11-09: "I dropped a full canister, the friend's was empty"): a world
+-- item (BP_WorldItem_Fuelable_C, same BP_FuelableComponent) is spawned on the other side from its archetype, which
+-- comes empty. The guest's drop carries its fuel (DROP's last field); one the host has not sent yet (new in its list,
+-- which a pick-up / drop refreshes at once) goes over at once, and a line for a copy still spawning on the guest waits
+-- for it (FUEL.pend, 30 s).
 CoopSyncFuel = CoopSyncFuel or {}
 local FUEL = CoopSyncFuel
+FUEL.pend = FUEL.pend or {}
 local FUEL_ALL_S = 30
 local function fuelOf(a)
     local t = { {}, {}, {}, {}, {}, {}, {} }
     a.BP_FuelableComponent:GetFuelStatus(t[1], t[2], t[3], t[4], t[5], t[6], t[7])
     return math.floor((tonumber(t[1].Fuel) or 0) * 100 + 0.5) / 100
 end
+FUEL.of = fuelOf
 function FUEL.set(a, v)
     if not (Sync.alive(a) and v) then return false end
     local ok = pcall(function() local fc = a.BP_FuelableComponent fc["Set Fuel"](fc, v) end)
@@ -1973,10 +1984,20 @@ function FUEL.tick()
     local now = os.clock()
     if now - FUEL.at < 1 then return end
     FUEL.at = now
+    if LH.fuelInv and now - FUEL.listAt > 2 then LH.fuelInv = false FUEL.listAt = -1e9 end
     if now - FUEL.listAt > 10 then
         FUEL.listAt = now
         FUEL.list = {}
-        for _, a in ipairs(FindAllOf("BP_Spawn_GasBarrel_C") or {}) do if Sync.alive(a) then FUEL.list[#FUEL.list + 1] = a end end
+        for _, cls in ipairs({ "BP_Spawn_GasBarrel_C", "BP_WorldItem_Fuelable_C" }) do
+            for _, a in ipairs(FindAllOf(cls) or {}) do if Sync.alive(a) then FUEL.list[#FUEL.list + 1] = a end end
+        end
+    end
+    if role ~= "host" then
+        for k, p in pairs(FUEL.pend) do
+            local a = resolve(k)
+            if a then FUEL.pend[k] = nil count(FUEL.set(a, p.v) and "ap_FUEL_late" or "ap_FUEL_failed")
+            elseif now - p.at > 30 then FUEL.pend[k] = nil end
+        end
     end
     local all = role == "host" and now - FUEL.sentAll > FUEL_ALL_S
     if all then FUEL.sentAll = now end
@@ -1988,7 +2009,7 @@ function FUEL.tick()
             FUEL.last[ref] = v
             local changed = was and math.abs(v - was) > 0.005
             if role == "host" then
-                if all or changed then send("host.events", "FUEL\t" .. ref .. "\t" .. v) count("ev_FUEL") end
+                if all or changed or was == nil then send("host.events", "FUEL\t" .. ref .. "\t" .. v) count("ev_FUEL") end
             elseif changed and reverse[ref] then
                 send("client.requests", "FUEL\t" .. reverse[ref] .. "\t" .. v)
                 count("rq_FUEL")
@@ -2610,7 +2631,8 @@ local function detectDrops()
                 end
                 if close then
                     local r = a:K2_GetActorRotation()
-                    send("client.requests", string.format("DROP\t%s\t%.2f\t%.2f\t%.2f\t%.3f\t%.3f\t%.3f", loot, l.X, l.Y, l.Z, r.Pitch, r.Yaw, r.Roll))
+                    local okF, fv = pcall(CoopSyncFuel.of, a)
+                    send("client.requests", string.format("DROP\t%s\t%.2f\t%.2f\t%.2f\t%.3f\t%.3f\t%.3f\t%s", loot, l.X, l.Y, l.Z, r.Pitch, r.Yaw, r.Roll, okF and tostring(fv) or ""))
                     count("rq_DROP")
                     dropAsked[ap] = true
                     lost[arch].n = lost[arch].n - 1
@@ -2721,7 +2743,7 @@ function M.start(syncModule, r, channelDir, hostListPath)
     Sync, Loot, role, chan = syncModule, syncModule.Loot, r, channelDir
     DOORS.last, DOORS.applied, DOORS.quiet, DOORS.cache, DOORS.sentAll, DOORS.scanAt = {}, {}, {}, nil, -1e9, -1e9
     KNOCK.done, KNOCK.pending, KNOCK.queue = {}, {}, {}
-    FUEL.last, FUEL.list, FUEL.at, FUEL.listAt, FUEL.sentAll = {}, {}, -1e9, -1e9, -1e9
+    FUEL.last, FUEL.list, FUEL.at, FUEL.listAt, FUEL.sentAll, FUEL.pend = {}, {}, -1e9, -1e9, -1e9, {}
     RANGE.list, RANGE.stopped, RANGE.inside, RANGE.at, RANGE.scanAt, RANGE.sentAll = {}, {}, {}, -1e9, -1e9, -1e9
     TOUR.list, TOUR.near, TOUR.posed, TOUR.quiet, TOUR.fuse = {}, {}, {}, {}, {}
     TOUR.at, TOUR.listAt, TOUR.nearAt = -1e9, -1e9, -1e9

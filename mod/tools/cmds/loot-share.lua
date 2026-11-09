@@ -9,6 +9,9 @@
 --   exists LS_KEY LS_ROLE  is that world item still in this world
 --   incount LS_KEY LS_ROLE LS_ARCH  how many of LS_ARCH that container holds
 --   put LS_KEY LS_ROLE LS_ARCH  one carried item of LS_ARCH into that container (the same instance, like the game)
+--   give LS_ARCH        one item of that archetype into the inventory
+--   dropfuel LS_ARCH LS_FUEL [LS_DX]  a fuel canister on the ground with that much fuel (a carried one leaves the inventory)
+--   fuelnear / setfuelnear LS_ARCH LS_X LS_Y LS_Z [LS_FUEL]  the fuel of the canister there (set first: setfuelnear)
 local Loot = CoopSync.Loot
 local IM = FindFirstOf("BP_InventoryManager_C")
 local function objPath(o) return (o:GetFullName():gsub("^%S+%s+", "")) end
@@ -230,6 +233,40 @@ elseif op == "drop" then
     local xf = { Translation = at, Rotation = CoopSync.quat(0, 0, 0), Scale3D = { X = 1, Y = 1, Z = 1 } }
     local w = Loot.spawnWorldItem("W|" .. LS_ARCH, xf)
     return string.format("dropped at %.0f,%.0f,%.0f (%s)", at.X, at.Y, at.Z, w and w:IsValid() and "item on the ground" or "spawn failed")
+elseif op == "give" then
+    IM:GiveItemToPlayer(Loot.find(LS_ARCH))
+    return tostring(carried(LS_ARCH))
+elseif op == "dropfuel" then
+    -- a fuel canister put down with LS_FUEL in it (a carried one is taken from the inventory, as a drop does): what the
+    -- game's drop makes of the item - a world item whose component has the item's fuel
+    local arch = Loot.find(LS_ARCH)
+    local was = carried(LS_ARCH)
+    for _, f in ipairs({ "Inventory_Player", "Inventory_PlayerHand" }) do
+        if carried(LS_ARCH) == was then pcall(function() IM[f]:RemoveItemsOfType(arch, 1) end) end
+    end
+    local pawn = FindFirstOf("PlayerController").Pawn
+    local l, fwd = pawn:K2_GetActorLocation(), pawn:GetActorForwardVector()
+    local at = { X = l.X + fwd.X * 150 + (LS_DX or 0), Y = l.Y + fwd.Y * 150, Z = l.Z }
+    local xf = { Translation = at, Rotation = CoopSync.quat(0, 0, 0), Scale3D = { X = 1, Y = 1, Z = 1 } }
+    local w = Loot.spawnWorldItem("W|" .. LS_ARCH, xf)
+    if not (w and w:IsValid()) then return "spawn failed" end
+    local fc = w.BP_FuelableComponent
+    fc["Set Fuel"](fc, LS_FUEL)
+    return string.format("dropped at %.0f,%.0f,%.0f fuel %s (carried %d -> %d)", at.X, at.Y, at.Z, tostring(CoopSyncFuel.of(w)), was, carried(LS_ARCH))
+elseif op == "fuelnear" or op == "setfuelnear" then
+    -- the fuel of the world item of LS_ARCH nearest to LS_X/Y/Z within 400 units ("none"); setfuelnear sets LS_FUEL first
+    local at = { X = tonumber(LS_X), Y = tonumber(LS_Y), Z = tonumber(LS_Z) }
+    local best, bd
+    for _, a in ipairs(FindAllOf("BP_WorldItem_Fuelable_C") or {}) do
+        if a:IsValid() and not CoopSync.inPool(a) and objPath(a.Instance.Archetype) == LS_ARCH then
+            local l = a:K2_GetActorLocation()
+            local d = (l.X - at.X) ^ 2 + (l.Y - at.Y) ^ 2 + (l.Z - at.Z) ^ 2
+            if d < 400 ^ 2 and (not bd or d < bd) then best, bd = a, d end
+        end
+    end
+    if not best then return "none" end
+    if op == "setfuelnear" then local fc = best.BP_FuelableComponent fc["Set Fuel"](fc, LS_FUEL) end
+    return tostring(CoopSyncFuel.of(best))
 elseif op == "near" then
     local at = { X = tonumber(LS_X), Y = tonumber(LS_Y), Z = tonumber(LS_Z) }
     Loot.beginPass()

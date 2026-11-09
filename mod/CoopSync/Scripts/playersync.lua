@@ -428,6 +428,22 @@ function TD.sendState()
         st.stateSent = (st.stateSent or 0) + 1
     end
 end
+-- The own car's parameters from its parts (tuning.lua: engine, tires, flats, boost as the own car's handling has them -
+-- every handling reads the local player's own parts, so the other side's twin of this car gets them from here): TU
+-- lines, checked every second, sent when changed or every 10 s.
+TD.tuningOut = { line = nil, sentMs = -1e9, checkMs = -1e9 }
+function TD.sendTuning()
+    local now = M.nowMs()
+    if not TD.tuning or now - TD.tuningOut.checkMs < 1000 then return end
+    TD.tuningOut.checkMs = now
+    local ok, line = pcall(TD.tuning.ownLine)
+    if not (ok and line) then return end
+    if line ~= TD.tuningOut.line or now - TD.tuningOut.sentMs > 10000 then
+        TD.tuningOut.line, TD.tuningOut.sentMs = line, now
+        append(outFile, string.format("TU\t%d\t%s", now, line))
+        st.tuningSent = (st.tuningSent or 0) + 1
+    end
+end
 -- The car's lights as the owner's game shows them (twincar "Lights"): LI lines, checked 5 times a second, sent when
 -- changed or every 5 s.
 TD.lightsOut = { line = nil, sentMs = -1e9, checkMs = -1e9 }
@@ -469,6 +485,8 @@ function TD.equipTick(c)
     -- full pose once a second. Owner's alpha 20 test: both had just put a driver's door back, the host got into the
     -- guest's car, it jolted, on shutting the driver's doors fell off on both sides - each the other car's.)
     timed("eq_doorbrk", function() Twin.muteDoorBreak(c) end)
+    -- (each car drives by a tuning graph of its own: one shared asset made both cars drive by the last writer's parts)
+    if TD.tuning then timed("eq_tuning", function() TD.tuning.tick(Twin.ownCar(), c) end) end
     if TD.native then
         -- (native cars: the twin keeps the game's own handlers; the car manager's bindings of the car that is not the
         -- context are parked - parts spawned again bind themselves afresh: a sweep every TD.SWEEP_MS, ~9 ms)
@@ -2756,7 +2774,7 @@ end
 local OWN_SENDS = { { "s_layout", function(car) sendLayout(car, outFile) end }, { "s_pose", function(car) sendPose(car) end },
     { "s_equip", function() TD.sendEquip() end }, { "s_state", function() TD.sendState() end }, { "s_paint", function() TD.sendPaint() end },
     { "s_lights", function(car) TD.sendLights(car) end }, { "s_track", function() TD.sendTrack() end },
-    { "s_store", function() TD.sendStore() end } }
+    { "s_store", function() TD.sendStore() end }, { "s_tuning", function() TD.sendTuning() end } }
 function TD.sendOwn(car)
     for _, x in ipairs(OWN_SENDS) do
         local ok, e = timed(x[1], function() x[2](car) end)
@@ -3621,6 +3639,9 @@ local function applyTick()
         elseif t[1] == "ES" then
             -- the other player's parts' health / fuel / battery (its twin here follows)
             if t[3] and t[3] ~= "" then target.state, target.stateSeq = Twin.parseState(t[3]), (target.stateSeq or 0) + 1 st.stateRecv = (st.stateRecv or 0) + 1 end
+        elseif t[1] == "TU" then
+            -- the other player's car's part parameters (its twin here drives by them: tuning.lua)
+            if TD.tuning and t[3] and t[3] ~= "" then pcall(TD.tuning.applyOwner, t[3]) st.tuningRecv = (st.tuningRecv or 0) + 1 end
         elseif t[1] == "LI" then
             -- the other player's car lights (its twin here shows them)
             if t[3] and t[3] ~= "" then target.lights = t[3] st.lightsRecv = (st.lightsRecv or 0) + 1 end
@@ -4287,6 +4308,7 @@ function M.start(syncModule, r, channelDir, opts)
     if TD.native then CoopSyncNoMute = true end
     Native = dofile(Sync.DIR .. "nativecar.lua")
     Native.init(Sync)
+    TD.tuning = dofile(Sync.DIR .. "tuning.lua")
     Native.ownCar = function() return Twin.ownCar() end
     -- a car's door flags from its doors (the own car: open = the door simulates; the other's: posed open by its owner)
     Native.stayParked = function(dn, o, fn)

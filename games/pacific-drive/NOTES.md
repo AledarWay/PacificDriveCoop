@@ -3706,3 +3706,39 @@ walk, saw the items' highlights, heard the zone - anomalies attacked it while th
   ShapeLeg, global_states OutOnRun, the route manager's CurrentLeg, AllLegsVisited, TraveledEdges, ...; save-dump
   trees, garage vs departure save). Not done: with the host's 25 s gone, the own zone's load (~25 s at a zone exit)
   is now the biggest part of the guest's path.
+
+### Fuel canisters on the ground (2026-11-10)
+Owner: "I dropped a full canister, on the friend's side it was empty".
+- A canister on the ground is `BP_WorldItem_Fuelable_C` (its `BP_FuelableComponent`, the same as a barrel's); the
+  other side spawns it from its archetype (lootsync W|), which comes empty: the item's fuel is not in the loot string.
+- Fix (statesync FUEL): the fuel list also holds the world canisters (refreshed at once after a pick-up / drop, the
+  inventory manager's slot hooks); the guest's DROP carries the fuel (last field) and the host sets it on its spawn;
+  a canister new in the host's list goes over at once; a FUEL for a guest copy still spawning waits (FUEL.pend, 30 s).
+- Test `fuelcan-test.ps1` (sync-test setup): host puts one down with 3.5 -> guest 3.5; guest drops a carried one with
+  1.75 -> host 1.75 (one DROP); the host's level to 0.5 -> guest 0.5. Not covered: canisters inside containers (an
+  item's fuel is an item property; GetItemProperties is a generic thunk - not read from Lua).
+
+### Each car's own handling (2026-11-10)
+Owner: "after we swapped cars the cars' characteristics swapped: my upgraded fast car, the friend's slow starting one
+behaved the other way round".
+- Every car's VehicleControllerComponent.Profile is one object, the asset
+  `/Game/Characters/PlayerCar/TuningProfiles/MainTuningGraph` (UIWTuningGraph: FirstNode, 191 nodes shared within
+  it, BlendValue / BlendValueMulti on CarHandling_Less/More, EnginePower_Less/More, Slomo).
+- AC_CarHandling (each car has one) writes ~38 parameters every tick (IWTuningGraph SetParameter, hooked): engine
+  quality / power / damage, CarHandling_*, the tires' Wheel* kinds, FlatTire*, AcellBoost, and the moment's Speed,
+  Up/DownSlope, surfaces, Park, Slomo. It writes into the context car's Profile (the car manager's NewCarActor:
+  with copies given, both handlings wrote the own car's copy), and reads the parts through the car manager - the
+  local player's own (the twin's handling's PartProperty_Wheel on the host took the host's offroad tires).
+- Measured: the guest's own car, 4 s full throttle from the same spot: 1800 (twin's handling tick off) vs 2300-3150
+  (on); the host on offroad tires, its own car's graph read 0.9 / 0.09 by turns (the two handlings).
+- A copy: StaticConstructObject(class, outer, None, 0, 0, false, false, template) copies the properties (FirstNode
+  shared: shallow); each node copied once (memo by address - a walk without one made 315 593 nodes), children
+  pointed at the copies. A copy's parameters start empty (not properties): seeded with GetParameter (works).
+- Fix (tuning.lua): each car its own deep copy; part writes kept per handling function (hooks run after the body:
+  ReceiveTick, UpdateProfileOnParking, UpdateBaseCarGameplayOptions, InitializeTuningConstants); the own car's
+  handling's are the own parts; every graph written gets its car's values back (own: its handling's; the other's:
+  the owner's TU line). The moment's parameters stay in the context car's graph.
+- Test `tuning-test.ps1` (collide setup): three graphs per side; the host on offroad tires: steady on both sides for
+  each car (5 reads); with the guest at the wheel of the host's car the same. 5/5.
+- Not covered: the moment's parameters of the car that is not the context (a car driven by the other player's input
+  while this side sits in the other one: its Speed / slopes stay as last written).
