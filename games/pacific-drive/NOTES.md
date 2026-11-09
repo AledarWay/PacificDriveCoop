@@ -3606,3 +3606,29 @@ dumps in them are old, from October).
   stack's top; after many storm probes on the host), and both games gone at once without a crash report (outside?).
   nextzone once: the guest's car left the exit gate while waiting (> 4 s out: "playing on"), then the host left and
   the stay-behind stop hid that note - now a hitch note says why the guest left the exit. The rerun passed the follow.
+
+### Abandoned cars' parts: the guest's saw, the parts' damage (2026-11-09)
+Owner: "on an abandoned car the friend could saw off the whole white bar of a part, the red one never started, so the
+part could not be broken"; "the parts' breakage is not synced".
+- A part's BP_HealthComponent_C: the health (the white bar), then, once it is zero, the break health (the red one:
+  HC_GetBreakHealth / SetBreakHealth; more hits fill it up to the item's IP_Health MaxBreak, then the part breaks off -
+  TakeDamage outputs Breaking / BecameBreaking / Broken, CheckDoCut / HandleCut) - only with the component's
+  `CanBeBreaking` set. A damage message (MSG_Damage_Physical_Piercing_Scrapper etc.) dispatched to the part actor
+  through the MessageSystem works; its effect shows on the next frame (`cmds/wreck-part-probe.lua`,
+  `cmds/part-break-probe.lua` for car parts).
+- Found: CanBeBreaking on the host's wreck parts 169/169, the guest's 0/169 - the guest's parts are the host's attached
+  by lootsync applyTemplate (AttachTemplatePart), which never sets it up. Set by hand before the health ran out, the
+  guest's red bar filled as the host's (3, 6, 9); set after the health reached zero it did nothing (the breaking starts
+  at the zero). Also each side rolled its own health (a wheel 108 on the host, 10 on the guest) and saw only its own
+  hits; a part broken off went already (the loot's part list).
+- Fix (statesync CoopSyncWreck, in a do-block: the main chunk's locals): the guest sets CanBeBreaking on every wreck
+  part at the start and every 10 s; a hit on a wreck part (hook on the component's "Process Damage Message": marks the
+  part) sends `WPH <wreck key> <socket> <health> <break health>` on the next frames (while hit + 1 s), the other side
+  sets its copy (SetHealth / SetBreakHealth; index by wreck address + socket, rebuilt at most every 5 s); the host
+  sends every part's 3 s in and every 30 s (189 lines), a part this side hit in the last 3 s keeps its own.
+- Test `part-break-test.ps1` (quick suite): guest 189/189 can break, the wreck's healths equal the host's; the guest
+  saws a door past its health -> break health 5 on both; saws it off -> gone on both; the host saws a panel -> the
+  guest's copy follows; no errors. 8/8.
+- Seen on the way, not the owner's report: a part of the other's car (its twin) behaves the same - the white bar goes on
+  the twin, the red never starts, the owner's next state line puts the health back (twin damage is the owner's
+  business, stage B). Sawing the friend's car's parts would need the hit sent to the owner.

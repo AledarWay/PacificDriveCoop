@@ -64,6 +64,7 @@ $tests = @(
     @{ name = 'twin-outside';  quick = $true;  cmd = { & "$t\twin-outside-test.ps1" } },
     @{ name = 'seat-measure';  quick = $true;  cmd = { & "$t\seat-measure-test.ps1" } },
     @{ name = 'instability';   quick = $true;  cmd = { & "$t\instability-test.ps1" } },
+    @{ name = 'part-break';    quick = $true;  cmd = { & "$t\part-break-test.ps1" } },
     @{ name = 'garage-seat';   quick = $true;  cmd = { & "$t\garage-seat-test.ps1" } },
     @{ name = 'gates';         quick = $true;  cmd = { & "$t\gates-test.ps1" } },
     @{ name = 'esc';           quick = $true;  cmd = { & "$t\esc-test.ps1" } },

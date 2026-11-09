@@ -345,6 +345,7 @@ local function hostHandle(t)
         return
     end
     if op == "GOB" then count(CoopSyncGobbler.apply(t[2]) and "req_GOB_done" or "req_GOB_failed") return end
+    if op == "WPH" then local okW, r = pcall(CoopSyncWreck.apply, t) count("req_WPH_" .. (okW and tostring(r) or "error")) return end
     local a = Sync.deref(key)
     if not a then count("req_" .. op .. "_missing") send("host.events", "NACK\t" .. op .. "\t" .. key) return end
     if op == "EXIT" then count(CoopSyncExit.apply(a) and "req_EXIT_done" or "req_EXIT_failed") return end
@@ -803,6 +804,7 @@ local function clientApply(t)
     if op == "RG" then CoopSyncRange.apply(t) return end
     if op == "TP" or op == "TS" then CoopSyncTour.apply(t) return end
     if op == "GOB" then count(CoopSyncGobbler.apply(t[2]) and "ap_GOB" or "ap_GOB_failed") return end
+    if op == "WPH" then local okW, r = pcall(CoopSyncWreck.apply, t) count("ap_WPH_" .. (okW and tostring(r) or "error")) return end
     if op == "FUEL" then
         local a = resolve(t[2])
         count(not a and "ap_FUEL_unmapped" or CoopSyncFuel.set(a, tonumber(t[3])) and "ap_FUEL" or "ap_FUEL_failed")
@@ -1952,6 +1954,131 @@ function FUEL.tick()
     end
 end
 
+-- Abandoned cars' parts (owner, 2026-11-09: "on an abandoned car the friend sawed off the whole white bar of a part,
+-- the red one never started, so the part could not be broken"; "the parts' breakage is not synced"). A wreck part's
+-- BP_HealthComponent_C has the health (the white bar) and, once that is gone, the break health (the red one, filled up
+-- to the item's MaxBreak by more hits, then the part breaks off) - only if the component's CanBeBreaking is set (the
+-- game sets it on its own parts: 169/169 on the host; the guest's parts are the host's attached by lootsync, 0/169:
+-- now set there, see lootsync applyTemplate). Each side also rolled its own health (a wheel 108 on the host, 10 on the
+-- guest) and saw only its own hits. Now a hit on a wreck part (the component's "Process Damage Message", hooked: it
+-- only marks the part) sends the part's two values over on the next frames, the other side sets them on its copy; the
+-- host sends every part's every WRK.ALL_S (the guest's own roll, a lost line; a part this side hit in the last
+-- WRK.HOLD_S keeps its own). A part broken off goes as before (the loot's part list).
+--   WPH <wreck key> <socket> <health> <break health>   (host -> guest on the events, guest -> host on the requests)
+CoopSyncWreck = CoopSyncWreck or { hooked = false }
+do -- (a block: statesync's main chunk is near Lua's 200 locals; outside it is CoopSyncWreck)
+local WRK = CoopSyncWreck
+WRK.ALL_S, WRK.HOLD_S, WRK.WATCH_S, WRK.SWEEP_S = 30, 3, 1, 10
+WRK.HC = "/Game/Gameplay/Inventory/GenericItemProperties/Components/BP_HealthComponent.BP_HealthComponent_C"
+function WRK.hook()
+    WRK.notify = function(comp)
+        local p = comp:GetOwner()
+        if p and p:IsValid() and p:IsA(WRK.partCls) then WRK.dirty[p:GetAddress()] = { p = p, at = os.clock() } end
+    end
+    if WRK.hooked then return end
+    if not isFunction(WRK.HC .. ":Process Damage Message") then error("no Process Damage Message") end
+    WRK.hooked = true
+    Hook(WRK.HC .. ":Process Damage Message", function(self)
+        if not WRK.notify then return end
+        pcall(WRK.notify, self:get())
+    end)
+end
+function WRK.values(p)
+    local hc = p:GetComponentByClass(WRK.hcCls)
+    if not (hc and hc:IsValid()) then return nil end
+    return math.floor(hc:HC_GetHealth() * 10 + 0.5) / 10, math.floor(hc:HC_GetBreakHealth() * 10 + 0.5) / 10, hc
+end
+-- the part's wreck key (the host's) and socket, or nil
+function WRK.keyOf(p)
+    local w = p:GetAttachParentActor()
+    if not (w and w:IsValid()) then return nil end
+    local ref = Sync.ref(w)
+    local key = role == "host" and ref or reverse[ref]
+    return key, p.MySocket:ToString()
+end
+function WRK.sendPart(p, force)
+    local key, sock = WRK.keyOf(p)
+    if not key then return end
+    local h, b = WRK.values(p)
+    if not h then return end
+    local k = key .. "\t" .. sock
+    local was = WRK.last[k]
+    if not force and was and was[1] == h and was[2] == b then return end
+    WRK.last[k] = { h, b }
+    send(role == "host" and "host.events" or "client.requests", string.format("WPH\t%s\t%s\t%.1f\t%.1f", key, sock, h, b))
+    WRK.sent = (WRK.sent or 0) + 1
+    count(role == "host" and "ev_WPH" or "rq_WPH")
+end
+function WRK.tick()
+    WRK.partCls = WRK.partCls or StaticFindObject("/Script/PenDriverPro.LootableTemplatePart")
+    WRK.hcCls = WRK.hcCls or StaticFindObject(WRK.HC)
+    if not (WRK.partCls and WRK.partCls:IsValid() and WRK.hcCls and WRK.hcCls:IsValid()) then return end
+    local now = os.clock()
+    -- (the hit's effect shows on the next frames: a hit part is read for WATCH_S after its last hit)
+    for addr, e in pairs(WRK.dirty) do
+        if not e.p:IsValid() or now - e.at > WRK.WATCH_S then WRK.dirty[addr] = nil
+        else
+            WRK.mine[addr] = now
+            pcall(WRK.sendPart, e.p, false)
+        end
+    end
+    if role ~= "host" then
+        -- the guest's parts are the host's attached by lootsync (AttachTemplatePart), never set up to break by the
+        -- game: CanBeBreaking false (0 of 169; the host's 169 of 169), so once the health was gone more hits did
+        -- nothing. Set at the start and every WRK.SWEEP_S for parts attached since; before any hit counts: the game
+        -- starts the breaking as the health reaches zero.
+        if now - WRK.sweepAt < WRK.SWEEP_S then return end
+        WRK.sweepAt = now
+        for _, p in ipairs(FindAllOf("LootableTemplatePart") or {}) do
+            pcall(function()
+                local hc = p:IsValid() and p:GetComponentByClass(WRK.hcCls)
+                if hc and hc:IsValid() and not hc.CanBeBreaking then hc.CanBeBreaking = true WRK.breakable = (WRK.breakable or 0) + 1 end
+            end)
+        end
+        return
+    end
+    if now - WRK.allAt < WRK.ALL_S then return end
+    WRK.allAt = now
+    for _, p in ipairs(FindAllOf("LootableTemplatePart") or {}) do
+        if p:IsValid() then pcall(WRK.sendPart, p, true) end
+    end
+    count("ev_WPH_all")
+end
+-- the other side's values onto this side's copy of the part (key: the host's wreck key)
+function WRK.apply(t)
+    local w = role == "host" and Sync.deref(t[2]) or resolve(t[2])
+    if not w then return "unmapped" end
+    local h, b = tonumber(t[4]), tonumber(t[5])
+    if not (h and b) then return "bad" end
+    -- (parts by wreck address and socket, built at most every 5 s or when one is missing: the host's full list is
+    -- 169 lines)
+    local k = tostring(w:GetAddress()) .. "\t" .. t[3]
+    local p = WRK.index and WRK.index[k]
+    if not (p and p:IsValid()) and os.clock() - (WRK.indexAt or -1e9) > 5 then
+        WRK.indexAt, WRK.index = os.clock(), {}
+        for _, x in ipairs(FindAllOf("LootableTemplatePart") or {}) do
+            local par = x:IsValid() and x:GetAttachParentActor()
+            if par and par:IsValid() then WRK.index[tostring(par:GetAddress()) .. "\t" .. x.MySocket:ToString()] = x end
+        end
+        p = WRK.index[k]
+    end
+    do
+        if p and p:IsValid() then
+            if os.clock() - (WRK.mine[p:GetAddress()] or -1e9) < WRK.HOLD_S then return "mine" end
+            local ch, cb, hc = WRK.values(p)
+            if not ch then return "nohealth" end
+            if not hc.CanBeBreaking then hc.CanBeBreaking = true end
+            if math.abs(ch - h) >= 0.1 then hc:SetHealth(h) end
+            if math.abs(cb - b) >= 0.1 then hc:SetBreakHealth(b) end
+            WRK.last[t[2] .. "\t" .. t[3]] = { h, b }
+            WRK.applied = (WRK.applied or 0) + 1
+            return (math.abs(ch - h) >= 0.1 or math.abs(cb - b) >= 0.1) and "set" or "same"
+        end
+    end
+    return "nopart"
+end
+end
+
 -- Range-started hazards (owner, alpha 18 item 23: "the saw lags on the guest", "the geyser fires later on the guest").
 -- A saw blade (BP_Hazard_SawBlade_C: rises, runs its track, holds, runs back - timelines) and a geyser
 -- (BP_Hazard_*Geyser_C: waves of acid globs) start when their BP_HazardProperty_PlayerRange component finds the local
@@ -2592,6 +2719,12 @@ function M.start(syncModule, r, channelDir, hostListPath)
     local okSt, eSt = pcall(STORM.hook)
     if not okSt then err("storm hooks: " .. tostring(eSt)) end
     STORM.at, STORM.sent, STORM.done, STORM.have = nil, 0, 0, 0
+    local W = CoopSyncWreck
+    local okW, eW = pcall(W.hook)
+    if not okW then err("wreck part hook: " .. tostring(eW)) end
+    -- (the host's first full list 3 s in: the guest imported the host's parts before this start, with its own health)
+    W.dirty, W.mine, W.last, W.index, W.allAt, W.sent, W.applied = {}, {}, {}, nil, os.clock() - W.ALL_S + 3, 0, 0
+    W.sweepAt, W.breakable = -1e9, 0
     local okK, eK = pcall(hookKnocks)
     if not okK then err("knock hooks: " .. tostring(eK)) end
     if not okX then err("exit hook: " .. tostring(eX)) end
@@ -2624,6 +2757,8 @@ function M.start(syncModule, r, channelDir, hostListPath)
         local okF, eF = pcall(FUEL.tick)
         local okSt, eSt = pcall(STORM.tick)
         if not okSt then err("storm: " .. tostring(eSt)) end
+        local okWp, eWp = pcall(CoopSyncWreck.tick)
+        if not okWp then err("wreck parts: " .. tostring(eWp)) end
         local okR, eR = pcall(RANGE.tick)
         if not okR then err("range: " .. tostring(eR)) end
         local okT, eT = pcall(TOUR.tick)

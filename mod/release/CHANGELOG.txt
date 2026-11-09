@@ -34,6 +34,11 @@ The instability and the sky:
 - The sun and the fog follow the host's more closely: the host sends its sky 4 times a second instead of every 2 s.
   The fog and the sun swing back and forth with the weather, and the guest was up to 2 s behind (up to 10 % brighter
   or darker at a moment); now within about 1 %.
+Abandoned cars' parts:
+- The guest can saw and break an abandoned car's parts. Before, the guest's saw took the white bar and the red one
+  never came, so the part never broke off: the guest's copies of the host's parts were never set up to break.
+- The parts' damage is shared: both see the same white and red bars, whoever saws, and a part one player breaks off
+  is gone for the other too. Before, each game had its own random health for every part.
 The own car's back seat in the garage:
 - The guest can get onto its own back seat in the garage (the back door only opened).
 - On a back seat in the garage the key, the levers and the driver's door are out of reach, the way out is the back
@@ -43,7 +48,8 @@ The pause menu:
   Continue close it again.
 Tests: the map test starts the guest from a new game's garage and checks the junctions, the roads and the blocked
 trip; a new garage-seat test; the Esc test leaves the session with the menu open; a new instability test (the
-host's storm on the guest); the light check in the next-zone test compares both games at the same moments.
+host's storm on the guest); the light check in the next-zone test compares both games at the same moments; a new
+part-break test (an abandoned car's parts sawed and broken off from both sides).
 Known issues:
 - The anchor in both players' hands is still not reproduced in the tests (a stable anchor on a pedestal, the
   game's own long grab on the other side gives nobody an item). Please send a report right after it happens.

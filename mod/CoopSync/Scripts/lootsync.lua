@@ -463,6 +463,7 @@ local function applyTemplate(a, spec, ctx)
             stats.failed = stats.failed + 1
         end
     end
+    -- (a part attached this way is never set up to break - CanBeBreaking false: statesync's wreck parts sweep sets it)
     -- Sub-containers of attached items (trunk contents) are (re)initialized by the part after it is
     -- attached, so they are filled in a later pass: flushPending(), called a few seconds later.
     for _, ps in ipairs(splitTop(spec, "~")) do
