@@ -72,6 +72,11 @@ $alive = "local a = StaticFindObject((CoopDevStray or ''):gsub('^%S+ ', '')) if 
 "  guest: " + (Send $cd $plant); Start-Sleep 16
 $st = Send $cd $alive; $h1 = Send $hd $hzN; $g1 = Send $cd $hzN; $cr = Send $cd "return CoopSyncState.report()"
 $nh = HzSum $h1; $ng = HzSum $g1
+# (the guest's unmapped hazards in the level: where, pooled, a root - a run had 3 bollards more than the host, quick
+# suite 2026-11-10)
+if ($nh -ne $ng) {
+    "  guest's unmapped: " + (Send $cd "local mapped = {} for _, p in pairs(CoopSyncMap or {}) do mapped[p] = true end local o = {} for _, a in ipairs(FindAllOf('BP_Base_Hazard_C') or {}) do local p = a:GetFullName():gsub('^%S+ ', '') if p:find(':PersistentLevel.', 1, true) and not mapped[p] then local l = a:K2_GetActorLocation() if not (math.abs(l.X) < 1 and math.abs(l.Y) < 1) then o[#o + 1] = string.format('%s@%.0f,%.0f pool=%s root=%s', a:GetFName():ToString(), l.X, l.Y, tostring(CoopSync.inPool(a)), tostring(CoopSync.isRoot(a))) end end end return #o .. ': ' .. table.concat(o, ' ')")
+}
 Check "a hazard only the guest's game spawned goes, the hazards are the host's (item 11)" ($st -ne 'standing' -and $nh -eq $ng -and (Stat $cr 'stray_hazard') -ge 1) "planted bollard: $st; hazards host $nh / guest $ng (before: $(HzSum $h0) / $(HzSum $g0); host/guest differ: $(HzDiff $h1 $g1)); guest stray_hazard=$(Stat $cr 'stray_hazard')"
 
 function Finish {
@@ -198,9 +203,11 @@ $gMax = Send $cd "return string.format('%.1f', SW_MAX)"
 $cr = Send $cd "return CoopSyncState.report()"
 Check "the host's sway reached the guest's copy" ([double]$gMax -gt 3 -and (Stat $cr 'ap_TS') -ge 1) "guest body tilted $gMax deg; guest ap_TS=$(Stat $cr 'ap_TS') TS_already=$(Stat $cr 'ap_TS_already')"
 $k2 = Send $cd "FAR_FROM = '$k1' $near"
-"  guest spins $k2`: " + (Spin $cd $k2) + " | host " + (Send $hd $tilt.Replace('KEY', $k2))
+"  guest spins $k2`: " + (Spin $cd $k2) + " | host " + (Send $hd $tilt.Replace('KEY', $k2)) + " | guest " + (Send $cd $tilt.Replace('KEY', $k2).Replace('SW_MAX', 'SW2_MAX'))
 Start-Sleep 7
 $hMax = Send $hd "return string.format('%.1f', SW_MAX)"
 $hr = Send $hd "return CoopSyncState.report()"
-Check "the guest's sway reached the host's copy" ([double]$hMax -gt 3 -and (Stat $hr 'req_TS') -ge 1) "host body tilted $hMax deg; host req_TS=$(Stat $hr 'req_TS')"
+# (the guest's own: did its mine sway, did it send - a miss had req_TS=0 on the host, quick suite 2026-11-10)
+$g2 = Send $cd "local a = CoopSync.deref(CoopSyncMap['$k2']) local l = a and a:K2_GetActorLocation() local p = FindFirstOf('PlayerController').Pawn:K2_GetActorLocation() local car = FindFirstOf('BP_CarManager_C').NewCarActor local c = car:K2_GetActorLocation() local function d(x) return l and math.floor(math.sqrt((x.X - l.X) ^ 2 + (x.Y - l.Y) ^ 2)) or -1 end return string.format('tilted=%.1f rq_TS=%s pawn_d=%s car_d=%s car=%s', SW2_MAX or -1, CoopSyncState.report():match('rq_TS=(%d+)') or '0', d(p), d(c), car:GetFName():ToString())"
+Check "the guest's sway reached the host's copy" ([double]$hMax -gt 3 -and (Stat $hr 'req_TS') -ge 1) "host body tilted $hMax deg; host req_TS=$(Stat $hr 'req_TS') | guest: $g2"
 Finish

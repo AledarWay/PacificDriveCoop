@@ -55,7 +55,7 @@ function OwnDoors($dir) { Send $dir "local T = CoopPlayers.twinModule() local ow
 function OwnAt($dir) { Send $dir "local l = CoopPlayers.twinModule().ownCar():K2_GetActorLocation() return string.format('%.0f,%.0f', l.X, l.Y)" }
 function Moved($a, $b) { $p = $a -split ','; $q = $b -split ','; [math]::Round([math]::Sqrt(([double]$q[0] - [double]$p[0]) * ([double]$q[0] - [double]$p[0]) + ([double]$q[1] - [double]$p[1]) * ([double]$q[1] - [double]$p[1]))) }
 # look at door n of the other's twin until the game highlights it (as a player aims), then E for $ms
-function Tap($dir, [int]$door, [int]$ms = 100) {
+function Tap($dir, [int]$door, [int]$ms = 100, [switch]$OnlyIfLit) {
     $slot = @{ 1 = 'DoorsFL'; 2 = 'DoorsFR'; 3 = 'DoorsRL'; 4 = 'DoorsRR'; 5 = 'DoorsTrunk' }[$door]
     $h = ''
     foreach ($dz in 0, 20, -20, 40, -40) {
@@ -63,12 +63,21 @@ function Tap($dir, [int]$door, [int]$ms = 100) {
         # (LOOK_OWN = false: a global left set by an own-car look - step 10 - aimed at the own car's door)
         Send $dir "LOOK_OWN = false LOOK_DZ = $dz LOOK_SLOT = '$slot' $look" | Out-Null
         Start-Sleep -Milliseconds 700
-        Send $dir "LOOK_OWN = false LOOK_DZ = $dz LOOK_SLOT = '$slot' $look" | Out-Null
+        $lk = Send $dir "LOOK_OWN = false LOOK_DZ = $dz LOOK_SLOT = '$slot' $look"
         Start-Sleep -Milliseconds 500
         $h = Send $dir "local g, n = CoopPlayers.twinModule().highlightedDoor() return tostring(n)"
         if ($h -match "^(OK )?$door\s*$") { break }
     }
-    (Press $dir $ms) + " at door $door (highlighted: $($h.Trim()))"
+    # (none: what the look did and what the game highlights instead, the pawn's state - the aim missed now and then)
+    $why = ''
+    if ($h -match 'nil') {
+        $why = ' | look: ' + (($lk -split "`n") | Select-Object -Last 1) + ' | ' + (Send $dir "local pc = FindFirstOf('PlayerController') local p = pc.Pawn local h = FindFirstOf('BP_HighlightManager_C').CurrentHighlight local a = p:GetAttachParentActor() local l = p:K2_GetActorLocation() return string.format('hl=%s attached=%s pawn=%.0f,%.0f,%.0f %s', h and h:IsValid() and (h:GetFName():ToString() .. '@' .. h:GetOwner():GetClass():GetFName():ToString()) or 'none', tostring(a and a:IsValid() and a:GetClass():GetFName():ToString()), l.X, l.Y, l.Z, CoopPlayers.nativeInfo():match('aimed=%S+') or '')")
+        $why += ' ' + (Send $dir "local h = FindFirstOf('BP_HighlightManager_C').CurrentHighlight local a = h and h:IsValid() and h:GetOwner() if not a then return 'owner=-' end local car, g = a, 0 while g < 10 do local p = car:GetAttachParentActor() if not (p and p:IsValid()) then break end car, g = p, g + 1 end local out = {} local slot = '-' if a:GetClass():GetFName():ToString() == 'BP_CarPart_Interactive_C' then pcall(function() a:GetSlotComponent(out) slot = out.SlotSceneComponent.SlotName.TagName:ToString() end) end return 'owner=' .. car:GetFName():ToString() .. ' twin=' .. tostring(CoopPlayers.twinModule().isTwin(car)) .. ' slot=' .. slot")
+        # (-OnlyIfLit: no E on something else - an E on another spot got the host into the car and the next spot's
+        # try started seated, cars 8b, 2026-11-10)
+        if ($OnlyIfLit) { return "no E at door $door (highlighted: $($h.Trim()))$why" }
+    }
+    (Press $dir $ms) + " at door $door (highlighted: $($h.Trim()))$why"
 }
 # door n: of the own car (O = open) and of the other's twin (its largest yaw / pitch), every 100 ms for 4 s
 $sampler = "DL = {} local t0 = os.clock() local h h = LoopInGameThreadWithDelay(100, function() local dt = os.clock() - t0 if dt > 4 then CancelDelayedAction(h) return end local i = tostring(CoopPlayers.doorInfo(DLN)) local r = i:match('twin_rot=(%S+)') or '0/0' local y, p = r:match('(-?[%d.]+)/(-?[%d.]+)') DL[#DL + 1] = string.format('%s%d', i:match('own_open=(%a+)') == 'true' and 'O' or '-', math.floor(math.max(math.abs(tonumber(y) or 0), math.abs(tonumber(p) or 0)))) end) return 'sampling'"
@@ -292,7 +301,7 @@ foreach ($spot in '100, -230', '60, -190') {
     $xy = $spot -split ', '
     "  host to the twin's driver's door: " + (Send $hd "$(Twin) local KML = StaticFindObject('/Script/Engine.Default__KismetMathLibrary') local w = KML:TransformLocation(tw:GetTransform(), { X = $($xy[0]), Y = $($xy[1]), Z = 0 }) local p = FindFirstOf('PlayerController').Pawn p:K2_SetActorLocation({ X = w.X, Y = w.Y, Z = w.Z + 100 }, false, {}, true) return 'there ($spot)'")
     Start-Sleep 2
-    $tap = Tap $hd 1
+    $tap = Tap $hd 1 -OnlyIfLit
     "  host: $tap"
     if ($tap -notmatch 'highlighted: nil') { break }
 }

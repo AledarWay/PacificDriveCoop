@@ -3833,3 +3833,23 @@ Owner: "I open the friend's trunk and see my own things".
   until the striker came 80 closer, and the check uses the speed the hit gave (dv: the velocity change within 1 s of
   the closest moment), not the top speed.
 - nextzone light check: 5 % for 9 pairs in 10 and 10 % at most (one pair of 51 was 5.2 % off while the fog swung).
+
+### Test flakes of the quick suite (2026-11-10)
+- contact / cars "the guest getting out opens the host's door 3": the host got only the shut. The exit's open went
+  out only from the door-flag watch (the game's flag change seen while the other's car was the context); when the
+  switch back to the own car came first, nothing. Fix (playersync TD.nativeLeft): the open is sent there unless one
+  went out for that door within 2 s (st.exitOpenSent).
+- contact kick moved the host 53-76 instead of ~290: knocked into its car or up a slope (LaunchCharacter in walking
+  mode, 550 cm/s, the sweep slid along). The test now picks a flat clear way (cmds/kick-dir.lua: 8 directions, knee /
+  chest traces 350 out, the lowest ground) and puts the guest behind the host on it: 320. kicked() keeps kick_at
+  (mode, speed limit, direction).
+- twin-radio rt_played=0: the guest's own DJ had picked the host's track already - nothing to play; the check is the
+  track itself now. instability: one 4 s read missed the host's line under load; polled up to 12 s.
+- cars: Tap pressed E with nothing of the twin's lit (another spot: the host got into the car, the next try started
+  seated); 8b's tries use -OnlyIfLit, and a miss prints the look, the highlight's owner car / slot, the pawn.
+  Still open: 8b / 9 on the slope - the guest's car, parked after the host's drive, slid back ~750 and then did not
+  move under the guest's throttle (moved 7, engine on, drive) - where it ends up in the zone.
+- range, still open: the guest's mine sway did not reach the host - once the host's copy never moved, once the host's
+  mine exploded (ev_X / ev_D) as the guest's car was teleported near it; the stray-hazard check had 3 guest bollards
+  more than the host (unmapped list printed now).
+- anomaly hz_grant=0 once (the rerun passed); no data.

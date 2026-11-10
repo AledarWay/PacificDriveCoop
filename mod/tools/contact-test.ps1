@@ -48,6 +48,7 @@ function DoorE($dir, [int]$door) {
     Send $dir "local p = FindFirstOf('PlayerController').Pawn p['Command Interact'](p, true) Dev.after(300, function() local q = FindFirstOf('PlayerController').Pawn q['Command Interact'](q, false) end) return 'E at door $door'"
 }
 # put the character $d units in front of the other player's puppet, facing it
+function Twin() { "local T = CoopPlayers.twinModule() local tw for _, c in ipairs(FindAllOf('BP_PlayerCarNew_C') or {}) do if c:IsValid() and T.isTwin(c) then tw = c end end" }
 function FaceOther($dir, [double]$d) {
     Send $dir "local pc = FindFirstOf('PlayerController') local p = pc.Pawn local o = CoopPlayers.otherPawnAt() if not o then return 'no other' end local me = p:K2_GetActorLocation() local dx, dy = me.X - o.X, me.Y - o.Y local l = math.sqrt(dx * dx + dy * dy) if l < 1 then dx, dy, l = 1, 0, 1 end p:K2_SetActorLocation({ X = o.X + dx / l * $d, Y = o.Y + dy / l * $d, Z = o.Z + 20 }, false, {}, true) pc:SetControlRotation({ Pitch = 0, Yaw = math.deg(math.atan(-dy, -dx)), Roll = 0 }) return string.format('%.0f from the other', $d)"
 }
@@ -124,7 +125,16 @@ $p = Puppet $cd
 Check "guest walking into the host stops at its capsule" ($before -gt 300 -and $after -gt 45 -and $after -lt 150) "distance before $before, after $after; puppet: state=$($p.state)"
 
 "=== 5. the guest kicks the host"
-"  guest: " + (FaceOther $cd 110); Start-Sleep 2
+# (the host 5 m out from its car, the guest between them: the kick knocks the host away from the car - into it the host
+# moved 53, quick suite 2026-11-10)
+"  host: " + (Send $hd "local p = FindFirstOf('PlayerController').Pawn local c = CoopPlayers.twinModule().ownCar():K2_GetActorLocation() local l = p:K2_GetActorLocation() local dx, dy = l.X - c.X, l.Y - c.Y local n = math.sqrt(dx * dx + dy * dy) if n < 1 then dx, dy, n = 1, 0, 1 end p:K2_SetActorLocation({ X = c.X + dx / n * 500, Y = c.Y + dy / n * 500, Z = l.Z + 20 }, false, {}, true) return 'away from its car'")
+Start-Sleep 3
+$kd = Send $hd (Get-Content "$t\cmds\kick-dir.lua" -Raw)
+"  host's clear way: $kd"
+$kyaw = if ($kd -match '^(?:OK )?(-?\d+) ') { [int]$Matches[1] } else { 0 }
+# (the guest behind the host on that way, facing it: the kick knocks the host along a flat, clear way - into the car or
+# up a slope it moved 53-76 instead of ~290, quick suite 2026-11-10)
+"  guest: " + (Send $cd "local pc = FindFirstOf('PlayerController') local p = pc.Pawn local o = CoopPlayers.otherPawnAt() if not o then return 'no other' end local dx, dy = math.cos(math.rad($kyaw)), math.sin(math.rad($kyaw)) p:K2_SetActorLocation({ X = o.X - dx * 110, Y = o.Y - dy * 110, Z = o.Z + 20 }, false, {}, true) pc:SetControlRotation({ Pitch = 0, Yaw = $kyaw, Roll = 0 }) return 'behind the host on its way, 110 from it'"); Start-Sleep 2
 $h0 = PawnAt $hd
 $hp = "local h = FindFirstOf('BP_ResourceManager_C').PlayerHealth return string.format('%.2f/%.2f', h.Current, h.Maximum)"
 $hp0 = Send $hd $hp

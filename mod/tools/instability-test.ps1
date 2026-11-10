@@ -86,8 +86,13 @@ function Near2($a, $b) { if ($a -eq '-' -or $b -eq '-') { return $false }; $x = 
 "=== 2. the guest's own timer cannot go first (a lower tolerance of its own, its instability racing ahead)"
 "  guest: " + (Send $cd "local m = FindFirstOf('BP_StormManager_C') m.FinalInstabilityTollerance = 1000 return 'own tolerance 1000'")
 "  host: " + (Send $hd "local m = FindFirstOf('BP_StormManager_C') m:IncrementStormInstability(3000) local it = {} m:GetCurrentInstabilityTime(it) return 'instability ' .. it.CurrentInstabilityTime")
-Start-Sleep 4
-$hs = Storm $hd; $cs = Storm $cd
+# (up to 12 s: the host's line comes every 1 s, but one 4 s read under the full suite's load still had the guest's old
+# instability - its tolerance had come, quick suite 2026-11-10)
+for ($i = 0; $i -lt 6; $i++) {
+    Start-Sleep 2
+    $hs = Storm $hd; $cs = Storm $cd
+    if ([Math]::Abs([double]$cs.inst - [double]$hs.inst) -lt 50 -and $cs.tol -eq $hs.tol) { break }
+}
 Check "the guest has the host's instability and tolerance" ([Math]::Abs([double]$cs.inst - [double]$hs.inst) -lt 50 -and $cs.tol -eq $hs.tol) "host $($hs.raw) | guest $($cs.raw)"
 "  guest: " + (Send $cd "local m = FindFirstOf('BP_StormManager_C') m:IncrementStormInstability(100000) Dev.after(1500, function() m['Check Instability'](m) end) return 'own instability +100000, a check in 1.5 s'")
 Start-Sleep 12

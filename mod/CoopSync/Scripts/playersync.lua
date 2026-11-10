@@ -741,7 +741,9 @@ function TD.sendDoor(n, op)
     append(outFile, string.format("DR\t%d\t%d\t%s", M.nowMs(), n, op))
     st.doorsSent = (st.doorsSent or 0) + 1
     st.lastDoorSent = n .. ":" .. op
+    if op == "open" then TD.openSentMs[n] = M.nowMs() end
 end
+TD.openSentMs = {} -- door -> when its last "open" went out
 function TD.seatFreeForMe(tag, n)
     -- (the trunk lid: no seat behind it - a tap only opens / shuts it; owner, alpha 16: the guest could not shut the
     -- host's trunk - the tap tried to get in there and failed before the toggle was sent)
@@ -1360,7 +1362,13 @@ function TD.nativeLeft(pawn)
     -- (the owner's door of that seat shut for sure: the context may be the own car again by then - the host's door 3
     -- stayed open, cars-test)
     local en = inGhost.seat or inGhost.door
-    if en and SEAT_DOOR[en] then TD.exitShut = { n = en, at = M.nowMs() + TD.EXIT_SHUT_MS } end
+    if en and SEAT_DOOR[en] then
+        -- (and opened for the way out: the watch sends it only if it saw the game's flag change while the other's car
+        -- was the context - when the switch came first only the shut went, the host's door 3 never opened; contact /
+        -- cars, quick suite 2026-11-10)
+        if M.nowMs() - (TD.openSentMs[en] or -1e9) > 2000 then TD.sendDoor(en, "open") st.exitOpenSent = (st.exitOpenSent or 0) + 1 end
+        TD.exitShut = { n = en, at = M.nowMs() + TD.EXIT_SHUT_MS }
+    end
     pcall(TD.stopDriving)
     pcall(twinControlsRestore)
     local g = ghostOf(inGhost.tag)
@@ -2393,6 +2401,12 @@ end
 local function kicked(dx, dy)
     local pawn = localPawn()
     if not pawn or Sync.parentOf(pawn) or inGhost then return end
+    -- (the movement mode and speed limit at the kick, the way it went: a kick moved the host 53-72 instead of ~290 now
+    -- and then, quick suite 2026-11-10)
+    pcall(function()
+        local cm = pawn.CharacterMovement
+        st.kickAt = string.format("mode=%s max=%.0f dir=%.2f,%.2f", tostring(cm.MovementMode), cm.MaxWalkSpeed, dx, dy)
+    end)
     pcall(function() pawn:LaunchCharacter({ X = dx * KICK_SPEED, Y = dy * KICK_SPEED, Z = KICK_UP }, true, true) end)
     st.kicksTaken = (st.kicksTaken or 0) + 1
     -- and TD.KICK_DMG of the player's health (owner's alpha 19 item 17): the game's resource straight - exactly that
@@ -2656,7 +2670,7 @@ function M.botKick()
     return string.format("kick input: %s %s, hook fired: %s", tostring(ok), tostring(e or ""), tostring((st.kickTries or 0) > n))
 end
 function M.kickInfo()
-    return string.format("kick_tries=%d kicks_sent=%d kicks_taken=%d kick_health=%s hooked=%s doors_hidden=%d ghost_door_taken=%d", st.kickTries or 0, st.kicksSent or 0, st.kicksTaken or 0, tostring(st.kickHealth),
+    return string.format("kick_tries=%d kicks_sent=%d kicks_taken=%d kick_at=%s kick_health=%s hooked=%s doors_hidden=%d ghost_door_taken=%d", st.kickTries or 0, st.kicksSent or 0, st.kicksTaken or 0, (tostring(st.kickAt):gsub(" ", "_")), tostring(st.kickHealth),
         tostring(CoopSyncKickHooks and CoopSyncKickHooks.done == true), CoopSyncDoorHooks and CoopSyncDoorHooks.hidden or 0, st.ghostDoorTaken or 0)
 end
 

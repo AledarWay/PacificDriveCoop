@@ -70,7 +70,9 @@ Check "guest: outside, its own radio stays off" ((RadioOn $cd) -eq 'false') "gue
 "  host: " + (Send $hd "return CoopPlayers.removeSeatDevice(3)"); Start-Sleep 3
 "  guest: " + (Tap $cd 3); Start-Sleep 8
 $gi = Ghost $cd; $ht = TrackSoon $hd; $gt = TrackSoon $cd
-Check "guest: in the twin, its radio on with the host's track" ($gi.in_ghost -eq 'H' -and (RadioOn $cd) -eq 'true' -and $gt -eq $ht -and [int]$gi.rt_played -ge 1) "in_ghost=$($gi.in_ghost) host=$ht guest=$gt rt_played=$($gi.rt_played) last_track=$($gi.last_track)"
+# (rt_played: the guest's radio put on the host's track - none needed when its own pick was that track already: the
+# game's DJ chose the same one, quick suite 2026-11-10)
+Check "guest: in the twin, its radio on with the host's track" ($gi.in_ghost -eq 'H' -and (RadioOn $cd) -eq 'true' -and $gt -eq $ht -and $ht -ne 'nil') "in_ghost=$($gi.in_ghost) host=$ht guest=$gt rt_played=$($gi.rt_played) last_track=$($gi.last_track)"
 
 "=== 2b. a DJ break on the host's radio (RequestInterstitial: natural ones need story progress the test save lacks)"
 "  host: " + (Send $hd "FindFirstOf('BP_MusicManager_C'):RequestInterstitial() return 'break asked'"); Start-Sleep 3
