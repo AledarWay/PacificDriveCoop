@@ -120,6 +120,15 @@ if ($e -match 'added [1-9]') {
     Check "host: its storage attachment got the guest's steel" $ok $sc.raw
 } else { Check "host: the storage attachment on its car" $false $e }
 
+"=== 6. the guest opens the host car's trunk box (its E, the game's handler)"
+# (the game opens the inventory manager's trunk - the guest's own - whatever car the box is in: owner 2026-11-09)
+$open = Send $cd "local T = CoopPlayers.twinModule() local tw for _, c in ipairs(FindAllOf('BP_PlayerCarNew_C') or {}) do if c:IsValid() and T.isTwin(c) then tw = c end end local function carOf(a) local c, g = a, 0 while g < 10 do local p = c:GetAttachParentActor() if not (p and p:IsValid()) then break end c, g = p, g + 1 end return c end local st for _, s in ipairs(FindAllOf('BP_Storage_Trunk_Base_C') or {}) do if s:IsValid() and carOf(s):GetAddress() == tw:GetAddress() then st = s end end st['BndEvt__Highlight_K2Node_ComponentBoundEvent_0_OnHighlightInteract__DelegateSignature'](st, st.Highlight, nil) return 'opened'"
+"  guest: $open"
+Start-Sleep 2
+$menu = KV (Send $cd "local T = CoopPlayers.twinModule() local tw for _, c in ipairs(FindAllOf('BP_PlayerCarNew_C') or {}) do if c:IsValid() and T.isTwin(c) then tw = c end end local function carOf(a) local c, g = a, 0 while g < 10 do local p = c:GetAttachParentActor() if not (p and p:IsValid()) then break end c, g = p, g + 1 end return c end local st for _, s in ipairs(FindAllOf('BP_Storage_Trunk_Base_C') or {}) do if s:IsValid() and carOf(s):GetAddress() == tw:GetAddress() then st = s end end local im = FindFirstOf('BP_InventoryManager_C') local c for _, x in ipairs(FindAllOf('UMG_PlayerMenu_Inventory_C') or {}) do local y = x:IsValid() and x.TransferContainer if y and y:IsValid() then c = y end end if not c then return 'twin=nomenu' end local n = 0 for i = 1, c.Slots:GetArrayNum() do local s = c.Slots[i] for j = 1, s.Items:GetArrayNum() do if s.Items[j].Archetype:GetFName():ToString() == 'IA_Resource_Raw_Fabric' then n = n + 1 end end end return string.format('twin=%s own=%s fabric=%d', tostring(c:GetAddress() == st.BP_InventoryContainerComponent.Container:GetAddress()), tostring(c:GetAddress() == im.Inventory_Trunk:GetAddress()), n)")
+$hfab = (Count $hd $FAB).own
+Check "the menu shows the host's trunk (the twin's container, not the guest's own; the host's fabric)" ($menu.twin -eq 'true' -and $menu.own -eq 'false' -and $menu.fabric -eq $hfab) "$($menu.raw) | host's fabric $hfab"
+
 $hi = Ghost $hd; $gi = Ghost $cd
 "  host: cs_sent=$($hi.cs_sent) cx_done=$($hi.cx_done) cx_put=$($hi.cx_put) cx_take=$($hi.cx_take) errors=$($hi.store_errors)"
 "  guest: cs_recv=$($gi.cs_recv) cs_applied=$($gi.cs_applied) cx_sent=$($gi.cx_sent) pointed=$($gi.trunk_pointed) errors=$($gi.store_errors)"

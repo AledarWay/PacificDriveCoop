@@ -504,6 +504,15 @@ end
 local PENDING_S = 4
 local STRAY_S = 1.5 -- a part gone from a twin slot and not with the local player after this long: not taken (watchEquip)
 function M.applyEquip(twin, equip)
+    local cm = manager()
+    local ign, gear
+    pcall(function() ign, gear = cm.CarIgnitionState, cm.MyCarGearBox end)
+    local n = M._applyEquip(twin, equip)
+    -- (parts spawned onto the twin: the own car's key and lever kept, as at its spawn and its removal)
+    if n and n > 0 then M.keepEngine(cm, ign, gear) end
+    return n
+end
+function M._applyEquip(twin, equip)
     local e = equipOf[twin:GetAddress()]
     local cont = e and Sync.deref(e.cont)
     if not cont then return 0 end
@@ -1035,6 +1044,9 @@ function M.spawn(loc, rot, equip)
     op("twin container")
     if not (okC and cont) then return nil, "no container: " .. tostring(cont) end
     local real = im.Inventory_CarEquipped
+    -- (the own car's key and lever: a twin coming stopped the own car's engine too - gascap-test step 5)
+    local ign, gear
+    pcall(function() ign, gear = cm.CarIgnitionState, cm.MyCarGearBox end)
     im.Inventory_CarEquipped = cont
     local ok, twin = pcall(function()
         local b = GS:BeginDeferredActorSpawnFromClass(FindFirstOf("PlayerController"), own:GetClass(), xf, 1, nil)
@@ -1042,6 +1054,7 @@ function M.spawn(loc, rot, equip)
     end)
     im.Inventory_CarEquipped = real
     if cm then cm.NewCarActor = own end
+    M.keepEngine(cm, ign, gear)
     if not (ok and twin and twin:IsValid()) then return nil, "spawn failed: " .. tostring(twin) end
     CoopSyncTwins[twin:GetAddress()] = weakOf(twin)
     local applied = {}
@@ -1076,11 +1089,33 @@ local function forgetManifestations(twin)
     end)
 end
 
+-- The own car's ignition and lever as they were before a twin went (the car manager's: now and once more after the
+-- frames its parts' end ran in); only while the own car is the manager's car.
+function M.keepEngine(cm, ign, gear)
+    if ign == nil then return end
+    local function put()
+        if not (cm and cm:IsValid()) then return end
+        local own = M.ownCar and M.ownCar()
+        local ctx = cm.NewCarActor
+        if not (own and own:IsValid() and ctx and ctx:IsValid() and ctx:GetAddress() == own:GetAddress()) then return end
+        if cm.CarIgnitionState ~= ign then
+            pcall(function() cm:SetCarIgnitionState(ign) end)
+            M.stats.engineKept = (M.stats.engineKept or 0) + 1
+        end
+        if gear ~= nil and cm.MyCarGearBox ~= gear then pcall(function() cm:SetCarGearBoxState(gear) end) end
+    end
+    put()
+    if CoopSyncAfter then CoopSyncAfter(100, put) CoopSyncAfter(500, put) end
+end
 -- Remove a twin and everything attached under it (a character sitting in it is detached and kept).
 function M.destroy(twin)
     if not (twin and twin:IsValid()) then return 0 end
     local cm = manager()
     if cm and cm.NewCarActor and cm.NewCarActor:IsValid() and cm.NewCarActor:GetAddress() == twin:GetAddress() then M.managerToOwn() end
+    -- (the own car's key and lever now: destroying the twin's parts stopped the own car's engine - the parts' handlers
+    -- are the car manager's, one for both cars; owner 2026-11-09: "the friend connected, my car stalled at once")
+    local ign, gear
+    pcall(function() ign, gear = cm.CarIgnitionState, cm.MyCarGearBox end)
     -- (its container is left alone: emptying it spawns placeholder parts, which inside the travel pre-hook hung both
     -- games in the save's FlushAsyncLoading; the container's outer is the transient package, it goes with the GC)
     pcall(forgetManifestations, twin)
@@ -1106,6 +1141,7 @@ function M.destroy(twin)
     lightCache[twin:GetAddress()] = nil
     local name = twin:GetFName():ToString()
     pcall(function() twin:K2_DestroyActor() end)
+    M.keepEngine(cm, ign, gear)
     M.stats.removed = M.stats.removed + 1
     print(string.format("[CoopSync] twin %s removed with %d attached\n", name, n))
     return n + 1

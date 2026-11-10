@@ -2308,6 +2308,7 @@ local function hookDoors()
     CoopSyncDoorHooks.call = TD.onDoorCall
     CoopSyncDoorHooks.catShow = TD.catShow
     CoopSyncDoorHooks.trunkRefreshed = TD.trunkRefreshed
+    CoopSyncDoorHooks.trunkOpened = TD.trunkOpened
     if CoopSyncDoorHooks.done then return end
     local d = FindFirstOf("BP_CarPart_Door_Base_C")
     local cls = d and d:GetClass():GetFullName():gsub("^%S+%s+", "")
@@ -2338,6 +2339,13 @@ local function hookDoors()
     -- trunk box (owner, alpha 16; cmds/store-point.lua). Pointed back at once (a pre-hook runs after the body).
     pcall(Hook, "/Game/Gameplay/Inventory/Items/Car/Storage/BP_Storage_Trunk_Base.BP_Storage_Trunk_Base_C:RefreshTrunkInventory", function(self)
         local f = CoopSyncDoorHooks.trunkRefreshed
+        if f then pcall(f, self:get()) end
+    end)
+    -- opening a trunk storage (its E) opens the inventory manager's trunk - the LOCAL player's own - whatever car it is
+    -- in (OpenCarInventories -> OpenInventoryContainer(Inventory_Trunk); owner 2026-11-09: "I open the friend's trunk
+    -- and see my own things"): the menu is pointed at the twin's own container after (the hook runs after the body)
+    pcall(Hook, "/Game/Gameplay/Inventory/Items/Car/Storage/BP_Storage_Trunk_Base.BP_Storage_Trunk_Base_C:BndEvt__Highlight_K2Node_ComponentBoundEvent_0_OnHighlightInteract__DelegateSignature", function(self)
+        local f = CoopSyncDoorHooks.trunkOpened
         if f then pcall(f, self:get()) end
     end)
     pcall(Hook, cls .. ":K2_ShouldHighlight", function(self)
@@ -3434,6 +3442,28 @@ function TD.trunkRefreshed(part)
     if not Twin.isTwin(car) then return end
     pcall(Twin.Store.repoint, car)
     st.trunkRefreshBack = (st.trunkRefreshBack or 0) + 1
+end
+-- (the hook on a trunk storage's E: the other's car's - the menu just opened on the own trunk shows the twin's instead,
+-- the menu's own setter UMG_PlayerMenu_Inventory "Set Transfer Containers")
+function TD.trunkOpened(part)
+    if M.stopped or not (part and part:IsValid()) then return end
+    local car, g = part, 0
+    while g < 10 do local p = car:GetAttachParentActor() if not (p and p:IsValid()) then break end car, g = p, g + 1 end
+    if not Twin.isTwin(car) then return end
+    pcall(Twin.Store.repoint, car)
+    local cont = part.BP_InventoryContainerComponent.Container
+    if not (cont and cont:IsValid()) then return end
+    local im = (CoopSyncFirst or FindFirstOf)("BP_InventoryManager_C")
+    local own = {}
+    for _, f in ipairs({ "Inventory_Trunk", "Inventory_LargeTrunk" }) do local c = im and im[f] if c and c:IsValid() then own[c:GetAddress()] = true end end
+    for _, w in ipairs(FindAllOf("UMG_PlayerMenu_Inventory_C") or {}) do
+        local cur = w:IsValid() and w.TransferContainer
+        if cur and cur:IsValid() and own[cur:GetAddress()] then
+            w["Set Transfer Containers"](w, cont, true, nil)
+            st.trunkMenuPointed = (st.trunkMenuPointed or 0) + 1
+            st.lastTrunkMenu = cont:GetFName():ToString()
+        end
+    end
 end
 -- every frame: the twins (client: the host's car, host: the guest's)
 function TD.twinFrame()

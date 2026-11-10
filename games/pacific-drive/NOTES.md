@@ -3760,3 +3760,29 @@ Owner: "the friend's car's fuel tank does nothing - let us siphon from it (as fr
   (TransferFuel, steps of 0.5) pours 3 -> host +3, siphons 2 -> host -2, the guest's own unchanged; the host pours 2
   into the guest's car -> guest +2. 4/4. Not covered: holding a canister at the cap by hand (the test calls
   TransferFuel, what the hold ends in - assumed from the names).
+### The other's trunk box (2026-11-10)
+Owner: "I open the friend's trunk and see my own things".
+- A trunk box's E (BP_Storage_Trunk_Base_C, its Highlight OnHighlightInteract) opens the inventory manager's trunk
+  whatever car it is in: OpenCarInventories -> OpenInventoryContainer(Inventory_Trunk, true, false, true) ->
+  OpenPlayerMenu(cat, ST_PlayerMenuParams{TransferContainer}); the box's own component (carstore's repoint) is not
+  read there. The menu's UMG_PlayerMenu_Inventory_C (Category_Inventory; a second one is the widget tree's template,
+  TransferContainer unset) had TransferContainer = the guest's own Inventory_Trunk. GetInventoryTrunk is not called
+  (the variable is read directly).
+- Fix (playersync TD.trunkOpened, a hook on the box's interact - after the body): a twin's box -> repoint, and every
+  live UMG_PlayerMenu_Inventory_C showing an own trunk gets `Set Transfer Containers(twin's container, true, nil)`.
+- Test: car-store-test step 6 (the box's interact called): the menu shows the twin's container with the host's
+  fabric (4/4); 18/18. The game windows are not drawn in the tests: what the screen shows is not checked.
+
+### The own car stalled when the friend connected (2026-11-10)
+- Probe (collide setup, host's engine on): CoopPlayers.stop (the twin removed with its parts) -> the host's
+  CarIgnitionState 2 -> 0 at once; a new twin (spawn + its parts) -> 0 again ~1.5 s after the start. The parts'
+  handlers are the car manager's, one for both cars.
+- Fix (twincar keepEngine): the manager's ignition and lever read before Twin.destroy / Twin.spawn / applyEquip (when
+  it changed parts) and put back right after, and 100 / 500 ms later, if they changed - only while the own car is the
+  manager's car.
+- Test: gascap-test step 5 (ignition sampled every 30 ms through a stop and a start of the player sync): stays 2.
+
+### The trunk lid that kept slamming (2026-11-10, not reproduced)
+- trunk-slam probe: the guest opens and shuts the host car's lid (Tap door 5): one open, one shut on both sides, no
+  repeat in 12 s; with the lid open and the host driving 4 s: the guest's twin lid swung (yaw -176 / pitch 44 at a
+  moment), the guest's press then opened it again (doors_sent 5:open) - it looked shut there. No repeating shut seen.

@@ -5,6 +5,7 @@
 #   2. the guest pours 3 from a canister into the host's car: the host's tank +3, the guest's own unchanged
 #   3. the guest siphons 2 from the host's car into the canister: the host's tank -2, the guest's own unchanged
 #   4. the host pours 2 into the guest's car: the guest's tank +2, the host's own unchanged
+#   5. the host's engine running while its twin of the guest's car is removed and spawned again: it keeps running
 param([switch]$Keep)
 $root = "C:\PacificDriveCoop"; $t = "$root\mod\tools"; $inst = "$root\local\instances"
 $hd = "$inst\host\coopdev"; $cd = "$inst\client\coopdev"
@@ -65,6 +66,20 @@ Start-Sleep 5
 $g4 = Tank $cd; $h4 = Tank $hd
 "  moved $moved | guest $g0 -> $g4 | host's own $h0 -> $h4"
 Check "the guest's tank +2, the host's own not" ((& $num $moved) -ge 1.9 -and [math]::Abs((& $num $g4) - (& $num $g0) - 2) -lt 0.4 -and [math]::Abs((& $num $h4) - (& $num $h0)) -lt 0.4) "moved $moved | guest $g0 -> $g4 | host's own $h0 -> $h4"
+
+"=== 5. the host's engine running, the guest's car there goes and comes again (a join, a restart)"
+# (destroying the twin's parts stopped the own car's engine: the parts' handlers are the car manager's; owner
+# 2026-11-09: "the friend connected, my car stalled at once")
+$sess = @{}; Get-Content "$inst\net-session.txt" | ForEach-Object { $k, $v = $_ -split '=', 2; $sess[$k] = $v }
+"  host: engine " + (Send $hd "local m = FindFirstOf('BP_CarManager_C') m:SetCarIgnitionState(2) return tostring(m.CarIgnitionState)")
+Start-Sleep 2
+Send $hd "IGN_LOG = {} IGN_T0 = os.clock() local m = FindFirstOf('BP_CarManager_C') local last local h h = LoopInGameThreadWithDelay(30, function() local v = tostring(m.CarIgnitionState) if v ~= last then IGN_LOG[#IGN_LOG + 1] = string.format('%.2f:%s', os.clock() - IGN_T0, v) last = v end if os.clock() - IGN_T0 > 16 then CancelDelayedAction(h) end end) return 'watching'" | Out-Null
+"  host: " + (Send $hd "CoopPlayers.stop() return 'player sync stopped (the twin removed): kept ' .. tostring(CoopPlayers.twinModule().stats.engineKept)")
+Start-Sleep 3
+"  host: " + (Send $hd "return CoopPlayers.start(CoopSync, 'host', '$($sess.hchan.Replace('\', '/'))')")
+Start-Sleep 10
+$log = Send $hd "return table.concat(IGN_LOG, ' ') .. ' twins=' .. tostring(#(FindAllOf('BP_PlayerCarNew_C') or {}))"
+Check "the host's engine kept running throughout" ($log -notmatch ':[01]\b' -and $log -match '^0\.\d+:2') "ignition changes: $log"
 
 "  host: " + (Send $hd "return dofile('C:/PacificDriveCoop/mod/CoopSync/Scripts/gascap.lua').info()")
 "  guest: " + (Send $cd "return dofile('C:/PacificDriveCoop/mod/CoopSync/Scripts/gascap.lua').info()")
