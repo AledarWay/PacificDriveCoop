@@ -59,6 +59,8 @@ The own car's back seat in the garage:
 - On a back seat in the garage the key, the levers and the driver's door are out of reach, the way out is the back
   door, and the next time at the wheel is the driver's seat again (before, it put the player on the back seat).
 Cars:
+- Getting out of the other player's car always opens its door on the owner's side too. Before, now and then the
+  owner saw the door stay shut.
 - Each car drives by its own parts. Both cars took their engine and tire values from one place in the game, written by
   whichever car was last; in the other's car a player drove on the own car's parts (your upgraded car and your
   friend's starting one behaved the other way round). Now each car has its own, and the other's car gets its owner's.
