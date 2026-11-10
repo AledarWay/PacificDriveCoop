@@ -71,6 +71,8 @@ Cars:
   friend's car on your side stopped your own engine.
 Fuel canisters:
 - A canister put down on the ground has the same fuel for both. Before, the other player's copy came empty.
+Abandoned cars:
+- An abandoned car that loads in a little later gets the host's paint within seconds, not after 20 s.
 The pause menu:
 - Leaving the lobby (or the session ending) while the pause menu is open no longer leaves the menu stuck: Esc and
   Continue close it again.

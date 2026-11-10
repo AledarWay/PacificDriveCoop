@@ -1295,12 +1295,19 @@ function CoopSyncPaint.tick()
     if role ~= "host" then return end
     local now = os.clock()
     P.startAt = P.startAt or now
-    if now - P.startAt < 3 or now - P.sentAt < 20 then return end
-    P.sentAt = now
+    -- (all every 20 s; one that streamed in since - not in the last list - every 3 s: two wrecks loaded after the
+    -- first lines stood in their default paint for 20 s, paint-test 2026-11-10)
+    if now - P.startAt < 3 or now - (P.scanAt or -1e9) < 3 then return end
+    P.scanAt = now
+    local all = now - P.sentAt >= 20
+    if all then P.sentAt = now end
+    P.sent = all and {} or (P.sent or {})
     for _, e in ipairs(paintList()) do
         local okP, pp = pcall(function() return classPath(e.c.SelectedPaintPalette) end)
         local okD, dp = pcall(function() return classPath(e.c.SelectedDecalPalette) end)
-        if okP and pp ~= "" then
+        local k = e.c:GetAddress()
+        if okP and pp ~= "" and (all or not P.sent[k]) then
+            P.sent[k] = true
             send("host.events", string.format("VP	%d	%d	%d	%s	%s", math.floor(e.l.X / 10 + 0.5), math.floor(e.l.Y / 10 + 0.5), math.floor(e.l.Z / 10 + 0.5), pp, okD and dp or ""))
             count("ev_VP")
         end
