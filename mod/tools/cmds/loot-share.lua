@@ -307,5 +307,31 @@ elseif op == "put" then
         end
     end
     return "not carried"
+elseif op == "setcarriedfuel" then
+    -- the fuel of a carried item of LS_ARCH (the item's own property: what a container gets)
+    local arch = Loot.find(LS_ARCH)
+    for _, f in ipairs({ "Inventory_Player", "Inventory_PlayerHand" }) do
+        local inst = IM[f]:FindItemOfType(arch)
+        if inst and inst:IsValid() then
+            Loot.setItemFuel(inst, LS_FUEL)
+            return tostring(Loot.itemFuel(inst))
+        end
+    end
+    return "not carried"
+elseif op == "fuelin" then
+    -- the fuel of each LS_ARCH item in that container, sorted ("-" none)
+    local a = actorOf(LS_KEY)
+    if not a then return "gone" end
+    local c = a.InventoryContainer
+    local out = {}
+    for i = 1, c.Slots:GetArrayNum() do
+        local s = c.Slots[i]
+        for j = 1, s.Items:GetArrayNum() do
+            local it = s.Items[j]
+            if objPath(it.Archetype) == LS_ARCH then out[#out + 1] = string.format("%.2f", Loot.itemFuel(it) or -1) end
+        end
+    end
+    table.sort(out)
+    return #out > 0 and table.concat(out, ",") or "-"
 end
 return "unknown LS_OP " .. tostring(op)

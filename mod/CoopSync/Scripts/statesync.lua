@@ -193,7 +193,7 @@ local function itemBag(loot, whole)
     for _, sspec in ipairs(Loot.splitTop(body, ";")) do
         local items = sspec:match("^[^=]*=(.*)$") or ""
         for _, it in ipairs(Loot.splitTop(items, ",")) do
-            local arch = whole and it or it:match("^([^{]*)")
+            local arch = whole and it or it:match("^([^{*]*)")
             if arch ~= "" then bag[arch] = (bag[arch] or 0) + 1 end
         end
     end
@@ -224,7 +224,7 @@ local function putsOf(cur, old)
         if extra > 0 then
             local pick
             for spec, m in pairs(haveW) do
-                if spec:match("^([^{]*)") == arch and (not pick or m > (hadW[spec] or 0)) then pick = spec end
+                if spec:match("^([^{*]*)") == arch and (not pick or m > (hadW[spec] or 0)) then pick = spec end
             end
             if pick then out[#out + 1] = { pick, extra, tileOf(cur, old, pick) } end
         end

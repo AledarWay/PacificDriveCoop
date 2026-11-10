@@ -3715,8 +3715,23 @@ Owner: "I dropped a full canister, on the friend's side it was empty".
   inventory manager's slot hooks); the guest's DROP carries the fuel (last field) and the host sets it on its spawn;
   a canister new in the host's list goes over at once; a FUEL for a guest copy still spawning waits (FUEL.pend, 30 s).
 - Test `fuelcan-test.ps1` (sync-test setup): host puts one down with 3.5 -> guest 3.5; guest drops a carried one with
-  1.75 -> host 1.75 (one DROP); the host's level to 0.5 -> guest 0.5. Not covered: canisters inside containers (an
-  item's fuel is an item property; GetItemProperties is a generic thunk - not read from Lua).
+  1.75 -> host 1.75 (one DROP); the host's level to 0.5 -> guest 0.5.
+
+### Fuel canisters inside containers (2026-11-10)
+Owner: fuel level synced when a canister goes through a container.
+- In a container a canister is only an item instance (no actor): its fuel is the item's IP_Fuelable property, and an
+  item made on the other side from the archetype came with the archetype's fuel.
+- Read: `BFL_ItemPropertyUtilityFns` CDO (/Game/Systems/ScriptingLibraries/) `GetFuelableInfo(inst, worldCtx, ...)`,
+  out params one table each (`Fuel`, `Max Fuel`; Max Fuel 0 = no such property, remembered per archetype). Write: a
+  `BP_FuelableComponent_C` constructed by us (outer the PlayerController), `SetItemInstance(inst, false)` +
+  `"Set Fuel"(v)`, then pointed at nil - what a world canister's component does with its item. Works on a bare
+  instance (fuelcan-test 4/5).
+- lootsync: a container's item string carries the fuel - `<archetype>[{subs}]*<fuel>` (serContainer only; wreck
+  parts' strings stay without it: their sockets compare by the string, each side's own fuel would rebuild the part);
+  makeItem sets it. Archetype parsing strips it (`^([^{*]*)`: lootsync M.archOf, carstore, statesync itemBag /
+  putsOf, playersync CT). Covers lootable containers, wreck trunks, the car storage, the guest's PUT (whole spec).
+- Test `fuelcan-test.ps1` steps 4-5: the guest puts a canister with 1.37 into a crate -> host 1.37; the host puts
+  one with 2.61 into the same crate -> guest 1.37,2.61. 5/5.
 
 ### Each car's own handling (2026-11-10)
 Owner: "after we swapped cars the cars' characteristics swapped: my upgraded fast car, the friend's slow starting one
@@ -3786,3 +3801,35 @@ Owner: "I open the friend's trunk and see my own things".
 - trunk-slam probe: the guest opens and shuts the host car's lid (Tap door 5): one open, one shut on both sides, no
   repeat in 12 s; with the lid open and the host driving 4 s: the guest's twin lid swung (yaw -176 / pitch 44 at a
   moment), the guest's press then opened it again (doors_sent 5:open) - it looked shut there. No repeating shut seen.
+### The guest's own car twice after a zone load (2026-11-10, fixed)
+- The open "EXTRA CAR: 2 cars, 0 twins" (owner's alpha 17-20: "getting out moves it into the other one"; nextzone's
+  car check failed in most quick suites). A NotifyOnNewObject watch on BP_PlayerCarNew_C on the guest: a load builds
+  the own car twice now and then - two cars 150 ms apart, the same spot, at the travel into its own generated zone
+  and again at the host's zone save's load (passing runs: one per load). The mod spawns no own car: the game's.
+- Both manifest the same equipped items (InventorySystem.ItemWorldStates ActiveManifestations: 67 items with a part
+  on each car), but an item's own link (GetActorManifestation) points to one car's part only: 69 links on the newer
+  car (the manager's NewCarActor then), none on the other - the one the player sat in later.
+- First try kept the player's seat's car: its links all pointed to the removed car's parts, and the game crashed
+  20 s later (access violation 0x38 in a ufunction call) on an item's link to a freed part.
+- twincar dropCopies: the kept car is the one the items' links are on (seat / manager only on a tie); the other is
+  removed with M.destroy (manifestations forgotten first) only when it shares >= 10 items with the kept one, and
+  nothing is removed while any of the kept car's items links elsewhere. The player sitting in the removed copy is put
+  into the kept car (CommandEnterCar). Called when the guest's zone starts playing and from the car watch (every
+  10 s while playing / hosting). Status: copies=<removed>.
+- Probe runs: copy removed at "playing", links broken=0 at +0 / +40 / +60 s, the player seated, no crash.
+
+### The own car rolled away after a ride in the other's car (2026-11-10, fixed)
+- cars-test failed in different checks from run to run (the host could not get to the guest car's wheel, the guest's
+  own car "did not drive"): the guest's own car stood 60 m down the slope by step 8b. keepEngine (the stall fix) put
+  the lever back too, read from the car manager while the player sat in the other's car - the manager's state is the
+  context car's, in drive then - onto the own car the game had just parked as the player got out.
+- Now only a running engine that stopped is put back (with its lever), and only when the manager's car was the own
+  car when the state was read (M.ctxIsOwn).
+- On the way: the graph of the own car read EnginePower / EngineQuality / WheelPower 0 - its own handling's values
+  (ownVals 0 too: no engine upgrade), not a fault. A graph made again for a car now starts from that car's graph
+  before (not the asset's, which nothing writes once the cars have copies) with its part values put on.
+- collide-test: the guest's car on the slope rolled at 3.5 m/s before the hit (weak or missed hits, the top speed the
+  slope's). Parked (lever) it stopped the striker like a wall; now it stays in drive, its speed put to 0 every 30 ms
+  until the striker came 80 closer, and the check uses the speed the hit gave (dv: the velocity change within 1 s of
+  the closest moment), not the top speed.
+- nextzone light check: 5 % for 9 pairs in 10 and 10 % at most (one pair of 51 was 5.2 % off while the fog swung).

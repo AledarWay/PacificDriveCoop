@@ -189,8 +189,8 @@ local function writeStatus(gstate, world)
         local ok, r = pcall(Players.report)
         puppet = ok and (tostring(r):match("puppet=(%S+)") or "?") or "?"
     end
-    writeFile(chan .. "/status.txt", string.format("role=%s mode=%s state=%s world=%s gstate=%d seq=%d go=%s puppet=%s unpaused=%d weather=%s map=%d/%d/%d gate=%d/%d/%d hitch=%s anim=%s zs=%s twins=%d mapblock=%d cars=%s extra=%d chk=%d cover=%d/%d exitmap=%d/%d/%d travels=%d gmap=%s storm=%s note=%s\n",
-        tostring(S.role), S.mode, (S.state:gsub("%s", "_")), world, gstate, S.seq, tostring(S.go), puppet, M.pauseLifted, Weather and Weather.short() or "-", M.mapSent or 0, M.mapApplied or 0, M.mapRestores or 0, M.gateClosed or 0, M.gateOpened or 0, M.exitTaken or 0, Hitch.short(), (Players and Players.puppetAnim and Players.puppetAnim()) or "-", zoneSaveShort(), twinCount(), M.plannerUnbound or 0, M.carsSeen, M.extraCars or 0, CoopSyncChecklist and CoopSyncChecklist.rows or 0, M.covered or 0, S.coverShown and 1 or 0, M.mapClosed or 0, M.zoneExits or 0, M.follows or 0, (Run and Run.stats and Run.stats.travels) or 0, M.guestMap and string.format("%d/%d/%d/%d", M.guestMap.legs, M.guestMap.edges, M.guestMap.travel, M.guestMap.reveal) or "-", (CoopSyncStorm and string.format("%d/%d/%d/%d", CoopSyncStorm.sent or 0, CoopSyncStorm.done or 0, CoopSyncStorm.have or 0, CoopSyncStorm.held or 0) or "-"), ((S.note or ""):gsub("%s", "_"))))
+    writeFile(chan .. "/status.txt", string.format("role=%s mode=%s state=%s world=%s gstate=%d seq=%d go=%s puppet=%s unpaused=%d weather=%s map=%d/%d/%d gate=%d/%d/%d hitch=%s anim=%s zs=%s twins=%d mapblock=%d cars=%s extra=%d chk=%d cover=%d/%d exitmap=%d/%d/%d travels=%d gmap=%s storm=%s copies=%d note=%s\n",
+        tostring(S.role), S.mode, (S.state:gsub("%s", "_")), world, gstate, S.seq, tostring(S.go), puppet, M.pauseLifted, Weather and Weather.short() or "-", M.mapSent or 0, M.mapApplied or 0, M.mapRestores or 0, M.gateClosed or 0, M.gateOpened or 0, M.exitTaken or 0, Hitch.short(), (Players and Players.puppetAnim and Players.puppetAnim()) or "-", zoneSaveShort(), twinCount(), M.plannerUnbound or 0, M.carsSeen, M.extraCars or 0, CoopSyncChecklist and CoopSyncChecklist.rows or 0, M.covered or 0, S.coverShown and 1 or 0, M.mapClosed or 0, M.zoneExits or 0, M.follows or 0, (Run and Run.stats and Run.stats.travels) or 0, M.guestMap and string.format("%d/%d/%d/%d", M.guestMap.legs, M.guestMap.edges, M.guestMap.travel, M.guestMap.reveal) or "-", (CoopSyncStorm and string.format("%d/%d/%d/%d", CoopSyncStorm.sent or 0, CoopSyncStorm.done or 0, CoopSyncStorm.have or 0, CoopSyncStorm.held or 0) or "-"), M.copiesDropped or 0, ((S.note or ""):gsub("%s", "_"))))
 end
 
 -- zone ready = generator done for READY_TICKS ticks and MIN_ZONE_S after arriving
@@ -440,6 +440,8 @@ local function clientTick(gstate, world)
             Weather.start(Players, "client")
             S.state = "playing"
             pcall(Run.applyGates, Link.docPath(chan, "inbox", "host-gates.txt"), nil, true) -- the game may have shut an exit since
+            -- (the load's second copy of the own car, if it built one: gone before the screen lifts)
+            pcall(function() local r = Players.twinModule().dropCopies() if r > 0 then M.copiesDropped = (M.copiesDropped or 0) + r end end)
         end)
     end
 end
@@ -930,6 +932,15 @@ local function carWatch(gstate)
     if n > twins + 1 and sig ~= S.carSig then
         print(string.format("[CoopSync] EXTRA CAR: %d cars, %d twins here: %s\n", n, twins, table.concat(list, "; ")))
         M.extraCars = (M.extraCars or 0) + 1
+    end
+    -- (a second copy of the own car the zone's load built: removed once the zone plays - twincar dropCopies)
+    if n > twins + 1 and (S.state == "playing" or S.state == "hosting") then
+        local okT, T = pcall(function() return Players.twinModule() end)
+        if okT and T and T.dropCopies then
+            local okD, r = pcall(T.dropCopies)
+            if okD and r and r > 0 then M.copiesDropped = (M.copiesDropped or 0) + r S.carSig = nil return end
+            if not okD then print("[CoopSync] dropCopies failed: " .. tostring(r) .. "\n") end
+        end
     end
     S.carSig = sig
 end

@@ -221,7 +221,7 @@ function M.twinLine(twin)
 end
 
 -- an item string's archetype
-local function archOf(spec) return spec:match("^([^{]*)") end
+local function archOf(spec) return spec:match("^([^{*]*)") end
 -- items of a container string: archetype -> n, "<tile>|<archetype>" -> n, archetype -> one whole item string
 local function bags(spec)
     local arch, at, whole = {}, {}, {}

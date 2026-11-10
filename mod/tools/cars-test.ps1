@@ -314,7 +314,9 @@ Start-Sleep 9
 $moved = Moved $b0 (OwnAt $cd)
 Check "the guest's car drove on the host's input (>= 300)" ($moved -ge 300) "moved $moved"
 "  host: lever " + (Send $hd "FindFirstOf('BP_CarManager_C').MyCarGearBox = 1 return 'park (1)'"); Start-Sleep 3
-$stop = OwnAt $cd
+# (stopped first: parked at 13 m/s on the slope it slid on for seconds, and the host got out of a moving car -
+# 175 off after, 2026-11-10)
+$stop = OwnAt $cd; for ($i = 0; $i -lt 10; $i++) { Start-Sleep 1; $s2 = OwnAt $cd; if ((Moved $stop $s2) -le 20) { break }; $stop = $s2 }
 "  host out: " + (E $hd "CE_CAR = 'twin' CE_HL = 'ExitDoor'"); Start-Sleep 5
 # (item 12: getting out put the host - and the car - back where it had got in)
 $after = OwnAt $cd
@@ -334,9 +336,13 @@ $b0 = OwnAt $cd
 # (what the car was in when it did not move: physics, the controller's tick, ignition, lever, charge, the context car)
 $gstate = Send $cd "local m = FindFirstOf('BP_CarManager_C') local c = CoopPlayers.twinModule().ownCar() local vc = c:GetComponentByClass(StaticFindObject('/Script/IWCarPhysics.VehicleControllerComponent')) local rm = FindFirstOf('BP_ResourceManager_C') return string.format('sim=%s vc_tick=%s ign=%s gear=%s lim=%.1f ctx_own=%s', tostring(c.RootComponent:IsSimulatingPhysics(FName('None'))), tostring(vc and vc:IsComponentTickEnabled()), tostring(m.CarIgnitionState), tostring(m.MyCarGearBox), rm.CarLim.Current, tostring(m.NewCarActor:GetAddress() == c:GetAddress()))"
 "  guest car state: $gstate"
+# (its handling's values - tuning.lua gives each car its own graph since 2026-11-10: a stuck "Park" or engine value
+# would hold it)
+$gtun = Send $cd "local c = CoopPlayers.twinModule().ownCar() local vc = c:GetComponentByClass(StaticFindObject('/Script/IWCarPhysics.VehicleControllerComponent')) local g = vc.Profile local mine = CoopSyncTuning and CoopSyncTuning.graphs and CoopSyncTuning.graphs[c:GetAddress()] local o = { 'own_graph=' .. tostring(mine ~= nil and g:IsValid() and mine:GetAddress() == g:GetAddress()) } for _, n in ipairs({ 'Park', 'EnginePower_More', 'EnginePower_Less', 'EngineQuality', 'AcellBoost', 'Speed', 'WheelRoad', 'WheelPower' }) do local ok, v = pcall(function() return g:GetParameter(FName(n)) end) o[#o + 1] = n .. '=' .. (ok and string.format('%.2f', v) or '?') end local tv = CoopSyncTuning and CoopSyncTuning.ownVals or {} o[#o + 1] = string.format('| copies=%s own_vals: EP+=%s EQ=%s WP=%s', tostring(CoopSyncTuning and CoopSyncTuning.stats.copies), tostring(tv.EnginePower_More), tostring(tv.EngineQuality), tostring(tv.WheelPower)) return table.concat(o, ' ')"
+"  guest car tuning: $gtun"
 "  guest: " + (Send $cd "return CoopPlayers.botInput(4, 1.0, 0, 0)"); Start-Sleep 9
 $moved = Moved $b0 (OwnAt $cd)
-Check "the guest's own car drives after all that (>= 300)" ($moved -ge 300) "moved $moved | $gstate"
+Check "the guest's own car drives after all that (>= 300)" ($moved -ge 300) "moved $moved | $gstate | $gtun"
 $hh = Send $hd $hoodPlace
 Check "after the guest drove: the host's twin of its car still has the hood in its place (item 8)" (HoodHome $hh) "host: $hh"
 

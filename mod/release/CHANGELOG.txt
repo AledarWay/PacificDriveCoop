@@ -69,8 +69,12 @@ Cars:
   local player's trunk from any car's box.
 - Your car no longer stalls when your friend connects (or the session restarts): removing or setting up the
   friend's car on your side stopped your own engine.
+- The guest's car is no longer there twice after a zone loads. The game sometimes built it twice from the same
+  parts; getting out could put the player into the other copy. The copy is removed once the zone plays.
 Fuel canisters:
 - A canister put down on the ground has the same fuel for both. Before, the other player's copy came empty.
+- A canister put into a container (a crate, a trunk, the car's storage) keeps its fuel for the other player too.
+  Before, it came out with the default fuel.
 Abandoned cars:
 - An abandoned car that loads in a little later gets the host's paint within seconds, not after 20 s.
 The pause menu:

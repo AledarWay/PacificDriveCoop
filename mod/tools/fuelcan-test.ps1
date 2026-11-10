@@ -59,6 +59,28 @@ Start-Sleep 5
 $h3 = Near $hd $at1; $c3 = Near $cd $at1
 Check "the guest's follows" ((Same $h3 '0.5') -and (Same $c3 '0.5')) "host $h3 | guest $c3"
 
+"=== 4. the guest puts a carried canister with 1.37 into a container"
+$ck = ((Share $cd 'client' "LS_OP = 'takeable'") -split "`t")[0]
+"  container: $ck"
+"  guest gets one: " + (Share $cd 'client' "LS_OP = 'give' LS_ARCH = '$can'")
+Start-Sleep 3
+"  guest's fuel: " + (Share $cd 'client' "LS_OP = 'setcarriedfuel' LS_ARCH = '$can' LS_FUEL = 1.37")
+"  guest: " + (Share $cd 'client' "LS_OP = 'put' LS_KEY = '$ck' LS_ARCH = '$can'")
+Start-Sleep 10
+$h4 = Share $hd 'host' "LS_OP = 'fuelin' LS_KEY = '$ck' LS_ARCH = '$can'"; $c4 = Share $cd 'client' "LS_OP = 'fuelin' LS_KEY = '$ck' LS_ARCH = '$can'"
+$hst = Send $hd 'return CoopSync.Loot.stats()'
+Check "the host's container has it with the guest's fuel" ($h4 -eq '1.37' -and $c4 -eq '1.37') "host $h4 | guest $c4 | host loot: $hst"
+
+"=== 5. the host puts a carried canister with 2.61 into the same container"
+"  host gets one: " + (Share $hd 'host' "LS_OP = 'give' LS_ARCH = '$can'")
+Start-Sleep 3
+"  host's fuel: " + (Share $hd 'host' "LS_OP = 'setcarriedfuel' LS_ARCH = '$can' LS_FUEL = 2.61")
+"  host: " + (Share $hd 'host' "LS_OP = 'put' LS_KEY = '$ck' LS_ARCH = '$can'")
+Start-Sleep 10
+$h5 = Share $hd 'host' "LS_OP = 'fuelin' LS_KEY = '$ck' LS_ARCH = '$can'"; $c5 = Share $cd 'client' "LS_OP = 'fuelin' LS_KEY = '$ck' LS_ARCH = '$can'"
+$cst = Send $cd 'return CoopSync.Loot.stats()'
+Check "the guest's copy has both with their fuel" ($h5 -eq '1.37,2.61' -and $c5 -eq '1.37,2.61') "host $h5 | guest $c5 | guest loot: $cst"
+
 "host state: " + (Send $hd "return CoopSyncState.report()")
 "client state: " + (Send $cd "return CoopSyncState.report()")
 "=== RESULT: $script:pass passed, $script:fail failed -> $(if ($script:fail -eq 0) { 'PASS' } else { 'FAIL' })"

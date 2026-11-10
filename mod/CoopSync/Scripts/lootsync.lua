@@ -63,11 +63,50 @@ local function dcrumb(msg)
     local f = io.open(CoopSyncDebug, "ab") if f then f:write("    . " .. msg .. "\n") f:close() end
 end
 
+-- An item's fuel (IP_Fuelable: canisters, fuel tanks) inside a container (owner, 2026-11-10: a canister put into a
+-- container came out empty on the other side - an item made from its archetype comes with the archetype's fuel). In a
+-- container's string an item's fuel follows it: <archetype>[{sub-containers}]*<fuel>. Not on wreck parts (their
+-- sockets compare by the item's string: each side's own fuel would rebuild the part).
+-- Read: BFL_ItemPropertyUtilityFns GetFuelableInfo (an archetype without the property: Max Fuel 0, remembered). Write:
+-- one BP_FuelableComponent of ours pointed at the item (SetItemInstance) and its "Set Fuel", what a canister's world
+-- actor does with its item.
+local BFL, FUELCOMP
+local noFuel = {} -- archetype path -> true: has no fuel
+local function itemFuel(inst, archPath)
+    if noFuel[archPath] then return nil end
+    BFL = BFL or StaticFindObject("/Game/Systems/ScriptingLibraries/BFL_ItemPropertyUtilityFns.Default__BFL_ItemPropertyUtilityFns_C")
+    if not (BFL and BFL:IsValid()) then return nil end
+    local t1, t2 = {}, {}
+    local ok = pcall(function() BFL:GetFuelableInfo(inst, FindFirstOf("PlayerController"), t1, t2, {}, {}, {}, {}) end)
+    local cap = ok and tonumber(t2["Max Fuel"] or t2.Max_Fuel)
+    if not (cap and cap > 0) then noFuel[archPath] = true return nil end
+    return tonumber(t1.Fuel)
+end
+local function setItemFuel(inst, v)
+    if not (FUELCOMP and FUELCOMP:IsValid()) then
+        local cls = StaticFindObject("/Game/Gameplay/Inventory/GenericItemProperties/Components/BP_FuelableComponent.BP_FuelableComponent_C")
+        if not (cls and cls:IsValid()) then return false end
+        FUELCOMP = StaticConstructObject(cls, FindFirstOf("PlayerController"), FName("None"), 0, 0, false, false, nil)
+        if not (FUELCOMP and FUELCOMP:IsValid()) then FUELCOMP = nil return false end
+    end
+    local ok = pcall(function()
+        FUELCOMP:SetItemInstance(inst, false)
+        FUELCOMP["Set Fuel"](FUELCOMP, v)
+    end)
+    pcall(function() FUELCOMP:SetItemInstance(nil, false) end)
+    return ok
+end
+M.itemFuel = function(inst) return inst and inst:IsValid() and itemFuel(inst, path(inst.Archetype)) or nil end
+M.setItemFuel = setItemFuel
+-- an item spec's archetype path (without its sub-containers and fuel)
+function M.archOf(spec) return (spec or ""):match("^([^{*]*)") end
+
 local serContainer
-local function serItem(inst)
+local function serItem(inst, withFuel)
     dcrumb("item")
     if not (inst and inst:IsValid()) then return "" end
     local s = path(inst.Archetype)
+    local fuel = withFuel and itemFuel(inst, s)
     local subs = ownedBy[inst:GetFullName()]
     if subs and #subs > 0 then
         local t = {}
@@ -77,6 +116,7 @@ local function serItem(inst)
         end
         s = s .. "{" .. table.concat(t, "^") .. "}"
     end
+    if fuel then s = s .. string.format("*%.2f", fuel) end
     return s
 end
 
@@ -88,7 +128,7 @@ serContainer = function(c)
         local s = c.Slots[si]
         if s and s:IsValid() then
             local items = {}
-            for ii = 1, s.Items:GetArrayNum() do items[#items + 1] = serItem(s.Items[ii]) end
+            for ii = 1, s.Items:GetArrayNum() do items[#items + 1] = serItem(s.Items[ii], true) end
             local x, y, r = 0, 0, 0
             pcall(function() x, y, r = s.Location.X, s.Location.Y, s.bRotated and 1 or 0 end)
             slots[#slots + 1] = string.format("%d_%d_%d=%s", x, y, r, table.concat(items, ","))
@@ -307,12 +347,18 @@ local fillContainer
 local subQueue = {}
 local batch = 0 -- > 0: inside beginBatch / endBatch (the import): one fillDeferred at the end
 local function makeItem(spec, ctx)
+    local body, fuel = spec:match("^(.*)%*(%-?[%d.]+)$")
+    if body then spec = body end
     local archPath, subs = spec:match("^([^{]*)(.*)$")
     local arch = find(archPath)
     if not arch then stats.missing[archPath] = true stats.failed = stats.failed + 1 return nil end
     local inst = IBL:CreateItemInstance(ctx, arch, 4)
     if not (inst and inst:IsValid()) then stats.failed = stats.failed + 1 return nil end
     stats.items = stats.items + 1
+    -- (its fuel: the archetype's comes otherwise)
+    if fuel then
+        if setItemFuel(inst, tonumber(fuel)) then stats.fuelSet = (stats.fuelSet or 0) + 1 else stats.fuelFailed = (stats.fuelFailed or 0) + 1 end
+    end
     -- the instance may have created its own (random) sub-containers: overwritten in order by fillDeferred
     if subs ~= "" then subQueue[#subQueue + 1] = { key = inst:GetFullName(), subs = subs, ctx = ctx } end
     return inst
@@ -730,8 +776,9 @@ end
 function M.stats()
     local miss = {}
     for k in pairs(stats.missing) do miss[#miss + 1] = k end
-    return string.format("containers=%d templates=%d parts=%d items=%d failed=%d %s %s",
-        stats.containers, stats.templates, stats.parts, stats.items, stats.failed, table.concat(miss, " "), stats.err or "")
+    return string.format("containers=%d templates=%d parts=%d items=%d failed=%d fuel=%d/%d %s %s",
+        stats.containers, stats.templates, stats.parts, stats.items, stats.failed, stats.fuelSet or 0, stats.fuelFailed or 0,
+        table.concat(miss, " "), stats.err or "")
 end
 
 return M

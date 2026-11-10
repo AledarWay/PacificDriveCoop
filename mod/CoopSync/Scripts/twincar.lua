@@ -507,9 +507,10 @@ function M.applyEquip(twin, equip)
     local cm = manager()
     local ign, gear
     pcall(function() ign, gear = cm.CarIgnitionState, cm.MyCarGearBox end)
+    local wasOwn = M.ctxIsOwn(cm)
     local n = M._applyEquip(twin, equip)
     -- (parts spawned onto the twin: the own car's key and lever kept, as at its spawn and its removal)
-    if n and n > 0 then M.keepEngine(cm, ign, gear) end
+    if n and n > 0 then M.keepEngine(cm, ign, gear, wasOwn) end
     return n
 end
 function M._applyEquip(twin, equip)
@@ -1047,6 +1048,7 @@ function M.spawn(loc, rot, equip)
     -- (the own car's key and lever: a twin coming stopped the own car's engine too - gascap-test step 5)
     local ign, gear
     pcall(function() ign, gear = cm.CarIgnitionState, cm.MyCarGearBox end)
+    local wasOwn = M.ctxIsOwn(cm)
     im.Inventory_CarEquipped = cont
     local ok, twin = pcall(function()
         local b = GS:BeginDeferredActorSpawnFromClass(FindFirstOf("PlayerController"), own:GetClass(), xf, 1, nil)
@@ -1054,7 +1056,7 @@ function M.spawn(loc, rot, equip)
     end)
     im.Inventory_CarEquipped = real
     if cm then cm.NewCarActor = own end
-    M.keepEngine(cm, ign, gear)
+    M.keepEngine(cm, ign, gear, wasOwn)
     if not (ok and twin and twin:IsValid()) then return nil, "spawn failed: " .. tostring(twin) end
     CoopSyncTwins[twin:GetAddress()] = weakOf(twin)
     local applied = {}
@@ -1090,9 +1092,18 @@ local function forgetManifestations(twin)
 end
 
 -- The own car's ignition and lever as they were before a twin went (the car manager's: now and once more after the
--- frames its parts' end ran in); only while the own car is the manager's car.
-function M.keepEngine(cm, ign, gear)
-    if ign == nil then return end
+-- frames its parts' end ran in); only while the own car is the manager's car, and only a running engine that stopped
+-- (its lever with it). (The lever alone was put back too at first: read while the player sat in the other's car - the
+-- manager's state then that car's, in drive - it went onto the own car the game had just parked as the player got
+-- out, and the own car rolled 60 m down the slope; cars-test 2026-11-10)
+-- (the manager's car the own car when its state was read: the state is the context car's)
+function M.ctxIsOwn(cm)
+    local own = M.ownCar and M.ownCar()
+    local ctx = cm and cm:IsValid() and cm.NewCarActor
+    return own ~= nil and ctx and ctx:IsValid() and ctx:GetAddress() == own:GetAddress() or false
+end
+function M.keepEngine(cm, ign, gear, wasOwn)
+    if ign ~= 2 or not wasOwn then return end
     local function put()
         if not (cm and cm:IsValid()) then return end
         local own = M.ownCar and M.ownCar()
@@ -1101,8 +1112,8 @@ function M.keepEngine(cm, ign, gear)
         if cm.CarIgnitionState ~= ign then
             pcall(function() cm:SetCarIgnitionState(ign) end)
             M.stats.engineKept = (M.stats.engineKept or 0) + 1
+            if gear ~= nil and cm.MyCarGearBox ~= gear then pcall(function() cm:SetCarGearBoxState(gear) end) end
         end
-        if gear ~= nil and cm.MyCarGearBox ~= gear then pcall(function() cm:SetCarGearBoxState(gear) end) end
     end
     put()
     if CoopSyncAfter then CoopSyncAfter(100, put) CoopSyncAfter(500, put) end
@@ -1116,6 +1127,7 @@ function M.destroy(twin)
     -- are the car manager's, one for both cars; owner 2026-11-09: "the friend connected, my car stalled at once")
     local ign, gear
     pcall(function() ign, gear = cm.CarIgnitionState, cm.MyCarGearBox end)
+    local wasOwn = M.ctxIsOwn(cm)
     -- (its container is left alone: emptying it spawns placeholder parts, which inside the travel pre-hook hung both
     -- games in the save's FlushAsyncLoading; the container's outer is the transient package, it goes with the GC)
     pcall(forgetManifestations, twin)
@@ -1141,10 +1153,115 @@ function M.destroy(twin)
     lightCache[twin:GetAddress()] = nil
     local name = twin:GetFName():ToString()
     pcall(function() twin:K2_DestroyActor() end)
-    M.keepEngine(cm, ign, gear)
+    M.keepEngine(cm, ign, gear, wasOwn)
     M.stats.removed = M.stats.removed + 1
     print(string.format("[CoopSync] twin %s removed with %d attached\n", name, n))
     return n + 1
+end
+
+-- A second copy of the own car (owner's alpha 17-20 tests: "the guest has its car twice, getting out moves it into
+-- the other one"; nextzone "EXTRA CAR: 2 cars, 0 twins"): a zone's load sometimes builds the player's car twice -
+-- two BP_PlayerCarNew_C 150 ms apart, the same spot, both manifesting the same equipped items (probed 2026-11-10:
+-- 67 of the items with a part on each). The one the player sits in stays (else the manager's); the other's parts are
+-- taken out of the items' manifestations and it goes. Only a car sharing items with the kept one: a copy, nothing
+-- else. Returns the cars removed.
+function M.dropCopies()
+    local cm = manager()
+    if not (cm and cm:IsValid()) then return 0 end
+    local cars = {}
+    for _, c in ipairs(FindAllOf("BP_PlayerCarNew_C") or {}) do
+        local root = c:IsValid() and c.RootComponent
+        local at = root and root:IsValid() and c:K2_GetActorLocation()
+        if at and (at.X ~= 0 or at.Y ~= 0 or at.Z ~= 0) and c:GetFullName():find(":PersistentLevel.", 1, true)
+            and not c:IsActorBeingDestroyed() and not M.isTwin(c) then cars[#cars + 1] = c end
+    end
+    if #cars < 2 then return 0 end
+    -- (not while the player sits in a twin: the next look)
+    local pawn = FindFirstOf("PlayerController").Pawn
+    local p = pawn and pawn:IsValid() and pawn:GetAttachParentActor()
+    local seatCar
+    for _ = 1, 6 do
+        if not (p and p:IsValid()) then break end
+        if M.isTwin(p) then return 0 end
+        for _, c in ipairs(cars) do if c:GetAddress() == p:GetAddress() then seatCar = c end end
+        if seatCar then break end
+        p = p:GetAttachParentActor()
+    end
+    -- the kept one: the car the items' own manifestation is on (the item's link - GetActorManifestation - points to
+    -- one car's part; the first try kept the player's seat's car, the other's parts went, and the game crashed on an
+    -- item's link to a freed part 20 s later, 2026-11-10). The player's seat or the manager's only on a tie.
+    local keep, best = nil, -1
+    for _, c in ipairs(cars) do
+        local links = 0
+        local okC, comps = pcall(function() return c:K2_GetComponentsByClass(SSC) end)
+        for i = 1, (okC and comps and #comps or 0) do
+            local sl = comps[i]:get().ItemSlot
+            if sl and sl:IsValid() then
+                for j = 1, sl.Items:GetArrayNum() do
+                    local m = sl.Items[j]:GetActorManifestation()
+                    if m and m:IsValid() and underCar(m, c) then links = links + 1 end
+                end
+            end
+        end
+        local ctx = cm.NewCarActor
+        local tie = (seatCar and seatCar:GetAddress() == c:GetAddress() and 0.2 or 0)
+            + ((ctx and ctx:IsValid() and ctx:GetAddress() == c:GetAddress()) and 0.1 or 0)
+        if links + tie > best then keep, best = c, links + tie end
+    end
+    if not keep then return 0 end
+    -- (an item linked to a part of a car that would go: a link to a freed part - left as it is, noted once)
+    local away = 0
+    local okK, kc = pcall(function() return keep:K2_GetComponentsByClass(SSC) end)
+    for i = 1, (okK and kc and #kc or 0) do
+        local sl = kc[i]:get().ItemSlot
+        if sl and sl:IsValid() then
+            for j = 1, sl.Items:GetArrayNum() do
+                local m = sl.Items[j]:GetActorManifestation()
+                if m and m:IsValid() and not underCar(m, keep) then away = away + 1 end
+            end
+        end
+    end
+    if away > 0 then
+        if not M.copyNoted then M.copyNoted = true print(string.format("[CoopSync] own car's copy kept: %d items linked to it\n", away)) end
+        M.stats.copyKept = (M.stats.copyKept or 0) + 1
+        return 0
+    end
+    -- the items with a part on the kept car and one on another: that other is a copy
+    local sys
+    for _, s in ipairs(FindAllOf("InventorySystem") or {}) do
+        if s:IsValid() and not s:GetFullName():find("Default__", 1, true) then sys = s end
+    end
+    if not sys then return 0 end
+    local shared = {}
+    sys.ItemWorldStates:ForEach(function(_, v)
+        local arr = v:get().ActiveManifestations
+        local onKeep, others = false, {}
+        for i = 1, #arr do
+            local a = arr[i]
+            if a and a:IsValid() then
+                if underCar(a, keep) then onKeep = true
+                else for k, c in ipairs(cars) do if c:GetAddress() ~= keep:GetAddress() and underCar(a, c) then others[k] = true end end end
+            end
+        end
+        if onKeep then for k in pairs(others) do shared[k] = (shared[k] or 0) + 1 end end
+    end)
+    cm.NewCarActor = keep
+    local n = 0
+    for k, c in ipairs(cars) do
+        if c:GetAddress() ~= keep:GetAddress() and (shared[k] or 0) >= 10 then
+            local name, items = c:GetFName():ToString(), shared[k]
+            M.destroy(c)
+            n = n + 1
+            M.stats.copiesDropped = (M.stats.copiesDropped or 0) + 1
+            print(string.format("[CoopSync] own car's copy %s removed (%d items on both; kept %s, %d links)\n", name, items, keep:GetFName():ToString(), math.floor(best)))
+        end
+    end
+    -- the player sat in the removed copy (detached with it): into the kept car, the game's way
+    if n > 0 and seatCar and seatCar:GetAddress() ~= keep:GetAddress() and pawn and pawn:IsValid() then
+        pcall(function() pawn:CommandEnterCar(true, nil, false) end)
+        M.stats.copySeat = (M.stats.copySeat or 0) + 1
+    end
+    return n
 end
 
 ---------------------------------------------------------------------------------------------------

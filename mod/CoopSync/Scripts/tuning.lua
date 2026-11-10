@@ -56,8 +56,9 @@ end
 local fnames = {}
 local function fn(n) local f = fnames[n] if not f then f = FName(n) fnames[n] = f end return f end
 
--- the asset's deep copy (its outer: the car's controller, so it goes with the car), started with the asset's values
-local function copyGraph(g, outer)
+-- the asset's deep copy (its outer: the car's controller, so it goes with the car), started with the values of
+-- `from` (the car's graph before, else the asset)
+local function copyGraph(g, outer, from)
     local memo = {}
     local function node(n)
         local k = n:GetAddress()
@@ -69,7 +70,8 @@ local function copyGraph(g, outer)
     end
     local cg = StaticConstructObject(g:GetClass(), outer, FName("None"), 0, 0, false, false, g)
     cg.FirstNode = node(g.FirstNode)
-    for _, n in ipairs(NAMES) do pcall(function() cg:SetParameter(fn(n), g:GetParameter(fn(n))) end) end
+    local src = from or g
+    for _, n in ipairs(NAMES) do pcall(function() cg:SetParameter(fn(n), src:GetParameter(fn(n))) end) end
     return cg
 end
 
@@ -141,8 +143,14 @@ function M.tick(own, twin)
         local vc = vcOf(car)
         local cur = T.graphs[k]
         if vc and vc:IsValid() and not (cur and cur:IsValid() and vc.Profile:IsValid() and vc.Profile:GetAddress() == cur:GetAddress()) then
-            local ok, cg = pcall(copyGraph, g, vc)
+            -- (a car's graph made again - its profile put back to the asset by the game, or a new car: started with
+            -- the car's graph before, and its part values put on. The asset's, which nothing writes once the cars have
+            -- copies, left the guest's own car at engine 0 after the rides in the other's car: cars-test 2026-11-10)
+            local okC, cg = pcall(copyGraph, g, vc, cur and cur:IsValid() and cur or nil)
+            local ok = okC
             if ok and cg and cg:IsValid() then
+                local vals = (car:GetAddress() == own:GetAddress()) and T.ownVals or T.owner
+                if vals then for n, v in pairs(vals) do pcall(function() cg:SetParameter(fn(n), v) end) end end
                 vc.Profile = cg
                 T.graphs[k] = cg
                 T.carOfGraph[cg:GetAddress()] = k

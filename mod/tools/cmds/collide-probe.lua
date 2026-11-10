@@ -96,8 +96,35 @@ elseif op == "peakget" then
         local sm = CoopDevPeak.samples
         for i = 1, #sm - 1 do held = math.max(held, math.min(sm[i][2], sm[i + 1][2])) end
     end
-    return string.format("held=%.0f peak=%.0f n=%d before=%.0f after=%.0f mind=%.0f", held, CoopDevPeak and CoopDevPeak.max or -1, CoopDevPeak and CoopDevPeak.n or 0,
-        before, after, CoopDevPeak and CoopDevPeak.minD or -1) .. ctx
+    -- dv=: the speed the hit gave - the top held within 1 s from the cars' closest moment minus the speed 0.1 s before
+    -- it (a car parked on a slope rolled down at 3.5 m/s before the hit and on after: its top speed was the slope's,
+    -- quick suite 2026-11-10)
+    local dv, hitV = -1, -1
+    if CoopDevPeak then
+        local sm, im = CoopDevPeak.samples, nil
+        -- (the hit: the first jump of the speed between two samples, > 100 cm/s in 30 ms - the slope's roll is ~3; the
+        -- closest moment came after the push had begun, its speed already the push's. Else the closest moment)
+        for i = 1, #sm - 1 do if sm[i + 1][2] - sm[i][2] > 100 then im = i + 1 break end end
+        if not im then for i = 1, #sm do if sm[i].d and (not im or sm[i].d < sm[im].d) then im = i end end end
+        if im then
+            local t0 = sm[im][1]
+            local b = im
+            while b > 1 and sm[b][1] > t0 - 0.1 do b = b - 1 end
+            hitV = sm[b][2]
+            -- (as vectors: the change of the velocity, whichever way the car rolled)
+            local function vec(q) local x, y = (q.v or ""):match("^(-?[%d.]+),(-?[%d.]+)") return tonumber(x) or 0, tonumber(y) or 0 end
+            local bx, by = vec(sm[b])
+            local function dvAt(q) local x, y = vec(q) return math.sqrt((x - bx) ^ 2 + (y - by) ^ 2) end
+            local top = -1
+            for i = im, #sm - 1 do
+                if sm[i][1] > t0 + 1.0 then break end
+                top = math.max(top, math.min(dvAt(sm[i]), dvAt(sm[i + 1])))
+            end
+            dv = top
+        end
+    end
+    return string.format("held=%.0f peak=%.0f n=%d before=%.0f after=%.0f mind=%.0f dv=%.0f hitv=%.0f", held, CoopDevPeak and CoopDevPeak.max or -1, CoopDevPeak and CoopDevPeak.n or 0,
+        before, after, CoopDevPeak and CoopDevPeak.minD or -1, dv, hitV) .. ctx
 end
 if op == "hp" then
     -- the own car's parts' health (twincar stateLine: slot=health,fuel,battery;...): sum and the parts with health

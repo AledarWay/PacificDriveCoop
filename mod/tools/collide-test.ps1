@@ -50,6 +50,10 @@ $g0 = Col $cd 'where'
 # near the guest's car read there as a hit, BI held the striker to ~3 m/s. Waking its controller - SetParkingBrakeActive
 # / Wake - crashed the host's game once)
 "  host: " + (Send $hd "return CoopPlayers.botInput(4, 1.0, 0)")
+# (the guest's car held still until the striker is near: parked here it rolled down the slope at 3.5 m/s before the hit -
+# a weak or a missed hit, the top speed the slope's; with the parking lever on it stopped the striker like a wall;
+# quick suite 2026-11-10. Free, in drive, its speed put to 0 every 30 ms until the twin came 80 closer)
+"  guest: " + (Send $cd "HOLD_D0 = nil local T = CoopPlayers.twinModule() local c = T.ownCar() local t0 = os.clock() local h h = LoopInGameThreadWithDelay(30, function() local tw for _, x in ipairs(FindAllOf('BP_PlayerCarNew_C') or {}) do if x:IsValid() and T.isTwin(x) then tw = x end end local near = true if tw and c:IsValid() then local a, b = c:K2_GetActorLocation(), tw:K2_GetActorLocation() local d = math.sqrt((a.X - b.X) ^ 2 + (a.Y - b.Y) ^ 2) HOLD_D0 = HOLD_D0 or d near = d < HOLD_D0 - 80 end if near or os.clock() - t0 > 12 then CancelDelayedAction(h) return end c.RootComponent:SetPhysicsLinearVelocity({ X = 0, Y = 0, Z = 0 }, false, FName('None')) c.RootComponent:SetPhysicsAngularVelocityInDegrees({ X = 0, Y = 0, Z = 0 }, false, FName('None')) end) return 'held still until the twin comes'")
 "  host: " + (Col $hd 'launch' 'COL_SPEED = 1500')
 for ($i = 0; $i -lt 10; $i++) { Start-Sleep -Milliseconds 600; "    host: " + (Col $hd 'where') + " | guest: " + (Col $cd 'where') }
 Start-Sleep 4
@@ -77,8 +81,10 @@ Check "host: its car kept moving after the hit (0.25 s on: >= 30 % of its speed 
 # the guest's car's top speed after the hit against the striker's speed into it (host's "sent <striker>><shared>")
 $pk = Col $cd 'peakget' 'COL_CTX = true'
 $peak = [double]($pk -replace '(?s)^held=([\d.]+).*', '$1')
+# (the speed the hit gave, not the top speed: the parked car rolled down a slope before and after the hit, 2026-11-10)
+$dv = [double]($pk -replace '(?s)^.*? dv=(-?[\d.]+).*', '$1')
 $striker = $hb
-Check "guest: pushed like by a car of its own mass (top speed held over 2 samples: 25-75 % of the striker's), not thrown or barely moved" ($striker -gt 300 -and $peak -ge 0.25 * $striker -and $peak -le 0.75 * $striker) "guest top speed $([math]::Round($peak)) cm/s ($pk), striker $striker cm/s, moved $([math]::Round($moved)) units (a slope: it may roll on)"
+Check "guest: pushed like by a car of its own mass (the speed the hit gave, held over 2 samples: 25-75 % of the striker's), not thrown or barely moved" ($striker -gt 300 -and $dv -ge 0.25 * $striker -and $dv -le 0.75 * $striker) "guest gained $([math]::Round($dv)) cm/s (top $([math]::Round($peak))) ($pk), striker $striker cm/s, moved $([math]::Round($moved)) units (a slope: it may roll on)"
 
 "=== 3. damage: each car's parts on its owner's side, shown on the other side's twin"
 Start-Sleep 12 # (ES lines: every 1 s when changed)

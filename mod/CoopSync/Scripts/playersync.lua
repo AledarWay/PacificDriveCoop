@@ -3711,7 +3711,7 @@ local function applyTick()
             -- the other player put / took something in its twin of this side's car: this side's real storage
             local ok, what, n = pcall(Twin.Store.ownerChange, t[3], t[4], tonumber(t[5]), t[6] or "", t[7], t[8], tonumber(t[9]))
             if ok and what == "nack" then append(outFile, string.format("CN\t%d\t%s\t%d\t%s", M.nowMs(), t[3], n, t[6]))
-            elseif ok and what == "missing" then append(outFile, string.format("CT\t%d\t%s\t%d\t%s", M.nowMs(), t[3], n, (t[6] or ""):match("^([^{]*)"))) end
+            elseif ok and what == "missing" then append(outFile, string.format("CT\t%d\t%s\t%d\t%s", M.nowMs(), t[3], n, (t[6] or ""):match("^([^{*]*)"))) end
             TD.store.checkMs = -1e9
             st.storeDone = (st.storeDone or 0) + 1
         elseif t[1] == "CN" then
