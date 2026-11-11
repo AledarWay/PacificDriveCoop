@@ -6,7 +6,8 @@
 #   2b. a DJ break on the host's radio -> the guest plays the same one; its own breaks held off / stopped
 #   3. guest changes channel on the twin's radio -> the host's real radio skips, the guest follows the new track
 #   4. host changes channel itself -> the guest follows
-#   5. guest gets out; no errors
+#   5. guest gets out
+#   6. the guest in its own car, its radio on: the host's station plays there too; its channel change is the host's; no errors
 param([switch]$Keep)
 $env:COOPTEST_SOUND = '1'
 $root = "C:\PacificDriveCoop"; $t = "$root\mod\tools"; $inst = "$root\local\instances"
@@ -107,6 +108,16 @@ $gi = Ghost $cd
 Check "guest: out, its own radio off again" ($gi.in_ghost -eq '-' -and (RadioOn $cd) -eq 'false') "in_ghost=$($gi.in_ghost) radio=$(RadioOn $cd)"
 $cn = Send $cd "local m = FindFirstOf('BP_MusicManager_C') return m.NextNaturalInterstitialCounter .. ' ' .. m.NextManualInterstitialCounter"
 Check "guest: its own DJ breaks' counters back" ($cn -ne '99 99' -and $cn -match '^\d+ \d+$') "counters $cn"
+"=== 6. two radios in two cars (owner's two-games test 2026-11-11: each in a car, the tracks differed): one station"
+"  guest into its own car: " + (Send $cd "return CoopPlayers.botEnterCar()"); Start-Sleep 5
+"  guest's own radio on: " + (Send $cd "FindFirstOf('BP_CarManager_C'):SetCarRadioOnOffState(true, true) return 'on'"); Start-Sleep 8
+$ht = TrackSoon $hd; $gt = TrackSoon $cd; $gi = Ghost $cd
+Check "the guest's own car's radio plays the host's track" ($ht -ne 'nil' -and $gt -eq $ht) "host=$ht guest=$gt last_track=$($gi.last_track)"
+$before = $ht
+"  guest changes channel on its own radio: " + (Send $cd "local T = CoopPlayers.twinModule() return tostring(T.changeChannel(T.ownCar(), 1))"); Start-Sleep 7
+$ht = TrackSoon $hd; $gt = TrackSoon $cd; $gi = Ghost $cd; $hi = Ghost $hd
+Check "the host's station changed with it, the guest plays the new track" ($ht -ne $before -and $ht -ne 'nil' -and $gt -eq $ht) "before=$before host=$ht guest=$gt rk_sent=$($gi.rk_sent) last_rk_done=$($hi.last_rk_done)"
+"  guest's radio off: " + (Send $cd "FindFirstOf('BP_CarManager_C'):SetCarRadioOnOffState(false, true) return 'off'")
 $eh = Send $hd "return CoopPlayers.report()"; $eg = Send $cd "return CoopPlayers.report()"
 Check "no errors on either side" ($eh -notmatch 'errors=[1-9]|ERR' -and $eg -notmatch 'errors=[1-9]|ERR') "host: $eh | guest: $eg"
 

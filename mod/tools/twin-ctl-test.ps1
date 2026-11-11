@@ -1,4 +1,4 @@
-﻿# Automated test of the twins' car body controls (twin rework stage C): the headlights / top light / wipers are one
+# Automated test of the twins' car body controls (twin rework stage C): the headlights / top light / wipers are one
 # state in the game's car manager, and the twin's own lever / switch handlers act on the manager's car. Outside the
 # other's twin they are off (its E there must not touch the own car; EnterDoor is its driver's door); inside it the
 # manager holds the owner's state, the game's own lever works on it and the change reaches the owner's real car (K /
@@ -98,6 +98,40 @@ Check "guest: at the twin's wheel" ($gi.in_ghost -eq 'H' -and $gi.seat -eq '1') 
 $want = "$($h0.own_ltw)"
 Check "guest: the manager holds the host's lights / top / wipers / radio" ($want.Length -eq 4 -and "$([int]($gc.lights -eq 'true'))$([int]($gc.top -eq 'true'))$([int]($gc.wipers -eq 'true'))$([int]($gc.radio -eq 'true'))" -eq $want) "host=$want guest manager: $($gc.raw)"
 
+"=== 2b. the host on the guest's back seat - each in the other's car (owner's two-games test 2026-11-11: the lever lagged and jumped back)"
+$gd = Send $cd "local T = CoopPlayers.twinModule() local own = T.ownCar() local o = {} for n = 3, 4 do local d = T.door(own, n) o[#o + 1] = (d and not d:GetClass():GetFName():ToString():find('EmptyDoor')) and 'd' or '-' end return table.concat(o)"
+$bd = if ($gd.Substring(0, 1) -eq 'd') { 3 } else { 4 }; $by = if ($bd -eq 3) { -1 } else { 1 }; $frame = if ($bd -eq 3) { 'SLOT_BackSeatLeft' } else { 'SLOT_BackSeatRight' }
+"  the guest's back doors 3/4: $gd -> door $bd"
+"  that back seat free: " + (Send $cd "local sl = CoopPlayers.twinModule().ownCar().$frame.ItemSlot local n = sl.Items:GetArrayNum() if n > 0 then sl:RemoveItem(sl.Items[1]) end return n .. ' -> ' .. sl.Items:GetArrayNum()")
+foreach ($spot in @(@(0, -260), @(-30, -220), @(20, -240))) {
+    "  host to the guest's back left door ($($spot -join ',')): " + (Send $hd "LOOK_OWN = false local T = CoopPlayers.twinModule() local tw for _, c in ipairs(FindAllOf('BP_PlayerCarNew_C') or {}) do if c:IsValid() and T.isTwin(c) then tw = c end end local KML = StaticFindObject('/Script/Engine.Default__KismetMathLibrary') local w = KML:TransformLocation(tw:GetTransform(), { X = $($spot[0]), Y = $($by * [math]::Abs($spot[1])), Z = 0 }) local p = FindFirstOf('PlayerController').Pawn p:K2_SetActorLocation({ X = w.X, Y = w.Y, Z = w.Z + 100 }, false, {}, true) return 'there'")
+    Start-Sleep 2
+    # (the camera at the door's middle - cmds/twin-parts-look turned the host away from the guest's car here)
+    Send $hd "local T = CoopPlayers.twinModule() local tw for _, c in ipairs(FindAllOf('BP_PlayerCarNew_C') or {}) do if c:IsValid() and T.isTwin(c) then tw = c end end local KML = StaticFindObject('/Script/Engine.Default__KismetMathLibrary') local m = KML:TransformLocation(tw:GetTransform(), { X = -40, Y = $($by * 94), Z = 10 }) local pc = FindFirstOf('PlayerController') local e = pc.PlayerCameraManager:GetCameraLocation() local d = { X = m.X - e.X, Y = m.Y - e.Y, Z = m.Z - e.Z } pc:SetControlRotation({ Pitch = math.deg(math.atan(d.Z, math.sqrt(d.X * d.X + d.Y * d.Y))), Yaw = math.deg(math.atan(d.Y, d.X)), Roll = 0 }) return 'aimed'" | Out-Null
+    Start-Sleep 1
+    $lit = Send $hd "local g, n = CoopPlayers.twinModule().highlightedDoor() return tostring(n)"
+    $tp = if ($lit -match "^$bd") { (Send $hd "local p = FindFirstOf('PlayerController').Pawn p['Command Interact'](p, true) Dev.after(100, function() local q = FindFirstOf('PlayerController').Pawn q['Command Interact'](q, false) end) return 'E'") + " (highlighted door: $bd)" } else { "no E (lit: $lit)" }
+    "  host: $tp"
+    if ($tp -match "highlighted door: $bd") { break }
+}
+Start-Sleep 6
+$hi = Ghost $hd
+Check "host: on the guest's back seat $bd" ($hi.in_ghost -eq 'G' -and $hi.seat -eq "$bd") "in_ghost=$($hi.in_ghost) seat=$($hi.seat)"
+# (the guest shifts in the host's twin; the guest's manager read every 200 ms for 4 s: the lever must not come back)
+$gb0 = Send $cd "return tostring(FindFirstOf('BP_CarManager_C').MyCarGearBox)"
+$gw = if ($gb0 -eq '1') { 0 } else { 1 }
+Send $cd "GB = {} local m = FindFirstOf('BP_CarManager_C') m.CarIgnitionState = 2 m.MyCarGearBox = $gw local t0 = os.clock() local h h = LoopInGameThreadWithDelay(200, function() if os.clock() - t0 > 4 then CancelDelayedAction(h) return end GB[#GB + 1] = tostring(m.MyCarGearBox) end) return 'shifted'" | Out-Null
+Start-Sleep 5
+$gb = Send $cd "return table.concat(GB, '')"
+$hk = Send $hd "return CoopPlayers.twinCtlInfo()"
+Check "guest: its lever shift held, not taken back by the host's lines" ($gb -notmatch "$gb0" -and $gb.Length -ge 15) "shifted $gb0 -> $gw, the guest's manager every 200 ms: $gb | host: $hk"
+"  host out of the guest's car: " + ((Probe $hd "CE_CAR = 'twin' CE_HL = 'ExitDoor'" "car-e.lua") -split "`n" | Select-Object -Last 1); Start-Sleep 6
+$hgear = Send $hd "return tostring(FindFirstOf('BP_CarManager_C').MyCarGearBox)"
+Check "host: out, its own car's lever is the guest's shift" ($hgear -eq "$gw") "host lever $hgear (want $gw)"
+# (the host's lever as before for the steps below; its lever must have moved with the guest's shift - checked by the
+# gear-lever step: a kept state put back without the animation left it at drive with the gear in park)
+"  host's lever back: " + (Send $hd "local c = CoopPlayers.twinModule().ownCar() c:ToggleGearBoxState(, false) return 'toggled'"); Start-Sleep 3
+"  host's gear now: " + (Send $hd "return tostring(FindFirstOf('BP_CarManager_C').MyCarGearBox)")
 "=== 3. guest works the headlight lever and the top light in the twin"
 "  " + ((Press $cd 'LeftHandle') -split "`n" | Select-Object -Last 1); Start-Sleep 4
 $h1 = CtlInfo $hd; $gi = Ghost $cd

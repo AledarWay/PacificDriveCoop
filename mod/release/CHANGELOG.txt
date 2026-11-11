@@ -72,7 +72,12 @@ Cars:
 - The other's trunk lid opens and shuts every time. Before, when its owner had just been at your car, the shut did
   nothing on its side: the lid stood open for good (or opened and shut by itself on your side).
 - Pressing E at something else of the other's car right after its lid (its trunk box, a tow hook) no longer counts as
-  pressing the lid. The lid could shut on you and keep slamming.- Each car drives by its own parts. Both cars took their engine and tire values from one place in the game, written by
+  pressing the lid. The lid could shut on you and keep slamming.
+- Driving the other's car: its lever, key and lights no longer jump back for a while after you work them. When its
+  owner sat in your car meanwhile (each in the other's), the owner's game reported your car's lever as its own; on
+  foot by your car, it applied them to your car instead. Getting back into your own car, its lever stands where the
+  friend put it.
+- Each car drives by its own parts. Both cars took their engine and tire values from one place in the game, written by
   whichever car was last; in the other's car a player drove on the own car's parts (your upgraded car and your
   friend's starting one behaved the other way round). Now each car has its own, and the other's car gets its owner's.
 - The other's car's fuel tank works: its gas cap shows that car's fuel, a canister fills it and can siphon from it
@@ -84,6 +89,10 @@ Cars:
   friend's car on your side stopped your own engine.
 - The guest's car is no longer there twice after a zone loads. The game sometimes built it twice from the same
   parts; getting out could put the player into the other copy. The copy is removed once the zone plays.
+The radio:
+- One station for both: when both radios are on, in any cars, they play the same track at the same place, the host's
+  (or the guest's when the host's radio is off). Skipping a track on either radio skips it for both. Before, each car
+  played its own music unless you sat in the other's car with its owner.
 Fuel canisters:
 - A canister put down on the ground has the same fuel for both. Before, the other player's copy came empty.
 - A canister put into a container (a crate, a trunk, the car's storage) keeps its fuel for the other player too.
@@ -106,7 +115,8 @@ offroad ones, also with the guest at the wheel of the host's car); a new gas cap
 is set up again); the car storage test opens the other's trunk box the game's way; a new back-seat test (out by each back
 door on both sides, the driver's door with the other at the wheel, the doorway of a taken-off door, the door shutting
 once); a new trunk test (the other's lid opened and shut four times, the owner having been at the other's car); the
-garage-seat test checks which door opens and where the player stands.
+garage-seat test checks which door opens and where the player stands; the radio test has a radio in each car;
+the car controls test has each player in the other's car.
 Known issues:
 - The anchor in both players' hands is still not reproduced in the tests (a stable anchor on a pedestal, the
   game's own long grab on the other side gives nobody an item). Please send a report right after it happens.

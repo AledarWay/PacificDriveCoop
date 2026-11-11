@@ -3932,4 +3932,13 @@ Guest's load timeline (hitches.log; the host's TravelTo 23:35:53):
 - range: the guest's stray bollards - an unmapped key kept its reverse[] entry, so a pooled copy back out was never a
   stray (4 at one spot). reverse cleared on unmap / D.
 - Test lesson: restarting CoopPlayers many times on a reused pair broke its Lua state; ExitDoor pressed by a test on
-  foot took the car's driver's door off (the tests exit only when seated now).
+  foot took the car's driver's door off (the tests exit only when seated now).- Item 12 (radio): one station in the zone (TD.isStation: the host when its radio is on, else the guest); RS lines
+  carry each side's radio on / off; the station sends RT / RN / RI, every other radio that is on follows, a
+  follower's channel change is RK to the station (applied on the radio playing there). twin-radio step 6.
+- Item 11 (the lever jumping back): (a) while the owner sat in the other's twin its C / G lines read the manager -
+  the other car's lever - and the driver's twin followed them back; now TD.ownControls (savedCtl) and K into the kept
+  state; on the way out a changed lever / key turns with the game's animation (set straight, the lever stood at drive
+  in park). (b) on foot, K / KG lights and the key / lever were applied through the context car's manager - the twin
+  when the owner had looked at it: TD.ownCtxFor (the own car the context, held 2.5 s). twin-ctl 2b. Open: the own
+  car's lights toggled by the other while the owner sits in the other's twin still wait in savedCtl.ltw until it gets
+  out (the held light line, twincar holdOwnLights, is not changed meanwhile).

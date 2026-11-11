@@ -680,6 +680,7 @@ function TD.toggleLtw(car, what, v)
         inGhost.savedCtl.ltw[what] = v
         return true
     end
+    TD.ownCtxFor(car)
     local cur = TD.readLtw((CoopSyncFirst or FindFirstOf)("BP_CarManager_C"))[what]
     if cur == v then return true end
     return pcall(function() if type(d[5]) == "function" then d[5](car) else car[d[5]](car) end end)
@@ -1796,7 +1797,8 @@ function TD.sendTrack()
     if role ~= "host" and garage then return end -- (the garage: the host's music)
     local m = (CoopSyncFirst or FindFirstOf)("BP_CarManager_C")
     local c = m and m.NewCarActor
-    if c and c:IsValid() and Twin.isTwin(c) then return end -- (in the other's twin: the radio plays its music)
+    -- (in the zone only the station's track goes out: TD.isStation)
+    if not garage then TD.sendRadioOn() if not TD.isStation() then return end end
     pcall(Twin.queueTick)
     local ok, dj = pcall(Twin.djStarted)
     if ok and dj then
@@ -1827,13 +1829,34 @@ function TD.ownerPos()
     if not target.trackPos then return nil end
     return target.trackPos + (M.nowMs() - target.trackAt)
 end
--- does this side's radio follow the other's? (c: the car the player sits in, nil in the garage)
-function TD.following(c)
-    if garage then return role ~= "host" end
-    if not (c and TD.inTwin(c)) then return false end
+-- One station for both in the zone (owner's two-games test 2026-11-11: "radio on in both, each in the other's car: the
+-- tracks differed, skipping did not sync - we do not sync tracks between different cars?"): each car followed its
+-- owner's radio, and an owner sitting in the other's car sent nothing - two radios, two tracks. Now the radio that is
+-- on plays one station: the host's when its radio is on, else the guest's. The station sends its track (RT / RN / RI),
+-- every other radio that is on follows it, a channel change there goes to the station (RK).
+--   RS <time> <0|1>     this side's radio on / off (on a change, else every 5 s)
+function TD.radioOnHere()
     local r = {}
     pcall(function() (CoopSyncFirst or FindFirstOf)("BP_CarManager_C"):GetCarRadioOnOffState(r) end)
     return r.CarState_Radio == true
+end
+function TD.otherRadioOn() return target.radioOn == true and M.nowMs() - (target.radioAt or -1e9) < 12000 end
+function TD.isStation()
+    if garage then return role == "host" end
+    return TD.radioOnHere() and (role == "host" or not TD.otherRadioOn())
+end
+function TD.sendRadioOn()
+    local on, now = TD.radioOnHere(), M.nowMs()
+    if on ~= TD.music.radioSent or now - (TD.music.radioSentMs or -1e9) > 5000 then
+        TD.music.radioSent, TD.music.radioSentMs = on, now
+        append(outFile, string.format("RS\t%d\t%d", now, on and 1 or 0))
+        st.radioStateSent = (st.radioStateSent or 0) + 1
+    end
+end
+-- does this side's radio follow the other's? (c: unused - any car's radio follows the station)
+function TD.following(c)
+    if garage then return role ~= "host" end
+    return TD.radioOnHere() and not TD.isStation() and TD.otherRadioOn()
 end
 function TD.musicTick(c)
     pcall(Twin.queueTick)
@@ -1875,8 +1898,8 @@ function TD.onChannel(comp, dir)
     if garage then
         if role == "host" then return end
     else
-        local car = part and part:IsValid() and part:GetAttachParentActor()
-        if not (car and Twin.isTwin(car) and TD.inTwin(car)) then return end
+        -- (a radio following the station: its channel change is the station's - not the follower's own track change)
+        if not TD.following(nil) or M.nowMs() - TD.music.tryMs < 2500 then return end
     end
     TD.music.holdMs = M.nowMs() + 2000
     append(outFile, string.format("RK\t%d\t%d", M.nowMs(), dir))
@@ -2901,7 +2924,28 @@ local function readControls()
 end
 -- ToggleIgnitionState(v) sets v. ToggleGearBoxState(s, false) (with the lever animation) flips the lever only
 -- when it stands on s (observed: s = the other state does nothing), so it is called with the current state.
+-- The own car's key / lever as its owner's lines tell them: while this player sits in the other's twin the manager
+-- holds THAT car's, the own car's are kept in inGhost.savedCtl (owner's two-games test 2026-11-11: each in the other's
+-- car, the lever "lags and jumps back for a while" - the owner's lines carried the other car's lever, the driver's twin
+-- followed them back).
+function TD.ownControls()
+    local sc = inGhost and inGhost.savedCtl
+    if sc then return sc.ign, sc.gear end
+    return readControls()
+end
+-- the other player's key / lever / lights for the own car: in the own car's context (on foot the context may be the
+-- other's twin - the toggle then read and wrote that car's state), held TD.DR_CTX_MS; while this player sits in the
+-- other's twin, into the kept state (savedCtl) - back in the manager when it gets out
+function TD.ownCtxFor(car)
+    if car and TD.native and Native and not inGhost and not Sync.parentOf(localPawn()) then
+        pcall(Native.use, car)
+        TD.ownCtxUntil = M.nowMs() + TD.DR_CTX_MS
+    end
+end
 local function setControl(car, what, v)
+    local sc = inGhost and inGhost.savedCtl
+    if sc then sc[what] = v st.ctlKept = (st.ctlKept or 0) + 1 return end
+    TD.ownCtxFor(car)
     if what == "ign" then pcall(function() car:ToggleIgnitionState(v) end) return end
     local _, gear = readControls()
     if gear and gear ~= v then pcall(function() car:ToggleGearBoxState(gear, false) end) end
@@ -3154,14 +3198,14 @@ local function sendTick()
         trace("self", pawn:K2_GetActorLocation())
     end
     if role == "host" and car then
-        local ign, gear = readControls()
+        local ign, gear = TD.ownControls()
         append(outFile, string.format("C\t%d\t%s\t%d\t%d\t%d\t%d\t%s\t%s", M.nowMs(), xform(car), seatOf.host or 0, seatOf.client or 0, ign or -1, gear or -1, TD.devicesBusy(car), TD.ownLtw()))
         trace("car", car:K2_GetActorLocation())
     end
     -- own-car mode: the client's own car for the host's copy
     local mine = role == "client" and ownCar and Sync.deref(ownCarPath) or nil
     if mine then
-        local ign, gear = readControls()
+        local ign, gear = TD.ownControls()
         append(outFile, string.format("G\t%d\t%s\t%d\t%d\t%s\t%s", M.nowMs(), xform(mine), ign or -1, gear or -1, TD.devicesBusy(mine), TD.ownLtw()))
         TD.sendOwn(mine)
     end
@@ -3917,13 +3961,16 @@ local function applyTick()
                 local ok, played = pcall(Twin.djPlay, t[3])
                 st.djPlayed = (st.djPlayed or 0) + ((ok and played) and 1 or 0)
             end
+        elseif t[1] == "RS" then
+            target.radioOn, target.radioAt = t[3] == "1", M.nowMs()
         elseif t[1] == "RK" then
-            -- the other player changed channel in its twin of this side's car: this side's real radio changes
-            -- (not while this side sits in the other's twin: its radio is the other's music then)
+            -- the other player changed channel on a radio following this side's: the station's radio changes (the
+            -- garage: the host's own car's; the zone: the radio playing here - the car this player is in or by)
             local m = (CoopSyncFirst or FindFirstOf)("BP_CarManager_C")
             local c = m and m.NewCarActor
             local own = Twin.ownCar()
-            local ok = own and c and c:IsValid() and not Twin.isTwin(c) and Twin.changeChannel(own, tonumber(t[3]) or 1)
+            local car = garage and own or (TD.isStation() and c and c:IsValid() and c) or nil
+            local ok = car and Twin.changeChannel(car, tonumber(t[3]) or 1)
             st.lastChannelDone = tostring(ok and true or false)
             TD.music.checkMs = -1e9
         elseif t[1] == "EY" then
@@ -4142,6 +4189,7 @@ local function twinControls()
     if not inGhost.savedCtl then
         if not (owner and owner.ign and owner.ign >= 0) then return end
         inGhost.savedCtl = { ign = m.CarIgnitionState, gear = m.MyCarGearBox }
+        inGhost.savedCtl.ign0, inGhost.savedCtl.gear0 = inGhost.savedCtl.ign, inGhost.savedCtl.gear
         if not TD.native then TD.doorSnap, TD.doorSnapUntil = TD.readDoorStates(m), nil end
         inGhost.expect, inGhost.ctlHold = { ign = owner.ign, gear = owner.gear }, 0
         pcall(function() m.CarIgnitionState = owner.ign m.MyCarGearBox = owner.gear end)
@@ -4198,7 +4246,18 @@ twinControlsRestore = function()
     end
     if not (inGhost and inGhost.savedCtl) then return end
     local m = Sync.deref(carManagerPath) or (CoopSyncFirst or FindFirstOf)("BP_CarManager_C")
-    pcall(function() m.CarIgnitionState = inGhost.savedCtl.ign m.MyCarGearBox = inGhost.savedCtl.gear end)
+    local sc = inGhost.savedCtl
+    pcall(function() m.CarIgnitionState = sc.ign m.MyCarGearBox = sc.gear end)
+    -- (changed by the other player meanwhile - its K into the kept state: the own car's key / lever turned there with
+    -- the game's own animation, from where they stood; set straight, the lever stood at drive with the gear in park)
+    local own = Twin.ownCar()
+    if own and sc.gear0 and sc.gear ~= sc.gear0 then
+        pcall(function() m.MyCarGearBox = sc.gear0 own:ToggleGearBoxState(sc.gear0, false) end)
+        st.ctlRestoredAnimated = (st.ctlRestoredAnimated or 0) + 1
+    end
+    if own and sc.ign0 and sc.ign ~= sc.ign0 then
+        pcall(function() m.CarIgnitionState = sc.ign0 own:ToggleIgnitionState(sc.ign) end)
+    end
     local saved = inGhost.savedCtl.ltw
     if saved then
         local cur = TD.readLtw(m)
