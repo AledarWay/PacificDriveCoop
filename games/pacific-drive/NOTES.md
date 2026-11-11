@@ -4020,3 +4020,25 @@ game (host instance, early-garage made binary by SaveGame, the host zone saves o
   the load (s.wasSeated). The guard against a second load of the same doc (late join) is gone. The game's own travel
   to a new zone logs a FAILED TO LOAD V4 of its own (one per travel, "a new game or map?"); ours has none.
   startflow 30/30 (join + late join: zone save, car, seated), gates 6/6, nextzone 19/19, gates-split 4/4.
+- **The one load from the garage** (config direct_load, on with zone_from_save): at the drive-out (session "our
+  join") instead of Run.join's TravelTo - runsync.prepareDirect (insureCar, pickLeg, OverrideMapLocation,
+  rs:SetCurrentLegState(leg, 0)), zonesave.directStart: SaveGame(own slot) = the departure, as the game's travel
+  writes it; then the departure + the host's Map (CoopNative_SaveSplice) + the host's META (zonesave.swapMeta, Lua:
+  the slot table rebuilt) into slot 0, LoadGame(0, 6, 1, 0); afterLoad builds the car (spawnpoint) and seats the
+  player; session marks the zone loaded on arrival (S.zoneLoadedSeq - the garage's ticks clear it: a second, old
+  load ran once). First try saved the departure into slot 0 itself and loaded it: LOAD V4: Garage, back in the garage
+  - the slot just saved is served from memory even after DeleteGame. Failures (no save in 20 s, splice, META,
+  LoadGame, still in a garage 45 s after) -> "direct failed" -> the usual travel. gates-test: the drive-out to the
+  zone 24 s (the load 22 s), playing 46 s after the drive-out (import 11.7 s, cleaning 3.2, 3.7); seated, slot 1
+  current again, 6/6. Before (two loads): ~62 s.
+- **The quick suite with the one load** (2026-11-12): of the 26 re-run, all green but collide, cars, nextzone; cars
+  (39/39) and nextzone (19/19) green alone - flaky (cars: the host's trunk lid stayed open, broke off driving; nextzone:
+  the guest's game died in a UFunction called from Lua after the follow, the stack in the dump has no Lua frame).
+  collide failed 3 of 3 through the exact zone: the guest's car (host car + 800 Y) stood on a slope and rolled, or the
+  host's launch spot 15 m behind it was blocked (9 s of throttle: 1.3 m). The test is the hit's physics: -OldZone, the
+  guest's own car by NewCarActor (it took the zone's first level car), its yaw the host's: 9/9.
+- **Open: the guest's own car after a zone-save load has 4 rear windows and the roof** (stateLine:
+  LeftRearWindowBack/Front, RightRearWindowBack/Front, RoofBack/Front - 27 parts, hp 3144) which the host's car and the
+  guest's earlier runs (21 parts, hp 2042) lack; its slots (CAR_SLOTS) the same as before the load, 6 tool items in
+  the trunk (battery chargers x3, 5 gal can, scrapper T2, vacuum) that car-before.txt did not list. The spawnpoint's
+  AddAllHardpointUpgrades is false. To check against item 10 (glass) with the owner.

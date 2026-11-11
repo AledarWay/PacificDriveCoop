@@ -73,9 +73,9 @@ local Hitch = require("hitch")
 -- the zone the game generated from the seed, the host's list imported over it)
 local ZoneSave
 local ZONE_SAVE_WAIT_S = 20
--- (the guest's load of the host's exact zone from its save: config zone_from_save, off by default - 2026-11-11: its
--- game had never taken the scene before (FAILED TO LOAD V4 SCENE DATA: the own slot's memory copy), so that second load
--- bought nothing; taken now through slot 0, it sometimes leaves the guest without its car. Off: one load per arrival.)
+-- (the guest's load of the host's exact zone from its save: config zone_from_save, on - 2026-11-11: through slot 0 the
+-- scene is taken; the own car the load did not bring is built by zonesave.afterLoad. From the garage: config
+-- direct_load, the one load straight into it - zonesave.directStart)
 local Config
 local function zoneSaveOn() return ZoneSave ~= nil and CoopSyncZoneSave ~= false and CoopNative_SaveSplice ~= nil and Config ~= nil and Config.get("zone_from_save") == 1 end
 -- one instance per Lua state (tests dofile the modules from another mod: require would not find it)
@@ -282,6 +282,23 @@ local function clientTick(gstate, world)
         -- through (onGuestExit) takes it to the host's map - no junction picking, as soon as the host's zone is up
         if not (S.go or S.joinPending) then
             if S.state ~= "joining" then S.state = "garage" return end
+            -- (the one load from the garage under way: saving, then loading; it failed - the usual travel at once)
+            if S.direct and ZoneSave.s.state == "direct failed" then
+                S.direct = nil
+                S.zoneLoadedSeq = nil
+                local ok, r = pcall(Run.join, Link.docPath(chan, "inbox", "host-run.txt"))
+                S.note = "one load failed (" .. tostring(ZoneSave.s.why) .. "): " .. (ok and tostring(r) or ("join failed: " .. tostring(r)))
+                pcall(Hitch.note, "timeline " .. S.note)
+                ZoneSave.s = { state = "idle" }
+                S.joinAt = nowS()
+                return
+            end
+            -- (still in a garage 45 s after: the load brought the garage back - a failure too)
+            if S.direct and ZoneSave.s.state == "guest loading" and nowS() - (S.joinAt or nowS()) > 45 then
+                ZoneSave.s.state, ZoneSave.s.why = "direct failed", "the load came back to the garage"
+                return
+            end
+            if S.direct and (ZoneSave.s.state == "direct saving" or ZoneSave.s.state == "guest loading") then return end
             -- the game did not travel (a late join at 15 fps stayed in the garage for 8 min): join again
             if nowS() - (S.joinAt or nowS()) > JOIN_RETRY_S and (S.joinTries or 0) < 3 then
                 S.joinTries, S.joinAt = (S.joinTries or 0) + 1, nowS()
@@ -307,6 +324,22 @@ local function clientTick(gstate, world)
         pcall(Hitch.note, "timeline drive-out: our join")
         S.gameTravelAt, S.exitSeenAt, S.gameTravelSeen = nil, nil, nil
         S.go, S.joinPending = false, false
+        -- the one load straight into the host's zone from its save (zonesave.directStart; config direct_load): no
+        -- zone of its own generated first. Its steps go on in ZoneSave.tick; a failure travels the usual way below.
+        if zoneSaveOn() and Config.get("direct_load") == 1 and session.zsave then
+            local okP, p, pe = pcall(Run.prepareDirect, Link.docPath(chan, "inbox", "host-run.txt"))
+            local okD, d, de
+            if okP and p then okD, d, de = pcall(ZoneSave.directStart, Link.docPath(chan, "inbox", session.zsave)) end
+            if okD and d then
+                S.zoneLoadedSeq, S.direct = tonumber(session.seq), true
+                S.note = d .. "; " .. tostring(p)
+                S.state, S.joinAt, S.joinTries = "joining", nowS(), 0
+                pcall(Hitch.note, "timeline drive-out: one load (" .. S.note .. ")")
+                return
+            end
+            S.note = "one load not started: " .. tostring(okP and (p and (okD and de or d) or pe) or p)
+            pcall(Hitch.note, "timeline drive-out: " .. S.note)
+        end
         -- the game's own travel to the host's map with the own car
         local ok, r = pcall(Run.join, Link.docPath(chan, "inbox", "host-run.txt"))
         S.note = ok and tostring(r) or ("join failed: " .. tostring(r))
@@ -377,6 +410,16 @@ local function clientTick(gstate, world)
     if S.zoneWorld ~= world then
         S.zoneWorld, S.arrived, S.readyTicks, S.state, S.imported = world, nowS(), 0, "zone: generating", nil
         S.fromSave, S.justLoaded = S.justLoaded, nil -- (a new world of a later leg: generated again)
+        -- (arrived by the one load from the garage: the car and the slots as after any zone-save load)
+        if S.direct and ZoneSave.s.state == "guest loading" and ZoneSave.s.direct then
+            S.direct, S.fromSave = nil, true
+            -- (this zone's save is in: no second load below - the garage's ticks had cleared the drive-out's mark)
+            S.zoneLoadedSeq = tonumber(session.seq)
+            ZoneSave.s.state = "guest loaded"
+            local gates = Link.docPath(chan, "inbox", "host-gates.txt")
+            pcall(ZoneSave.afterLoad, function() return Run.hostSpot(gates) end)
+            pcall(Hitch.note, "timeline arrived by the one load")
+        end
         -- the car next to the host's right on arrival: moving it km away makes the engine stream that area in (a
         -- 4-6 s frame); here it joins the arrival's own load instead of stalling the guest 25 s into the zone
         if session.world == world then

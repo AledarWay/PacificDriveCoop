@@ -23,9 +23,11 @@ function Col($dir, [string]$op, [string]$extra = '') { Send $dir "COL_OP = '$op'
 Get-Process PenDriverPro-Win64-Shipping -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2
 & "$t\deploy.ps1"
 "=== 0. the guest joins with its own car"
-& "$t\sync-test.ps1" -KeepHost -KeepClient -Net -GuestJoin | Select-String 'arrived'
+# (-OldZone: the hit's physics, not the zone; through the host's exact zone the guest's car stood on a slope there and
+# rolled, or the host's launch spot behind it was blocked - 2026-11-12, 3 of 3 runs)
+& "$t\sync-test.ps1" -KeepHost -KeepClient -Net -GuestJoin -OldZone | Select-String 'arrived'
 $sess = @{}; Get-Content "$inst\net-session.txt" | ForEach-Object { $k, $v = $_ -split '=', 2; $sess[$k] = $v }
-"  guest car aside: " + (Send $cd "local c for _, x in ipairs(FindAllOf('BP_PlayerCarNew_C') or {}) do if x:IsValid() and x:GetFullName():find(':PersistentLevel.', 1, true) then c = x break end end local h = $(Send $hd "local c = FindFirstOf('BP_PlayerCarNew_C') local l = c:K2_GetActorLocation() return string.format('{X=%.1f,Y=%.1f,Z=%.1f}', l.X, l.Y + 800, l.Z + 60)") c:K2_SetActorLocation(h, false, {}, true) c.RootComponent:SetPhysicsLinearVelocity({ X = 0, Y = 0, Z = -50 }, false, FName('None')) return 'moved'")
+"  guest car aside: " + (Send $cd "local c = FindFirstOf('BP_CarManager_C').NewCarActor local h, hr = $(Send $hd "local c = FindFirstOf('BP_CarManager_C').NewCarActor local l, r = c:K2_GetActorLocation(), c:K2_GetActorRotation() return string.format('{X=%.1f,Y=%.1f,Z=%.1f}, {Pitch=0,Yaw=%.2f,Roll=0}', l.X, l.Y + 800, l.Z + 60, r.Yaw)") c:K2_SetActorLocationAndRotation(h, hr, false, {}, true) c.RootComponent:SetPhysicsLinearVelocity({ X = 0, Y = 0, Z = -50 }, false, FName('None')) return 'moved'")
 Start-Sleep 3
 "host: " + (Send $hd "$lib CoopSyncState.start(CoopSync, 'host', '$(P $sess.hchan)') return CoopPlayers.start(CoopSync, 'host', '$(P $sess.hchan)')")
 "client: " + (Send $cd "$lib CoopSyncState.start(CoopSync, 'client', '$(P $sess.cchan)', '$(P "$($sess.cchan)\inbox\host-spawnlist.tsv")') return CoopPlayers.start(CoopSync, 'client', '$(P $sess.cchan)', { ownCar = true })")

@@ -114,6 +114,16 @@ if ($GuestJoin) {
         do { Start-Sleep 3; $w1 = Send $cd "local w = FindFirstOf('World') return w and w:IsValid() and tostring(w:GetAddress()) or 'none'" } while (($w1 -eq $w0 -or $w1 -eq 'none' -or $w1 -eq '') -and ((Get-Date) - $t0).TotalSeconds -lt 240) }
         "guest's level reloaded after $([int]((Get-Date) - $t0).TotalSeconds) s: $(if ($w1 -ne $w0) { 'yes' } else { 'NO' })"
         & "$t\wait-state.ps1" -State 5 -Dir $cd -TimeoutSec 240 | Select-Object -Last 1 | ForEach-Object { "guest in the host's zone: $_" }
+        # (the load leaves the guest without its car now and then - the mod's session builds it, zonesave.afterLoad;
+        # here no session runs: the same in one call, beside the host's car, 3 s after the load; then seated)
+        if ($w1 -ne $w0) {
+            Start-Sleep 3
+            $hc = Send $hd "local l = FindFirstOf('BP_CarManager_C').NewCarActor:K2_GetActorLocation() local y = FindFirstOf('BP_CarManager_C').NewCarActor:K2_GetActorRotation().Yaw return string.format('{X=%.0f,Y=%.0f,Z=%.0f,Yaw=%.1f}', l.X + math.cos(math.rad(y + 90)) * 600, l.Y + math.sin(math.rad(y + 90)) * 600, l.Z, y)"
+            $hc = ($hc -replace '^OK\s+', '').Trim()
+            "guest's car after the load: " + (Send $cd "$zs return ZS.finishNow($hc)")
+            Start-Sleep 2
+            "guest seated: " + (Send $cd "$zs return ZS.seatNow()")
+        }
     }
 } else {
     $r = StartInst client 999; $r | Select-Object -SkipLast 1; $clientPid = $r[-1]

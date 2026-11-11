@@ -58,6 +58,9 @@ Leaving together (the guest's drive-out and the next junction):
   the guest's game loads the zone from the host's save. Before, the load quietly took the guest's own saved copy, and
   the guest played its own generated zone that the mod corrected. After the load the guest's car is always there with
   the player at the wheel (the game sometimes built no car). Off in the settings file: zone_from_save = 0.
+- One load from the garage: the guest goes straight into the host's zone instead of first travelling into a zone of
+  its own (in the tests about 15 s faster from the drive-out to playing). If that load fails, the guest travels the
+  old way. Off in the settings file: direct_load = 0.
 The zone's entrance:
 - The guest comes in by the host's entrance: its car stands next to where the host's car came in, not next to the host
   wherever it drove since. The host's entrance and exits are the guest's; if the host's car still stands at the

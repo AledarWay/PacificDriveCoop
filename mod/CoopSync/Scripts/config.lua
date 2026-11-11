@@ -12,6 +12,7 @@ local TESTS = (os.getenv("COOPSYNC_CHAN") or "") ~= ""
 M.DEFAULTS = {
     entrance_split_chance = TESTS and 0 or 0.25,
     zone_from_save = 1,
+    direct_load = 1,
 }
 local TEMPLATE = [[
 # CoopSync settings. Edit and save; the game picks a change up within a few seconds.
@@ -24,6 +25,10 @@ entrance_split_chance = 0.25
 # 1 = on. 0 = off: the guest's game builds the zone from its own seed and the mod makes it the host's (the older way;
 # some buildings can differ).
 zone_from_save = 1
+
+# With zone_from_save on: the guest goes from its garage straight into the host's zone with one load.
+# 0 = the guest's game first travels into a zone of its own, then loads the host's over it (slower).
+direct_load = 1
 ]]
 
 local path, values, readAt = nil, {}, -1e9

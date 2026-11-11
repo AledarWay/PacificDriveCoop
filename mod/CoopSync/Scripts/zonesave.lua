@@ -124,7 +124,10 @@ M.loadedDocs = M.loadedDocs or {}
 function M.guestLoad(docPath, side)
     local m = sm()
     if not (m and m:IsValid()) then return nil, "no save manager" end
+    -- (a load's car still awaited, or slot 0 current: an earlier load not done - never a second one over it)
+    if M.s.waiting or M.s.state == "direct saving" then return nil, "busy: " .. tostring(M.s.state) end
     local slot = m.CurrentSaveSlot
+    if slot == M.SCRATCH then return nil, "busy: slot 0 is current" end
     local own = M.slotPath(slot)
     local dir = M.saveDir()
     if not (own and fileSize(own)) then return nil, "no own save at " .. tostring(own) end
@@ -139,6 +142,10 @@ function M.guestLoad(docPath, side)
     local t0 = now()
     local r = CoopNative_SaveSplice(own, hostFile, out, 0, side or 500)
     if not tostring(r):find("^ok") then os.remove(out) return nil, "splice: " .. tostring(r) end
+    -- (the host's META too - its Level the host's zone: the own slot's save may be a departure written in the garage,
+    -- by the one load - its Level the garage, and the load went home: revisit-test 2026-11-11)
+    local mr, me = M.swapMeta(out, hostFile)
+    if not mr then os.remove(out) return nil, "META: " .. tostring(me) end
     local spliceMs = (now() - t0) * 1000
     M.usedScratch[scratch] = true
     M.loadedDocs[docPath] = true
@@ -172,6 +179,135 @@ function M.guestLoad(docPath, side)
     M.s = { state = "guest loading", slot = slot, scratch = scratch, t0 = now(), wasSeated = seated }
     return M.stats.last
 end
+-- One save's META chunk put into another (tools/save-meta-swap.ps1 in Lua): META is the slot's summary - its Level,
+-- MapLocation, ShapeLeg - and the META's Level decides what LoadGame loads. Chunks copied byte for byte, the slot table
+-- (16 x 24 bytes from 16: tag, offset, stored, size, flags) rebuilt, chunks from byte 400.
+function M.swapMeta(into, from)
+    local function rd(p) local f = io.open(p, "rb") if not f then return nil end local s = f:read("a") f:close() return s end
+    local a, h = rd(into), rd(from)
+    if not (a and h) then return nil, "cannot read" end
+    local function slots(b)
+        local r = {}
+        for i = 0, 15 do
+            local o = 16 + i * 24
+            r[i] = { tag = b:sub(o + 1, o + 4), off = string.unpack("<I4", b, o + 5), len = string.unpack("<I4", b, o + 9), entry = b:sub(o + 1, o + 24) }
+        end
+        return r
+    end
+    local as, hs = slots(a), slots(h)
+    local hm
+    for i = 0, 15 do if hs[i].tag == "META" then hm = hs[i] end end
+    if not hm then return nil, "no META in the host's save" end
+    local body, offs = {}, {}
+    local pos = 400
+    for i = 0, 15 do
+        local s = as[i]
+        if s.off < #a and s.tag:match("^[A-Z0-9_][A-Z0-9_][A-Z0-9_][A-Z0-9_]$") then
+            local c = s.tag == "META" and h:sub(hm.off + 1, hm.off + hm.len) or (s.len > 0 and a:sub(s.off + 1, s.off + s.len) or "")
+            body[#body + 1] = c
+            offs[i] = { off = pos, entry = s.tag == "META" and hm.entry or s.entry }
+            pos = pos + #c
+        end
+    end
+    local head = { a:sub(1, 16) }
+    for i = 0, 15 do
+        local e = offs[i] and offs[i].entry or string.rep("\0", 24)
+        head[#head + 1] = e:sub(1, 4) .. string.pack("<I4", offs[i] and offs[i].off or pos) .. e:sub(9, 24)
+    end
+    local f = io.open(into, "wb")
+    if not f then return nil, "cannot write" end
+    f:write(table.concat(head), table.concat(body))
+    f:close()
+    return string.format("META %d bytes swapped, %d bytes", hm.len, pos)
+end
+
+-- The one load straight from the garage into the host's zone (owner, 2026-11-11: "the host's exact zone and one
+-- load"; NOTES "One load from the garage works": 17 s, the host's objects in place, the leg the host's). Instead of
+-- the travel (the own zone generated, then the host's loaded over it): the route's leg made the host's
+-- (runsync.prepareDirect), SaveGame into slot 0 (a departure to the host's zone), the host's Map spliced into it
+-- and the host's META put in (its Level), slot 0's memory copy dropped (DeleteGame) and the file written again,
+-- LoadGame(0, LOAD_CAR_TRANSFORM | LOAD_PLAYER_TRANSFORM, STORY, 0) - not into the current world (the garage): the
+-- level the META names. No car comes with it: M.afterLoad builds it (BP_CarSpawnpoint) and seats the player.
+-- Steps over ticks (M.tick): "direct saving" -> load. A failure: state "direct failed" (session.lua travels then).
+function M.directStart(docPath)
+    local m = sm()
+    if not (m and m:IsValid()) then return nil, "no save manager" end
+    if M.s.state == "direct saving" or M.s.state == "guest loading" then return nil, "busy: " .. M.s.state end
+    local dir = M.saveDir()
+    if not dir then return nil, "no save folder" end
+    local hostFile = dir .. "coop-host-zone.sav"
+    local v
+    if docPath:sub(1, 4) == "doc:" then v = CoopNative_DocGetFile and CoopNative_DocGetFile(docPath:sub(5), hostFile)
+    elseif fileSize(docPath) then v = copyFile(docPath, hostFile) end
+    if not v then return nil, "no host zone save yet" end
+    local own = m.CurrentSaveSlot
+    if own == M.SCRATCH then return nil, "the own slot is slot 0" end
+    -- (the departure into the own slot, as the game's own travel writes it there: a slot just saved is served from
+    -- memory on a load - saved into slot 0 and loaded from there, gates-test 2026-11-11 got the garage back, LOAD V4:
+    -- Garage, though the file had the host's Map and META)
+    local path = M.slotPath(own)
+    local seated = false
+    pcall(function()
+        local par = FindFirstOf("PlayerController").Pawn:GetAttachParentActor()
+        seated = par ~= nil and par:IsValid() and par:GetFullName() == ownCar():GetFullName()
+    end)
+    local t0 = now()
+    local before = fileSize(path)
+    local ok, e = pcall(function() m:SaveGame(own, "", 1) end)
+    if not ok then return nil, "SaveGame failed: " .. tostring(e) end
+    M.s = { state = "direct saving", own = own, path = path, hostFile = hostFile, doc = docPath, t0 = t0, size = -1, stable = 0, wasSeated = seated, mtime0 = before }
+    return "one load: saving the departure into slot " .. own
+end
+local function directTick()
+    local s = M.s
+    local m = sm()
+    local busy = false
+    pcall(function() busy = m:IsAsyncSaveInProgress() end)
+    local n = fileSize(s.path)
+    -- (the own slot's old file is there from the start: the save is async, its flag may not be up at once)
+    if busy or not n or n ~= s.size or now() - s.t0 < 1 then
+        s.size, s.stable = n or -1, 0
+        if now() - s.t0 > 20 then M.s = { state = "direct failed", why = "the save never came" } end
+        return
+    end
+    s.stable = s.stable + 1
+    if s.stable < 2 then return end
+    -- (the save is async: a file the same size as before may be the old one for a moment - 2 stable ticks, 1 s)
+    local out = M.slotPath(M.SCRATCH)
+    local function fail(why)
+        pcall(function() m:SetCurrentSlot(s.own) end)
+        pcall(function() m:DeleteGame(M.SCRATCH, true) end)
+        os.remove(out)
+        M.stats.last = "guest: one load failed: " .. why
+        M.s = { state = "direct failed", why = why }
+    end
+    local dir = M.saveDir()
+    local dep = dir .. "coop-own-departure.sav"
+    if not copyFile(s.path, dep) then return fail("cannot copy the departure") end
+    -- (slot 0 cleared - a file of an earlier load, its memory copy)
+    pcall(function() m:DeleteGame(M.SCRATCH, true) end)
+    os.remove(out)
+    local t0 = now()
+    local r = CoopNative_SaveSplice(dep, s.hostFile, out, 0, 500)
+    if not tostring(r):find("^ok") then return fail("splice: " .. tostring(r)) end
+    local mr, me = M.swapMeta(out, s.hostFile)
+    if not mr then return fail("META: " .. tostring(me)) end
+    local spliceMs = (now() - t0) * 1000
+    copyFile(out, dir .. "coop-last-splice.sav")
+    pcall(function() m:InvalidateMetadataCacheSlot(M.SCRATCH) end)
+    if CoopSyncHitch then pcall(CoopSyncHitch.note, string.format("zone save: one load from the garage (saved in %.1f s, %s, %s)", now() - s.t0, r, mr)) end
+    M.selfLoad = true
+    local ok, e = pcall(function() m:LoadGame(M.SCRATCH, 6, 1, 0) end)
+    M.selfLoad = false
+    if not ok then return fail("LoadGame: " .. tostring(e)) end
+    M.usedScratch[M.SCRATCH] = true
+    M.loadedDocs[s.doc] = true
+    M.stats.loaded = M.stats.loaded + 1
+    M.stats.direct = (M.stats.direct or 0) + 1
+    M.stats.last = string.format("guest: one load of %s via slot 0 for %d (%s, %.0f ms)", s.doc, s.own, r, spliceMs)
+    M.s = { state = "guest loading", slot = s.own, scratch = M.SCRATCH, t0 = now(), wasSeated = s.wasSeated, direct = true }
+end
+
 -- The own car the game did not build after the load (2026-11-11, gates-test -ZoneSave: no BP_PlayerCarNew_C, the
 -- player at 0,0, in_car_on_load true). In a zone the car comes from a BP_CarSpawnpoint_C the game spawns at the
 -- entrance (the host had one, made at runtime - no save holds it); after the guest's load into the current world none
@@ -181,6 +317,8 @@ local SPAWNPOINT = "/Game/Characters/PlayerCar/BP_CarSpawnpoint.BP_CarSpawnpoint
 local NO_CAR_S = 2.5
 function M.spawnOwnCar(at)
     local cls = StaticFindObject(SPAWNPOINT)
+    -- (straight from the garage no spawnpoint was ever in memory: loaded)
+    if not (cls and cls:IsValid()) then pcall(function() LoadAsset(SPAWNPOINT:gsub("%.[^.]+$", "")) end) cls = StaticFindObject(SPAWNPOINT) end
     if not (cls and cls:IsValid()) then return "no spawnpoint class" end
     local GS = StaticFindObject("/Script/Engine.Default__GameplayStatics")
     local y = math.rad(at.Yaw or 0)
@@ -193,7 +331,42 @@ function M.spawnOwnCar(at)
     M.stats.carSpawned = (M.stats.carSpawned or 0) + 1
     return string.format("own car spawned at %.0f,%.0f", at.X, at.Y)
 end
--- (session.lua holds the zone's steps while the load's car is awaited)
+-- the player into the own car when it stands beside it (after a load)
+function M.seatNow()
+    local r = "no own car"
+    pcall(function()
+        local p = FindFirstOf("PlayerController").Pawn
+        local par = p:GetAttachParentActor()
+        if not ownCar() then return end
+        if par and par:IsValid() then r = "seated already" return end
+        p:CommandEnterCar(true, nil, false)
+        M.stats.seated = (M.stats.seated or 0) + 1
+        r = "seated"
+    end)
+    return r
+end
+-- the guest's own slot current again, the scratch slot gone (once a load's zone is in)
+function M.slotsBack()
+    local s = M.s
+    if not s.scratch then return "no scratch slot" end
+    local m = sm()
+    if m and m:IsValid() then
+        pcall(function() m:SetCurrentSlot(s.slot) end)
+        pcall(function() m:DeleteGame(s.scratch, true) end)
+    end
+    os.remove(M.slotPath(s.scratch))
+    if CoopNative_DeleteFiles then CoopNative_DeleteFiles(M.saveDir(), slotName(s.scratch) .. "-backup-") end
+    M.stats.scratchDone = (M.stats.scratchDone or 0) + 1
+    return "slot " .. tostring(s.slot) .. " current again"
+end
+-- (tests that load through their own commands - sync-test -GuestJoin: no session, no CoopSyncAfter there) the load's
+-- end in one call: the own car built at at when the game built none, the slots back; then seatNow
+function M.finishNow(at)
+    local r = ownCar() and "the game's car" or (at and M.spawnOwnCar(at) or "no place")
+    local b = M.slotsBack()
+    M.s = { state = "guest loaded" }
+    return r .. "; " .. b
+end-- (session.lua holds the zone's steps while the load's car is awaited)
 function M.waitingCar() return M.s.waiting and not ownCar() and true or false end
 -- the zone is in (session.lua, the new world): once the own car is there (the game's, or spawned after NO_CAR_S at
 -- spot() - the host's car's place), the guest's own slot current again, the scratch slot gone (20 s at most)
@@ -213,24 +386,8 @@ function M.afterLoad(spot)
         if not ownCar() and now() - s.loadedAt < 20 then if CoopSyncAfter then CoopSyncAfter(500, done) end return end
         -- back in the seat it had before the load (startflow 2026-11-11: the game built the car but left the player
         -- standing beside it; the mod's own car likewise): a moment after the car is there
-        if s.wasSeated and CoopSyncAfter then CoopSyncAfter(1000, function()
-            pcall(function()
-                local p = FindFirstOf("PlayerController").Pawn
-                local par = p:GetAttachParentActor()
-                if ownCar() and not (par and par:IsValid()) then
-                    p:CommandEnterCar(true, nil, false)
-                    M.stats.seated = (M.stats.seated or 0) + 1
-                end
-            end)
-        end) end
-        local m = sm()
-        if m and m:IsValid() then
-            pcall(function() m:SetCurrentSlot(s.slot) end)
-            pcall(function() m:DeleteGame(s.scratch, true) end)
-        end
-        os.remove(M.slotPath(s.scratch))
-        if CoopNative_DeleteFiles then CoopNative_DeleteFiles(M.saveDir(), slotName(s.scratch) .. "-backup-") end
-        M.stats.scratchDone = (M.stats.scratchDone or 0) + 1
+        if s.wasSeated and CoopSyncAfter then CoopSyncAfter(1000, M.seatNow) end
+        M.slotsBack()
         pcall(function()
             local p = FindFirstOf("PlayerController").Pawn:K2_GetActorLocation()
             M.stats.after = string.format("cars=%d pawn=%.0f,%.0f after %.1f s", cars, p.X, p.Y, now() - s.loadedAt)
@@ -242,6 +399,10 @@ function M.afterLoad(spot)
 end
 function M.tick()
     if M.s.state == "host saving" then pcall(hostTick) end
+    if M.s.state == "direct saving" then
+        local ok, e = pcall(directTick)
+        if not ok then M.s = { state = "direct failed", why = tostring(e) } end
+    end
 end
 
 function M.info()

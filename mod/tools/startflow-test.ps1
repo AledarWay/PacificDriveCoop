@@ -72,7 +72,9 @@ function TravelCheck($when, [int]$n) {
     $trav = @($lines | Where-Object { $_ -match 'Traveling to level' }).Count
     $conc = @($lines | Where-Object { $_ -match 'concurrent save/load' }).Count
     $cs = Status $cchan
-    Check "${when}: the guest travelled once per drive-out, to the host's junction" ($trav -eq $n -and $conc -eq 0 -and [int]$cs.travels -eq $n) "game log travels=$trav concurrent=$conc | mod travels=$($cs.travels) | $($cs.note)"
+    # (a drive-out is a travel or the one load straight into the host's zone - config direct_load: no travel then)
+    $dl = @(Get-Content (Get-ChildItem $cchan -Recurse -Filter hitches.log | Select-Object -First 1).FullName -ErrorAction SilentlyContinue | Where-Object { $_ -match 'one load from the garage' }).Count
+    Check "${when}: the guest travelled (or loaded) once per drive-out, to the host's junction" ($trav + $dl -eq $n -and $conc -eq 0 -and [int]$cs.travels + $dl -eq $n) "game log travels=$trav concurrent=$conc one loads=$dl | mod travels=$($cs.travels) | $($cs.note)"
     $menu = Send $cd "local v = 0 for _, w in ipairs(FindAllOf('UMG_PlayerMenu_Main_C') or {}) do pcall(function() if w:IsInViewport() and w:IsVisible() then v = v + 1 end end) end return 'menus=' .. v"
     Check "${when}: no junction map open on the guest" ($menu -match 'menus=0') "$menu exitmap=$($cs.exitmap)"
 }

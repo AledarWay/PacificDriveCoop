@@ -450,6 +450,28 @@ function M.join(descPath)
     return "joining: " .. r .. "; " .. ins
 end
 
+-- Guest, in its garage, for the one load straight into the host's zone (zonesave.directStart): what M.join does but
+-- the travel - the car insured, the host's junction made the route's current leg (its MapLocation the host's), so
+-- the save the game writes next is a departure to the host's zone. Returns a note, or nil + why.
+function M.prepareDirect(descPath)
+    local s = readText(descPath)
+    if not s then return nil, "no descriptor at " .. descPath end
+    local d = parse(s:match("^[^\r\n]*") or "")
+    if not d then return nil, "bad descriptor" end
+    local ml = loadObj(d.map)
+    if not ml then return nil, "map location not found: " .. tostring(d.map) end
+    local rs, leg, how = M.pickLeg(d)
+    if not rs then return nil, "no leg to travel to" end
+    local ins = M.insureCar(M.insuranceFile())
+    local same = false
+    pcall(function() same = leg.MapLocation and leg.MapLocation:IsValid() and leg.MapLocation:GetFullName() == ml:GetFullName() end)
+    if not same then leg:OverrideMapLocation(ml) end
+    local okL, eL = pcall(function() rs:SetCurrentLegState(leg, 0) end)
+    if not okL then return nil, "SetCurrentLegState: " .. tostring(eL) end
+    M.stats.direct = (M.stats.direct or 0) + 1
+    return string.format("%s%s -> %s; %s", how, same and "" or " (map set)", d.map:match("[^/]+$") or d.map, ins)
+end
+
 -- Guest, in a zone: follow the host to the zone of a new descriptor (the host's junction; a new game's first zone
 -- has no next leg of its own, but any unvisited leg given the host's MapLocation loads it - probed: first zone ->
 -- Rooster_11, 20 s).
