@@ -200,13 +200,13 @@ $tilt = "local a = CoopSync.deref(CoopSyncMap and CoopSyncMap['KEY'] or 'KEY') l
 $k1 = Send $cd "FAR_FROM = nil $near"
 "  host spins $k1`: " + (Spin $hd $k1) + " | guest " + (Send $cd $tilt.Replace('KEY', $k1))
 Start-Sleep 7
-$gMax = Send $cd "return string.format('%.1f', SW_MAX)"
+$gMax = Send $cd "return string.format('%.1f', SW_MAX or -1)"
 $cr = Send $cd "return CoopSyncState.report()"
 Check "the host's sway reached the guest's copy" ([double]$gMax -gt 3 -and (Stat $cr 'ap_TS') -ge 1) "guest body tilted $gMax deg; guest ap_TS=$(Stat $cr 'ap_TS') TS_already=$(Stat $cr 'ap_TS_already')"
 $k2 = Send $cd "FAR_FROM = '$k1' $near"
 "  guest spins $k2`: " + (Spin $cd $k2) + " | host " + (Send $hd $tilt.Replace('KEY', $k2)) + " | guest " + (Send $cd $tilt.Replace('KEY', $k2).Replace('SW_MAX', 'SW2_MAX'))
 Start-Sleep 7
-$hMax = Send $hd "return string.format('%.1f', SW_MAX)"
+$hMax = Send $hd "return string.format('%.1f', SW_MAX or -1)"
 $hr = Send $hd "return CoopSyncState.report()"
 # (the guest's own: did its mine sway, did it send - a miss had req_TS=0 on the host, quick suite 2026-11-10)
 $g2 = Send $cd "local a = CoopSync.deref(CoopSyncMap['$k2']) local l = a and a:K2_GetActorLocation() local p = FindFirstOf('PlayerController').Pawn:K2_GetActorLocation() local car = FindFirstOf('BP_CarManager_C').NewCarActor local c = car:K2_GetActorLocation() local function d(x) return l and math.floor(math.sqrt((x.X - l.X) ^ 2 + (x.Y - l.Y) ^ 2)) or -1 end return string.format('tilted=%.1f rq_TS=%s pawn_d=%s car_d=%s car=%s w=%.0f armed=%s gone_ms=%s inlist=%s innear=%s', SW2_MAX or -1, CoopSyncState.report():match('rq_TS=(%d+)') or '0', d(p), d(c), car:GetFName():ToString(), SW_W or -1, tostring(SW_ARMED), tostring(SW_GONE), tostring(SW_INLIST), tostring(SW_INNEAR))"

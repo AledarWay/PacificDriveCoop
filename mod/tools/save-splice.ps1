@@ -1,11 +1,13 @@
-﻿# The zone of one save put into another (the "zone through the game's save" prototype, 2026-10-30): the guest's own
+# The zone of one save put into another (the "zone through the game's save" prototype, 2026-10-30): the guest's own
 # save (its profile, garage, inventory, managers) with the root keys -Keys (default: Map = the zone) taken from the
 # host's save, written as a new save file the guest's game can load (UserLoadGame).
 # Format (save-dump.ps1): "SAVC" header (16 bytes), 16 chunk slots of 24 bytes (tag, offset, stored size, stored size,
 # flags, unpacked size; unused slots point at the file's end), the chunks from byte 400. GAME is written as an LZ4
 # block of literals only (valid LZ4, not compressed: ~4 MB).
 param([Parameter(Mandatory)][string]$Guest, [Parameter(Mandatory)][string]$HostSave, [Parameter(Mandatory)][string]$Out,
-    [string[]]$Keys = @('Map'))
+    [string[]]$Keys = @('Map'), [switch]$MetaFromHost)
+# -MetaFromHost: the host's META chunk too (the slot's summary: Level, MapLocation, ShapeLeg - a garage save with the
+# host's Map loaded the garage again; the departure save the game writes has the zone's level there, 2026-11-11)
 & "$PSScriptRoot\save-dump.ps1" -Path $Guest | Out-Null # (loads SaveLz4 into the session; not dot-sourced: its $Out)
 if (-not ('SaveTree' -as [type])) { Add-Type -Path "$PSScriptRoot\SaveTree.cs" }
 
@@ -72,6 +74,7 @@ foreach ($s in $g.slots) {
     if ($s.off -ge $g.bytes.Length -or $s.tag -notmatch '^[A-Z0-9_]{4}$') { $newSlots += $null; continue }
     $off = 400 + $body.Length
     if ($s.tag -eq 'GAME') { $body.Write($packed, 0, $packed.Length); $newSlots += @{ s = $s; off = $off; len = $packed.Length; raw = $game.Length } }
+    elseif ($MetaFromHost -and $s.tag -eq 'META') { $hs = $h.slots | Where-Object { $_.tag -eq 'META' }; $body.Write($h.bytes, $hs.off, $hs.len); $newSlots += @{ s = $s; off = $off; len = $hs.len; raw = $hs.raw; flags = $hs.flags }; "  META: from the host ($($hs.len) bytes)" }
     else { if ($s.len) { $body.Write($g.bytes, $s.off, $s.len) }; $newSlots += @{ s = $s; off = $off; len = $s.len; raw = $s.raw } }
 }
 $end = 400 + $body.Length
@@ -86,6 +89,7 @@ for ($i = 0; $i -lt 16; $i++) {
         [BitConverter]::GetBytes([uint32]$n.len).CopyTo($file, $o + 8)
         [BitConverter]::GetBytes([uint32]$n.len).CopyTo($file, $o + 12)
         [BitConverter]::GetBytes([uint32]$n.raw).CopyTo($file, $o + 20)
+        if ($n.flags -ne $null) { [BitConverter]::GetBytes([uint32]$n.flags).CopyTo($file, $o + 16) }
     } else { [BitConverter]::GetBytes([uint32]$end).CopyTo($file, $o + 4) }
 }
 $body.ToArray().CopyTo($file, 400)

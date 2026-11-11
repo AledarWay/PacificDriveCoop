@@ -1047,7 +1047,6 @@ function TD.nativeTick()
     local want
     if inGhost then want = tw -- (in the other's car, getting in / out included)
     elseif parCar then want = parCar
-    elseif own and M.nowMs() < (TD.ownCtxUntil or 0) then want = own -- (a door of it the other player works: DR)
     else
         local hm = (CoopSyncFirst or FindFirstOf)("BP_HighlightManager_C")
         local h = hm and hm.CurrentHighlight
@@ -1055,7 +1054,9 @@ function TD.nativeTick()
         if car then
             want = car
             if tw and car:GetAddress() == tw:GetAddress() then TD.aimNative(tw, h) TD.twinAimMs = M.nowMs() else TD.aimed = nil end
-        elseif own and M.nowMs() - (TD.twinAimMs or -1e9) > TD.NATIVE_LET_GO_MS then
+        -- (or a door of it the other player works: DR - not over the player's own aim at the other's car: its E there
+        -- needs that car the context; the host's way in at the guest's wheel did nothing, cars 8b)
+        elseif own and (M.nowMs() - (TD.twinAimMs or -1e9) > TD.NATIVE_LET_GO_MS or M.nowMs() < (TD.ownCtxUntil or 0)) then
             -- (nothing of the other's car aimed at for a while: the own car again - the other's car as the context shows the
             -- manager's state, the own car's: its wipers stood still while its owner's swept, twin-ctl)
             want = own
