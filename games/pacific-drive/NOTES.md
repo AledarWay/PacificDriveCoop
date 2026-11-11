@@ -3941,4 +3941,8 @@ Guest's load timeline (hitches.log; the host's TravelTo 23:35:53):
   in park). (b) on foot, K / KG lights and the key / lever were applied through the context car's manager - the twin
   when the owner had looked at it: TD.ownCtxFor (the own car the context, held 2.5 s). twin-ctl 2b. Open: the own
   car's lights toggled by the other while the owner sits in the other's twin still wait in savedCtl.ltw until it gets
-  out (the held light line, twincar holdOwnLights, is not changed meanwhile).
+  out (the held light line, twincar holdOwnLights, is not changed meanwhile).- Item 13 (the guest's car jerked while the host changed its parts): not reproduced. twin-equip step 6 puts the
+  guest's car 330 beside the host's and takes a door and a wheel off the host's car and back three times (the
+  container path, ownerEquip): the guest's car and the host's twin of it moved 0. Not tried: the game's own take-off
+  (the part through the hands / inventory, a DROP world item on the other side next to the car). Asked the owner which
+  screen showed it and how the parts were taken off.

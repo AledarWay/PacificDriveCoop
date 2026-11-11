@@ -6,6 +6,7 @@
 #   3. guest puts it back (the inventory item moved into the twin's slot, as the game's attach) -> host's slot has it
 #   4. host takes the guest car's wheel off its twin -> guest's real slot empty
 #   5. host takes a device off its own seat 3 -> the guest's twin follows
+#   6. host takes parts off its own car and puts them back, the guest's car beside it -> the guest's car stands still
 param([switch]$Keep, [switch]$OldZone)
 $root = "C:\PacificDriveCoop"; $t = "$root\mod\tools"; $inst = "$root\local\instances"
 $hd = "$inst\host\coopdev"; $cd = "$inst\client\coopdev"
@@ -93,6 +94,33 @@ Check "guest: its real car lost that wheel" ((RealSlot $cd $w2) -eq '-') "guest 
 "  host: " + (Send $hd "return CoopPlayers.removeSeatDevice(3)")
 Start-Sleep 5
 Check "guest: the host car's twin seat frame is empty" ((TwinSlot $cd 'Car.Equip.Attachments.BackSeatLeft') -eq '-') "twin=$(TwinSlot $cd 'Car.Equip.Attachments.BackSeatLeft')"
+"=== 6. the host takes parts off its own car and puts them back, the guest's car right beside it (owner's two-games test 2026-11-11: the guest's car jerked, it even turned over)"
+"  guest's car beside the host's: " + (Send $cd "local own = CoopPlayers.twinModule().ownCar() own:K2_SetActorLocationAndRotation($(Send $hd "local c = CoopPlayers.twinModule().ownCar() local KML = StaticFindObject('/Script/Engine.Default__KismetMathLibrary') local w = KML:TransformLocation(c:GetTransform(), { X = 0, Y = 330, Z = 60 }) local r = c:K2_GetActorRotation() return string.format('{X=%.1f,Y=%.1f,Z=%.1f}, { Pitch = 0, Yaw = %.1f, Roll = 0 }', w.X, w.Y, w.Z, r.Yaw)"), false, {}, true) own.RootComponent:SetPhysicsLinearVelocity({ X = 0, Y = 0, Z = 0 }, false, FName('None')) return 'beside'")
+Start-Sleep 6
+# (the guest's car every 50 ms: its largest move and turn from where it stood)
+Send $cd "JW = { d = 0, r = 0 } local own = CoopPlayers.twinModule().ownCar() local l0, r0 = own:K2_GetActorLocation(), own:K2_GetActorRotation() local t0 = os.clock() local h h = LoopInGameThreadWithDelay(50, function() if os.clock() - t0 > 24 then CancelDelayedAction(h) return end local l, r = own:K2_GetActorLocation(), own:K2_GetActorRotation() JW.d = math.max(JW.d, math.sqrt((l.X - l0.X) ^ 2 + (l.Y - l0.Y) ^ 2 + (l.Z - l0.Z) ^ 2)) JW.r = math.max(JW.r, math.abs(r.Pitch - r0.Pitch) + math.abs(r.Roll - r0.Roll) + math.abs(((r.Yaw - r0.Yaw) % 360 + 540) % 360 - 180)) end) return 'watching'" | Out-Null
+# (and the host's twin of the guest's car - it follows the guest's car, kinematic: it must not move either)
+Send $hd "JW = { d = 0, r = 0 } local T = CoopPlayers.twinModule() local own for _, c in ipairs(FindAllOf('BP_PlayerCarNew_C') or {}) do if c:IsValid() and T.isTwin(c) then own = c end end local l0, r0 = own:K2_GetActorLocation(), own:K2_GetActorRotation() local t0 = os.clock() local h h = LoopInGameThreadWithDelay(50, function() if os.clock() - t0 > 24 or not own:IsValid() then CancelDelayedAction(h) return end local l, r = own:K2_GetActorLocation(), own:K2_GetActorRotation() JW.d = math.max(JW.d, math.sqrt((l.X - l0.X) ^ 2 + (l.Y - l0.Y) ^ 2 + (l.Z - l0.Z) ^ 2)) JW.r = math.max(JW.r, math.abs(r.Pitch - r0.Pitch) + math.abs(r.Roll - r0.Roll) + math.abs(((r.Yaw - r0.Yaw) % 360 + 540) % 360 - 180)) end) return 'watching'" | Out-Null
+$slots = @('Car.Equip.Body.DoorsFR', 'Car.Equip.Body.BumperFront', 'Car.Equip.Essentials.WheelRR')
+$have = @{}; foreach ($sl in $slots) { $have[$sl] = Send $hd "local line = CoopPlayers.twinModule().equipLine() or '' return line:match('$($sl.Replace('.', '%.'))=([^;]+)') or '-'" }
+"  host's parts: " + (($slots | ForEach-Object { "$_=$($have[$_])" }) -join ' ')
+foreach ($round in 1..3) {
+    foreach ($sl in $slots) {
+        if ($have[$sl] -eq '-') { continue }
+        Send $hd "return CoopPlayers.twinModule().ownerEquip('$sl', '-')" | Out-Null; Start-Sleep 1
+        Send $hd "return CoopPlayers.twinModule().ownerEquip('$sl', '$($have[$sl])')" | Out-Null; Start-Sleep 1
+    }
+}
+Start-Sleep 6
+$jw = Send $cd "return string.format('moved=%.0f turned=%.1f', JW.d, JW.r)"
+"  guest's car while the host's parts went off and on: $jw"
+$jk = KV $jw
+Check "the guest's car stood still (moved < 15, turned < 2 deg)" ([double]$jk.moved -lt 15 -and [double]$jk.turned -lt 2) $jw
+$jh = Send $hd "return string.format('moved=%.0f turned=%.1f', JW.d, JW.r)"; $jhk = KV $jh
+Check "the host's twin of it stood still too" ([double]$jhk.moved -lt 15 -and [double]$jhk.turned -lt 2) $jh
+$on = ($slots | Where-Object { $have[$_] -ne '-' } | ForEach-Object { "'$_'" }) -join ', '
+$hp = Send $hd "local line = CoopPlayers.twinModule().equipLine() or '' local o = {} for _, s in ipairs({ $on }) do o[#o + 1] = (line:find(s:gsub('%.', '%%.') .. '=', 1) and 'on' or 'off') end return table.concat(o, ' ')"
+Check "the host's parts back on" ($hp -notmatch 'off') $hp
 $g = EqState $cd; $h = EqState $hd
 Check "no equipment errors, own items' links whole on both sides" ($g.equip_errors -eq '0' -and $h.equip_errors -eq '0' -and $g.broken_links -eq '0' -and $h.broken_links -eq '0') "guest: $($g.raw) | host: $($h.raw)"
 
