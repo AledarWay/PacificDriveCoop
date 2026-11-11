@@ -3955,3 +3955,31 @@ Guest's load timeline (hitches.log; the host's TravelTo 23:35:53):
   (GetBreakingSEs, TryApplyAdditionalBreakingSE, HandleStartBreaking - needs 2 parameters). Likely the glass is the
   breaking state's look (item 9: the red bar) or a door type with glass; needs a look with graphics. Asked the owner
   when it broke (a crash? the bar red?) and which door it was.
+### The guest's double load, dug into (2026-11-11)
+Owner: "the guest's load into the host's zone felt long"; "we wanted to drop the guest's double load". Probes on one
+game (host instance, early-garage made binary by SaveGame, the host zone saves of Scylla_02 / Rooster_11):
+- **The host's zone never reached the guest in the current flow.** Every guest load of the spliced save logs
+  `LOAD V4: Map!!` then `FAILED TO LOAD V4 (Map) SCENE DATA -- Is this a new game or map?` (the owner's guest log too):
+  the guest loads its CURRENT slot (the departure's), and the save manager serves a slot it holds in memory, not the
+  file - the departure, no Map. So the guest kept its own generated zone and our import corrected it; the second load
+  (~10-18 s) bought nothing. Shown: the same zone save loads fine from the slot SaveGame just wrote, and from slot 1
+  (current) fails even unspliced; the spliced save from a slot this session never touched (8): no FAILED, 48 / 48
+  sampled host objects in place (electric mines the guest's own roll lacked). Also the slot's META is cached
+  (InvalidateMetadataCacheSlot): a slot whose old file had been listed loaded that old file's level.
+  Why tests missed it: both test games roll the same master seed (777), so the guest's own generation IS the host's
+  zone; the owner's two games differ (3569 / 4564 here).
+- **UserLoadGame(slot, 1, 0)** = LoadGame(slot, LOAD_INTO_CURRENT_WORLD, ...): it reloads the world one is in. Without
+  that flag (LoadGame(slot, 6 = car + player transforms, EGamePlayMode STORY, 0)) the level comes from the save.
+- **One load from the garage works**: in the garage, the host's leg made the route's current one
+  (pickLeg, OverrideMapLocation, BP_RouteState SetCurrentLegState(leg, 0)), SaveGame -> splice the host's Map and the
+  host's META chunk (tools/save-meta-swap.ps1; the META Level decides) -> into an untouched slot ->
+  LoadGame(slot, 6, 1, 0) from the garage: in Rooster_11 in 17.4 s, LOAD V4 Map without FAILED, 48 / 48 host objects,
+  the leg the host's. Left open: **the guest's car was not there** (no BP_PlayerCarNew_C; its 36 parts in the
+  inventory) - the travel spawns the car, a save holds none. A departure save the same way was not finished (the test
+  game got polluted by an old slot's load: seed 12345).
+- Neither the CHKP chunk nor META alone decided anything while slot 1's memory copy was in the way (all those probes
+  went through slot 1: discard them). Zones log "checkpoints allowed: False" on departure - not the cause either.
+- Plan: (1) now - the guest's zone-save load through a clean scratch slot (+ InvalidateMetadataCacheSlot, then
+  SetCurrentSlot back to its own and the own slot rewritten), so the host's zone really arrives; a test with two
+  different seeds. (2) the single load: the garage-leg save + Map + META from a scratch slot, and the car - spawned
+  by the game's own path (to find) or the mod; then the guest skips its own travel.
