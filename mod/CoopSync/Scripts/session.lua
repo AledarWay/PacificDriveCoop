@@ -368,7 +368,11 @@ local function clientTick(gstate, world)
         -- (the new World object is the event: no fixed 2 s first)
         if worldAddr() == S.loadWorld and nowS() - (S.zoneLoadAt or 0) < 120 then return end
         S.state, S.justLoaded, S.zoneWorld = "zone: generating", true, nil -- (the arrival step again: gates, clock)
-        if ZoneSave.s.state == "guest loading" then ZoneSave.s.state = "guest loaded" pcall(ZoneSave.afterLoad) end
+        if ZoneSave.s.state == "guest loading" then
+            ZoneSave.s.state = "guest loaded"
+            local gates = Link.docPath(chan, "inbox", "host-gates.txt")
+            pcall(ZoneSave.afterLoad, function() return Run.hostSpot(gates) end)
+        end
     end
     if S.zoneWorld ~= world then
         S.zoneWorld, S.arrived, S.readyTicks, S.state, S.imported = world, nowS(), 0, "zone: generating", nil
@@ -385,7 +389,8 @@ local function clientTick(gstate, world)
     -- game had built it, the guest had no car at all; startflow's late join, 2026-11-11. 15 s at most)
     local carReady = false
     pcall(function() local c = FindFirstOf("BP_CarManager_C").NewCarActor carReady = c ~= nil and c:IsValid() end)
-    if not carReady and S.arrived and nowS() - S.arrived < 15 then carReady = false elseif not carReady then carReady = true end    if zoneSaveOn() and session.zsave and session.world == world and S.zoneLoadedSeq ~= tonumber(session.seq)
+    if not carReady and S.arrived and nowS() - S.arrived < 15 then carReady = false elseif not carReady then carReady = true end
+    if zoneSaveOn() and session.zsave and session.world == world and S.zoneLoadedSeq ~= tonumber(session.seq)
         and carReady and (S.state == "zone: generating" or S.state == "zone: waiting for the host's list") then
         local okL, r, e = pcall(ZoneSave.guestLoad, Link.docPath(chan, "inbox", session.zsave), 500)
         if okL and r then
@@ -402,6 +407,9 @@ local function clientTick(gstate, world)
         S.zoneLoadedSeq, S.zoneWaitSince = tonumber(session.seq), nil
     end
     if S.state == "zone: generating" then
+        -- (after a zone-save load: the own car first - the game's, or the one zonesave builds - so the gates below put it
+        -- by the host's entrance)
+        if ZoneSave.waitingCar() then S.note = "zone save: waiting for the own car" return end
         if not zoneSettled() then return end
         S.state = "zone: waiting for the host's list"
     end
@@ -416,6 +424,7 @@ local function clientTick(gstate, world)
         -- player sees the host's car while the zone fills in)
         local okG, g = Hitch.timed("gates", Run.applyGates, Link.docPath(chan, "inbox", "host-gates.txt"), FindFirstOf("BP_CarManager_C").NewCarActor)
         S.gatesNote = okG and tostring(g) or ("gates failed: " .. tostring(g))
+        pcall(Hitch.note, "timeline gates on arrival (the list): " .. S.gatesNote)
         -- the import spread over frames (12 s in one frame in a big zone before)
         S.state = "zone: importing"
         local seq = tonumber(session.seq)

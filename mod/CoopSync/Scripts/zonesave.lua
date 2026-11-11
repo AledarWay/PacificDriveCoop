@@ -112,14 +112,18 @@ end
 -- metadata cache is dropped first; once the zone is in, M.afterLoad: the own slot current again (the rinse home
 -- writes there), the scratch slot deleted. The own save is not touched any more.)
 M.usedScratch = M.usedScratch or {}
--- (the same host zone save loaded again - a late join of a run member to the zone it was in: the scene loaded, but the
--- game built no car for the guest (startflow, 2026-11-11: no car, the player at 0,0 - cause not found). Until it is:
--- the old way then - its own generated zone, the host's list over it.)
+-- (the own car: the car manager's)
+local function ownCar()
+    local c
+    pcall(function() c = FindFirstOf("BP_CarManager_C").NewCarActor end)
+    return c and c:IsValid() and c or nil
+end
+-- (the same host zone save may be loaded again - a late join to the zone it was in: the game built no car then; the
+-- car is built by M.afterLoad now. loadedDocs: only counted)
 M.loadedDocs = M.loadedDocs or {}
 function M.guestLoad(docPath, side)
     local m = sm()
     if not (m and m:IsValid()) then return nil, "no save manager" end
-    if M.loadedDocs[docPath] then return nil, "loaded once already (late join): the generated zone" end
     local slot = m.CurrentSaveSlot
     local own = M.slotPath(slot)
     local dir = M.saveDir()
@@ -150,26 +154,75 @@ function M.guestLoad(docPath, side)
         pcall(function() slt = tostring(m:ShouldLoadTransforms()) end)
         M.stats.before = M.stats.before .. " -> reset, transforms=" .. slt
     end
-    if CoopSyncHitch then pcall(CoopSyncHitch.note, "zone save load: " .. M.stats.before) end    pcall(function() m:InvalidateMetadataCacheSlot(scratch) end)
+    if CoopSyncHitch then pcall(CoopSyncHitch.note, "zone save load: " .. M.stats.before) end
+    -- (the spliced save kept for a look - save-dump.ps1; the scratch slot is deleted after the load)
+    copyFile(out, dir .. "coop-last-splice.sav")
+    pcall(function() m:InvalidateMetadataCacheSlot(scratch) end)
+    local seated = false
+    pcall(function()
+        local par = FindFirstOf("PlayerController").Pawn:GetAttachParentActor()
+        seated = par ~= nil and par:IsValid() and par:GetFullName() == ownCar():GetFullName()
+    end)
     M.selfLoad = true -- (session.lua's load hook: not a player's load, the lobby stays)
     local ok, e = pcall(function() m:UserLoadGame(scratch, 1, 0) end)
     M.selfLoad = false
     if not ok then os.remove(out) return nil, "UserLoadGame: " .. tostring(e) end
     M.stats.loaded = M.stats.loaded + 1
     M.stats.last = string.format("guest: %s via slot %d for %d (%s, %.0f ms), loading", docPath, scratch, slot, r, spliceMs)
-    M.s = { state = "guest loading", slot = slot, scratch = scratch, t0 = now() }
+    M.s = { state = "guest loading", slot = slot, scratch = scratch, t0 = now(), wasSeated = seated }
     return M.stats.last
 end
--- the zone is in (session.lua, the new world): once the game has built the own car there (a moment after the world -
--- done at once, the late join's car never came: startflow), the guest's own slot current again, the scratch slot gone
--- (20 s at most)
-function M.afterLoad()
+-- The own car the game did not build after the load (2026-11-11, gates-test -ZoneSave: no BP_PlayerCarNew_C, the
+-- player at 0,0, in_car_on_load true). In a zone the car comes from a BP_CarSpawnpoint_C the game spawns at the
+-- entrance (the host had one, made at runtime - no save holds it); after the guest's load into the current world none
+-- came. Spawned by the mod, its BeginPlay builds the own car from the car manager (all its parts) and makes it
+-- NewCarActor; CommandEnterCar(true) seats the player (the driver's door stays - checked). at: {X, Y, Z, Yaw}.
+local SPAWNPOINT = "/Game/Characters/PlayerCar/BP_CarSpawnpoint.BP_CarSpawnpoint_C"
+local NO_CAR_S = 2.5
+function M.spawnOwnCar(at)
+    local cls = StaticFindObject(SPAWNPOINT)
+    if not (cls and cls:IsValid()) then return "no spawnpoint class" end
+    local GS = StaticFindObject("/Script/Engine.Default__GameplayStatics")
+    local y = math.rad(at.Yaw or 0)
+    local xf = { Translation = { X = at.X, Y = at.Y, Z = at.Z + 100 }, Rotation = { X = 0, Y = 0, Z = math.sin(y / 2), W = math.cos(y / 2) }, Scale3D = { X = 1, Y = 1, Z = 1 } }
+    local ok, e = pcall(function()
+        local a = GS:BeginDeferredActorSpawnFromClass(FindFirstOf("PlayerController"), cls, xf, 1, nil)
+        GS:FinishSpawningActor(a, xf)
+    end)
+    if not ok then return "spawn failed: " .. tostring(e) end
+    M.stats.carSpawned = (M.stats.carSpawned or 0) + 1
+    return string.format("own car spawned at %.0f,%.0f", at.X, at.Y)
+end
+-- (session.lua holds the zone's steps while the load's car is awaited)
+function M.waitingCar() return M.s.waiting and not ownCar() and true or false end
+-- the zone is in (session.lua, the new world): once the own car is there (the game's, or spawned after NO_CAR_S at
+-- spot() - the host's car's place), the guest's own slot current again, the scratch slot gone (20 s at most)
+function M.afterLoad(spot)
     local s = M.s
     if not s.scratch or s.waiting then return end
     s.waiting, s.loadedAt = true, now()
     local function done()
         local cars = #(FindAllOf("BP_PlayerCarNew_C") or {})
-        if cars == 0 and now() - s.loadedAt < 20 then if CoopSyncAfter then CoopSyncAfter(500, done) end return end
+        if not ownCar() and not s.spawned and now() - s.loadedAt >= NO_CAR_S then
+            s.spawned = true
+            local at = spot and spot()
+            local r = at and M.spawnOwnCar(at) or "no place for the own car"
+            M.stats.spawn = r
+            if CoopSyncHitch then pcall(CoopSyncHitch.note, "zone save: no car after the load - " .. r) end
+        end
+        if not ownCar() and now() - s.loadedAt < 20 then if CoopSyncAfter then CoopSyncAfter(500, done) end return end
+        -- back in the seat it had before the load (startflow 2026-11-11: the game built the car but left the player
+        -- standing beside it; the mod's own car likewise): a moment after the car is there
+        if s.wasSeated and CoopSyncAfter then CoopSyncAfter(1000, function()
+            pcall(function()
+                local p = FindFirstOf("PlayerController").Pawn
+                local par = p:GetAttachParentActor()
+                if ownCar() and not (par and par:IsValid()) then
+                    p:CommandEnterCar(true, nil, false)
+                    M.stats.seated = (M.stats.seated or 0) + 1
+                end
+            end)
+        end) end
         local m = sm()
         if m and m:IsValid() then
             pcall(function() m:SetCurrentSlot(s.slot) end)
@@ -183,7 +236,7 @@ function M.afterLoad()
             M.stats.after = string.format("cars=%d pawn=%.0f,%.0f after %.1f s", cars, p.X, p.Y, now() - s.loadedAt)
         end)
         if CoopSyncHitch then pcall(CoopSyncHitch.note, "zone save loaded: " .. tostring(M.stats.after)) end
-        s.scratch, s.waiting = nil, nil
+        s.scratch, s.waiting, s.spawned = nil, nil, nil
     end
     if CoopSyncAfter then CoopSyncAfter(500, done) else done() end
 end
@@ -192,7 +245,7 @@ function M.tick()
 end
 
 function M.info()
-    return string.format("zonesave=%s saved=%d sent=%d loaded=%d last=%s before=%s after=%s", M.s.state, M.stats.saved, M.stats.sent, M.stats.loaded, M.stats.last, tostring(M.stats.before), tostring(M.stats.after))
+    return string.format("zonesave=%s saved=%d sent=%d loaded=%d last=%s before=%s after=%s spawn=%s", M.s.state, M.stats.saved, M.stats.sent, M.stats.loaded, M.stats.last, tostring(M.stats.before), tostring(M.stats.after), tostring(M.stats.spawn))
 end
 
 return M

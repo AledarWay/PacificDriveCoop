@@ -6,7 +6,7 @@
 # -Split: the host's config with entrance_split_chance = 1 (owner's two-games test 2026-11-11: a random zone where the
 #   two come in by different entrances and have to find each other): the guest keeps its own entrance and place, the
 #   exits are the host's.
-param([switch]$Keep, [switch]$NetExe, [int]$Port = 47861, [string]$Save = "C:\PacificDriveCoop\local\advsave\odsave9.sav", [switch]$Split)
+param([switch]$Keep, [switch]$NetExe, [int]$Port = 47861, [string]$Save = "C:\PacificDriveCoop\local\advsave\odsave9.sav", [switch]$Split, [switch]$OldZone)
 $root = "C:\PacificDriveCoop"; $t = "$root\mod\tools"; $inst = "$root\local\instances"
 $hd = "$inst\host\coopdev"; $cd = "$inst\client\coopdev"
 function Send($dir, [string]$code) {
@@ -42,6 +42,9 @@ $id = Get-Date -f HHmmss
 $hchan = "$inst\host\chan-g$id"; $cchan = "$inst\client\chan-g$id"
 New-Item -ItemType Directory -Force "$hchan\outbox", "$hchan\inbox", "$cchan\outbox", "$cchan\inbox" | Out-Null
 if ($Split) { Set-Content "$hchan\config.txt" "entrance_split_chance = 1" -Encoding ascii }
+# -OldZone: the guest's own generated zone made the host's (config zone_from_save = 0; on by default: the host's
+# exact zone from its save)
+if ($OldZone) { foreach ($c in $hchan, $cchan) { Add-Content "$c\config.txt" "zone_from_save = 0" -Encoding ascii } }
 . "$t\netlink.ps1"
 $rh = NetExeStart $hchan Host
 $rc = NetExeStart $cchan Guest

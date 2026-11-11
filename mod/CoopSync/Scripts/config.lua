@@ -11,7 +11,7 @@ local RELOAD_S = 5
 local TESTS = (os.getenv("COOPSYNC_CHAN") or "") ~= ""
 M.DEFAULTS = {
     entrance_split_chance = TESTS and 0 or 0.25,
-    zone_from_save = 0,
+    zone_from_save = 1,
 }
 local TEMPLATE = [[
 # CoopSync settings. Edit and save; the game picks a change up within a few seconds.
@@ -20,10 +20,10 @@ local TEMPLATE = [[
 # (0 = never, 0.25 = about one zone in four, 1 = always). The host's value decides.
 entrance_split_chance = 0.25
 
-# Experimental: the guest loads the host's exact zone from the host's save (the same buildings and rolls).
-# 0 = off: the guest's game builds the zone and the mod makes it the host's (the way that works).
-# 1 = on: the guest's own car can be missing after the load - for tests only.
-zone_from_save = 0
+# The guest loads the host's exact zone from the host's save (the same buildings and rolls).
+# 1 = on. 0 = off: the guest's game builds the zone from its own seed and the mod makes it the host's (the older way;
+# some buildings can differ).
+zone_from_save = 1
 ]]
 
 local path, values, readAt = nil, {}, -1e9

@@ -343,6 +343,25 @@ function M.applyGates(path, ownCar, keepCar)
     M.stats.gatesSet = (M.stats.gatesSet or 0) + set
     return string.format("gates: %d set, %s", set, moved)
 end
+-- Guest: where the host's car came in (A), else where it stands (C), from the host's gates file - {X, Y, Z, Yaw}, 5 m
+-- to its right (the own car built there after a zone-save load; applyGates puts it on a free spot after)
+function M.hostSpot(path)
+    local data = readText(path)
+    if not data then return nil end
+    local a, c
+    for line in data:gmatch("[^\r\n]+") do
+        local t = {}
+        for v in (line .. "\t"):gmatch("([^\t]*)\t") do t[#t + 1] = v end
+        local p = { X = tonumber(t[2]), Y = tonumber(t[3]), Z = tonumber(t[4]), Yaw = tonumber(t[5]) or 0 }
+        if p.X and p.Y and p.Z then
+            if t[1] == "A" then a = p elseif t[1] == "C" then c = p end
+        end
+    end
+    local p = a or c
+    if not p then return nil end
+    local r = math.rad(p.Yaw + 90)
+    return { X = p.X + math.cos(r) * 500, Y = p.Y + math.sin(r) * 500, Z = p.Z, Yaw = p.Yaw }
+end
 -- The host's map location from a descriptor file (nil when there is none yet).
 function M.hostMapLocation(descPath)
     local s = readText(descPath)

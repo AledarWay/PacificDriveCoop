@@ -52,15 +52,18 @@ function CarsCheck($when) {
     Check "${when}: the mod's car watch saw no extra car" ($hs.extra -eq '0' -and $cs.extra -eq '0') "host cars=$($hs.cars) extra=$($hs.extra) | guest cars=$($cs.cars) extra=$($cs.extra)"
 }
 function ZoneSaveCheck($when, [int]$n) {
-    # (config zone_from_save off, the default since 2026-11-11: the guest's second load of the host's zone save never
-    # took the scene - "FAILED TO LOAD V4 (Map) SCENE DATA", its own slot's memory copy - and through slot 0 it took it
-    # but left the guest without its car now and then. Now: no zone save, one load per arrival; zs=<state>/<saved>/
-    # <sent>/<loaded>)
+    # (config zone_from_save on, the default again since 2026-11-11: each arrival loads the host's zone save through
+    # slot 0 - the scene taken, no "FAILED TO LOAD V4 (Map) SCENE DATA" (its own slot's memory copy, the old way) - and
+    # the own car is there after it: the game's, or built by the mod when the game built none; zs=<state>/<saved>/
+    # <sent>/<loaded>. The game's own travel to a new zone logs a FAILED of its own - "Is this a new game or map?" -
+    # one per travel: our loads are the LOAD V4 Map lines without one)
     $hz = ((Status $hchan).zs -split '/'); $cz = ((Status $cchan).zs -split '/')
     $gl = @(Get-Content "$inst\client\userdir\Saved\Logs\PenDriverPro.log" -ErrorAction SilentlyContinue)
     $maps = @($gl | Where-Object { $_ -cmatch 'LOAD V4: Map!!' }).Count
+    $failed = @($gl | Where-Object { $_ -match 'FAILED TO LOAD V4 \(Map\)' }).Count
+    $car = Send $cd "local c = FindFirstOf('BP_CarManager_C').NewCarActor local p = FindFirstOf('PlayerController').Pawn local par = p:GetAttachParentActor() return 'car=' .. tostring(c:IsValid()) .. ' seated=' .. tostring(par and par:IsValid() and par:GetFullName() == c:GetFullName())"
     "  guest zone save: " + ((Get-Content (Get-ChildItem $cchan -Recurse -Filter hitches.log | Select-Object -First 1).FullName -ErrorAction SilentlyContinue | Where-Object { $_ -match 'zone save' } | Select-Object -Last 3) -join ' | ')
-    Check "${when}: one load per arrival, no zone save (config zone_from_save off)" ($hz.Count -eq 4 -and [int]$hz[1] -eq 0 -and $cz.Count -eq 4 -and [int]$cz[3] -eq 0 -and $maps -eq $n) "host zs=$($hz -join '/') | guest zs=$($cz -join '/') | guest zone loads $maps (want $n)"
+    Check "${when}: the host's zone from its save, the scene taken, the own car there" ($hz.Count -eq 4 -and [int]$hz[1] -ge 1 -and $cz.Count -eq 4 -and [int]$cz[3] -eq $n -and $failed -le $maps - $n -and $car -match 'car=true seated=true') "host zs=$($hz -join '/') | guest zs=$($cz -join '/') (loads want $n) | LOAD V4 Map $maps, FAILED $failed | $car"
 }# (owner's alpha 20 test: the guest's drive-out travelled five times in one frame - "concurrent save/load on top of
 # LOADING LEVEL" - and its map to pick a junction stayed open through the load and in the zone)
 function TravelCheck($when, [int]$n) {

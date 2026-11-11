@@ -4006,3 +4006,17 @@ game (host instance, early-garage made binary by SaveGame, the host zone saves o
   3.9-4.9 m over the road, 8 m ahead free. The car origin stands 77 cm over the ground; put at that + 30 cm.
   A ground over A + 1.5 m counts as a roof (a bridge / ledge). The note's "(spot N free, i:Actor height ...)" says
   what was in the way; nothing free: the first spot clear of the host's car, as before.
+- **The guest's car missing after a zone-save load: found** (owner: "the exact host zone first"). gates-test with the
+  zone save on (now the default; -OldZone turns it off): after UserLoadGame(0, 1, 0) no BP_PlayerCarNew_C, the player
+  at 2,0, in_car_on_load true, PlayerCarState 1 - the save's car manager data the same as a working one. In a zone
+  the own car comes from a BP_CarSpawnpoint_C (/Game/Characters/PlayerCar/BP_CarSpawnpoint) the game spawns at
+  runtime at the entrance (the host had one, its index next to the car's; no save holds one); after the guest's load
+  none came. Spawned by the mod (BeginDeferredActorSpawnFromClass + FinishSpawningActor), its BeginPlay builds the own
+  car from the car manager - 80 parts, NewCarActor set; CommandEnterCar(true, nil, false) on the own car seats the
+  player and keeps the driver's door (5 doors after). zonesave.afterLoad: no own car NO_CAR_S (2.5 s) after the load ->
+  the spawnpoint 5 m right of the host's arrival A (runsync hostSpot); session holds "zone: generating" while
+  ZoneSave.waitingCar(), so the list's applyGates puts the car on a free spot by A. startflow (same seed): the game
+  built the car itself (0.6 s) but left the player beside it - the player is seated again when it was seated before
+  the load (s.wasSeated). The guard against a second load of the same doc (late join) is gone. The game's own travel
+  to a new zone logs a FAILED TO LOAD V4 of its own (one per travel, "a new game or map?"); ours has none.
+  startflow 30/30 (join + late join: zone save, car, seated), gates 6/6, nextzone 19/19, gates-split 4/4.
