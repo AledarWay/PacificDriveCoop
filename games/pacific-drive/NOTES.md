@@ -3982,4 +3982,11 @@ game (host instance, early-garage made binary by SaveGame, the host zone saves o
 - Plan: (1) now - the guest's zone-save load through a clean scratch slot (+ InvalidateMetadataCacheSlot, then
   SetCurrentSlot back to its own and the own slot rewritten), so the host's zone really arrives; a test with two
   different seeds. (2) the single load: the garage-leg save + Map + META from a scratch slot, and the car - spawned
-  by the game's own path (to find) or the mod; then the guest skips its own travel.
+  by the game's own path (to find) or the mod; then the guest skips its own travel.- Done (2026-11-11): the zone-save load is behind config zone_from_save (config.lua: <Saved>/CoopSync/config.txt,
+  written with the defaults, read again every 5 s), off by default; the host saves no zone then. Its fixes stay for
+  turning it on: the load through slot 0 (the game's own scratch slot "odsave_scratch", the menu lists 1-9,
+  SaveGame / LoadGame take 0-9 only - owner: "what if the guest has no free slot?"), InvalidateMetadataCacheSlot,
+  the own slot current again and slot 0 deleted once the car is in. With it on the scene arrives (48/48), but the
+  guest's car was missing in startflow's late join, nextzone's next zone and gates' join (in_car_on_load=true, the
+  player at 0,0 - the game seated it in a car it never built); the first join of startflow had it. Cause not found.
+  Off, startflow's join: 27 s from the drive-out to playing (41 s with the old second load).

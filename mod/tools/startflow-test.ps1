@@ -1,4 +1,4 @@
-﻿# The start of a co-op game as the owner set it (2026-10-24), two headless instances with the in-game network's
+# The start of a co-op game as the owner set it (2026-10-24), two headless instances with the in-game network's
 # local test link (-NetExe: CoopNet.exe):
 #   1. both in their own garages, the lobby forms (create / join): each sees the other's puppet in its garage;
 #   2. the guest's garage exit stays shut while the host is home (driving into it does nothing); the host leaves its
@@ -52,11 +52,16 @@ function CarsCheck($when) {
     Check "${when}: the mod's car watch saw no extra car" ($hs.extra -eq '0' -and $cs.extra -eq '0') "host cars=$($hs.cars) extra=$($hs.extra) | guest cars=$($cs.cars) extra=$($cs.extra)"
 }
 function ZoneSaveCheck($when, [int]$n) {
-    # zs=<state>/<saved>/<sent>/<loaded> (the host sends its zone once per arrival: a late join loads that one again)
+    # (config zone_from_save off, the default since 2026-11-11: the guest's second load of the host's zone save never
+    # took the scene - "FAILED TO LOAD V4 (Map) SCENE DATA", its own slot's memory copy - and through slot 0 it took it
+    # but left the guest without its car now and then. Now: no zone save, one load per arrival; zs=<state>/<saved>/
+    # <sent>/<loaded>)
     $hz = ((Status $hchan).zs -split '/'); $cz = ((Status $cchan).zs -split '/')
-    Check "${when}: the guest got the host's zone through its save" ($hz.Count -eq 4 -and [int]$hz[2] -ge 1 -and $cz.Count -eq 4 -and [int]$cz[3] -ge $n) "host zs=$($hz -join '/') | guest zs=$($cz -join '/')"
-}
-# (owner's alpha 20 test: the guest's drive-out travelled five times in one frame - "concurrent save/load on top of
+    $gl = @(Get-Content "$inst\client\userdir\Saved\Logs\PenDriverPro.log" -ErrorAction SilentlyContinue)
+    $maps = @($gl | Where-Object { $_ -cmatch 'LOAD V4: Map!!' }).Count
+    "  guest zone save: " + ((Get-Content (Get-ChildItem $cchan -Recurse -Filter hitches.log | Select-Object -First 1).FullName -ErrorAction SilentlyContinue | Where-Object { $_ -match 'zone save' } | Select-Object -Last 3) -join ' | ')
+    Check "${when}: one load per arrival, no zone save (config zone_from_save off)" ($hz.Count -eq 4 -and [int]$hz[1] -eq 0 -and $cz.Count -eq 4 -and [int]$cz[3] -eq 0 -and $maps -eq $n) "host zs=$($hz -join '/') | guest zs=$($cz -join '/') | guest zone loads $maps (want $n)"
+}# (owner's alpha 20 test: the guest's drive-out travelled five times in one frame - "concurrent save/load on top of
 # LOADING LEVEL" - and its map to pick a junction stayed open through the load and in the zone)
 function TravelCheck($when, [int]$n) {
     $log = "$inst\client\userdir\Saved\Logs\PenDriverPro.log"

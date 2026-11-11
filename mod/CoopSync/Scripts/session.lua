@@ -73,7 +73,11 @@ local Hitch = require("hitch")
 -- the zone the game generated from the seed, the host's list imported over it)
 local ZoneSave
 local ZONE_SAVE_WAIT_S = 20
-local function zoneSaveOn() return ZoneSave ~= nil and CoopSyncZoneSave ~= false and CoopNative_SaveSplice ~= nil end
+-- (the guest's load of the host's exact zone from its save: config zone_from_save, off by default - 2026-11-11: its
+-- game had never taken the scene before (FAILED TO LOAD V4 SCENE DATA: the own slot's memory copy), so that second load
+-- bought nothing; taken now through slot 0, it sometimes leaves the guest without its car. Off: one load per arrival.)
+local Config
+local function zoneSaveOn() return ZoneSave ~= nil and CoopSyncZoneSave ~= false and CoopNative_SaveSplice ~= nil and Config ~= nil and Config.get("zone_from_save") == 1 end
 -- one instance per Lua state (tests dofile the modules from another mod: require would not find it)
 local Link = CoopSyncLink or dofile((debug.getinfo(1, "S").source:match("^@(.*[/\\])") or "./") .. "link.lua")
 
@@ -364,7 +368,7 @@ local function clientTick(gstate, world)
         -- (the new World object is the event: no fixed 2 s first)
         if worldAddr() == S.loadWorld and nowS() - (S.zoneLoadAt or 0) < 120 then return end
         S.state, S.justLoaded, S.zoneWorld = "zone: generating", true, nil -- (the arrival step again: gates, clock)
-        if ZoneSave.s.state == "guest loading" then ZoneSave.s.state = "guest loaded" end
+        if ZoneSave.s.state == "guest loading" then ZoneSave.s.state = "guest loaded" pcall(ZoneSave.afterLoad) end
     end
     if S.zoneWorld ~= world then
         S.zoneWorld, S.arrived, S.readyTicks, S.state, S.imported = world, nowS(), 0, "zone: generating", nil
@@ -376,8 +380,12 @@ local function clientTick(gstate, world)
             S.gatesNote = okG and tostring(g) or ("gates failed: " .. tostring(g))
         end
     end
-    if zoneSaveOn() and session.zsave and session.world == world and S.zoneLoadedSeq ~= tonumber(session.seq)
-        and (S.state == "zone: generating" or S.state == "zone: waiting for the host's list") then
+    -- (the own car built in this world first: the load into the current world carries the car over - loaded before the
+    -- game had built it, the guest had no car at all; startflow's late join, 2026-11-11. 15 s at most)
+    local carReady = false
+    pcall(function() local c = FindFirstOf("BP_CarManager_C").NewCarActor carReady = c ~= nil and c:IsValid() end)
+    if not carReady and S.arrived and nowS() - S.arrived < 15 then carReady = false elseif not carReady then carReady = true end    if zoneSaveOn() and session.zsave and session.world == world and S.zoneLoadedSeq ~= tonumber(session.seq)
+        and carReady and (S.state == "zone: generating" or S.state == "zone: waiting for the host's list") then
         local okL, r, e = pcall(ZoneSave.guestLoad, Link.docPath(chan, "inbox", session.zsave), 500)
         if okL and r then
             S.zoneLoadedSeq = tonumber(session.seq)
@@ -1104,6 +1112,8 @@ function M.start(syncModule, runModule, chanDir)
         chan = saved .. "CoopSync"
     end
     chan = chan:gsub("\\", "/"):gsub("/$", "")
+    Config = require("config")
+    pcall(Config.load, chan)
     -- the helper normally made them; mkdir (a cmd process) only when a folder is missing
     for _, sub in ipairs({ "outbox", "inbox" }) do
         local probe = io.open(chan .. "/" .. sub .. "/.probe", "wb")

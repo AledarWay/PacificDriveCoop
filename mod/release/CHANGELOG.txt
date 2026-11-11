@@ -54,6 +54,12 @@ Leaving together (the guest's drive-out and the next junction):
   drops its fixed waits (after the load, before the cleanup, at the garage exit) and imports faster under the
   loading screen. In the tests the guest is in the next zone about 13 s after the host's zone has loaded, instead
   of about 40 s.
+- The guest joins about 15 s faster (a story zone: 27 s instead of 41 s from the drive-out). Its game loaded the zone
+  a second time from the host's save, but the game never took the host's zone from it (it served the guest's own slot
+  from memory), so the second load bought nothing. Now one load; the mod makes the zone the host's as before.
+Settings:
+- A settings file, <Saved>/CoopSync/config.txt (in the game's save folder; an update of the mod keeps it), written with
+  the defaults and their explanations the first time. Changes apply within a few seconds.
 The own car's back seat in the garage:
 - The guest can get onto its own back seat in the garage (the back door only opened).
 - On a back seat in the garage the key, the levers and the driver's door are out of reach, the way out is the back
