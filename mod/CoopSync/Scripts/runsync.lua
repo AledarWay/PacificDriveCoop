@@ -176,6 +176,19 @@ function M.gates()
     if car and car:IsValid() then
         local l, r = car:K2_GetActorLocation(), car:K2_GetActorRotation()
         out[#out + 1] = string.format("C\t%.1f\t%.1f\t%.1f\t%.1f", l.X, l.Y, l.Z, r.Yaw)
+        -- the host's arrival: where its car came in, kept per zone (the first look at it there) - the guest's car comes
+        -- in there too (owner's two-games test 2026-11-11: "not a teleport to the host: the same entrance as the
+        -- host's"); and the zone's roll of different entrances (config entrance_split_chance, the host's value)
+        local w = FindFirstOf("PlayerController"):GetWorld():GetFName():ToString()
+        if not (M.arrival and M.arrival.world == w) then
+            local chance = (CoopSyncConfig and tonumber(CoopSyncConfig.get("entrance_split_chance"))) or 0
+            M.arrival = { world = w, x = l.X, y = l.Y, z = l.Z, yaw = r.Yaw, split = chance > 0 and math.random() < chance }
+            M.stats.splitRolls = (M.stats.splitRolls or 0) + 1
+            if M.arrival.split then M.stats.splits = (M.stats.splits or 0) + 1 end
+        end
+        local a = M.arrival
+        out[#out + 1] = string.format("A\t%.1f\t%.1f\t%.1f\t%.1f", a.x, a.y, a.z, a.yaw)
+        if a.split then out[#out + 1] = "S\t1" end
     end
     return out
 end
@@ -198,26 +211,36 @@ function M.publishGates(path)
     return "gates published"
 end
 M.stats = M.stats or {}
--- Guest: the host's gates on this side's transitions (same level, same names), then its own car next to the host's
--- (5 m to the side) when it is further than NEAR_CM - or closer than CLASH_CM: in the host's car (the twins of the two
--- overlapping threw the host's car 65 m up, startflow late join). ownCar: the guest's car (not a twin).
+-- Guest: the host's gates on this side's transitions (same level, same names), then its own car at the host's entrance
+-- (owner's two-games test 2026-11-11: "instead of teleporting the guest to the host, the guest comes in by the host's
+-- entrance" - A, where the host's car came in; 5 m to its side, more when the host's car stands there now - CLASH_CM:
+-- the twins of the two overlapping threw the host's car 65 m up, startflow late join) when it is further than NEAR_CM.
+-- The zone's split (S): different entrances on purpose - the guest keeps its own entrance and where it came in; the
+-- exits are the host's all the same (both leave by the same ways). ownCar: the guest's car (not a twin).
 local NEAR_CM, CLASH_CM = 4000, 450
 function M.applyGates(path, ownCar, keepCar)
     local data = readText(path)
     if not data then return "no gates file" end
     local byName = {}
     for _, e in ipairs(transitions()) do byName[e:GetFName():ToString()] = e end
-    local set, host = 0, nil
+    local set, host, arrive, split = 0, nil, nil, false
+    local rows = {}
     for line in data:gmatch("[^\r\n]+") do
         local t = {}
         for v in (line .. "\t"):gmatch("([^\t]*)\t") do t[#t + 1] = v end
+        rows[#rows + 1] = t
+        if t[1] == "S" then split = t[2] == "1" end
+    end
+    for _, t in ipairs(rows) do
         if t[1] == "T" then
             local e = byName[t[2]]
             if e then
                 local en, ex = t[3] == "1", t[4] == "1"
                 local hen, hex = false, false
                 pcall(function() hen, hex = e.EntranceActive, e.ExitActive end)
-                if hen ~= en or hex ~= ex then
+                -- (split: the guest's own entrance stays its entrance; the host's entrance is only closed if it is no exit)
+                if split and (hen or en) and not ex then
+                elseif hen ~= en or hex ~= ex then
                     pcall(function()
                         if ex then e:SetExit(false) elseif en then e:SetEntrance() else e:SetClosed() end
                     end)
@@ -226,18 +249,26 @@ function M.applyGates(path, ownCar, keepCar)
             end
         elseif t[1] == "C" then
             host = { X = tonumber(t[2]), Y = tonumber(t[3]), Z = tonumber(t[4]), Yaw = tonumber(t[5]) }
+        elseif t[1] == "A" then
+            arrive = { X = tonumber(t[2]), Y = tonumber(t[3]), Z = tonumber(t[4]), Yaw = tonumber(t[5]) }
         end
     end
-    local moved = "car stays"
-    if host and ownCar and ownCar:IsValid() and not keepCar then
+    local moved = split and "split: the guest's own entrance" or "car stays"
+    local at = arrive or host -- (an older host: no A - its car)
+    if at and ownCar and ownCar:IsValid() and not keepCar and not split then
         local l = ownCar:K2_GetActorLocation()
-        local d = math.sqrt((l.X - host.X) ^ 2 + (l.Y - host.Y) ^ 2)
-        if d > NEAR_CM or d < CLASH_CM then
-            local a = math.rad(host.Yaw + 90)
-            local to = { X = host.X + math.cos(a) * 500, Y = host.Y + math.sin(a) * 500, Z = host.Z + 60 }
+        local d = math.sqrt((l.X - at.X) ^ 2 + (l.Y - at.Y) ^ 2)
+        local function clash(p) return host and (p.X - host.X) ^ 2 + (p.Y - host.Y) ^ 2 < CLASH_CM ^ 2 end
+        if d > NEAR_CM or clash(l) then
+            -- beside the entrance spot: 5 m to its right, then 10, 15 m (left too) while the host's car is in the way
+            local a, to = math.rad(at.Yaw + 90), nil
+            for _, side in ipairs({ 500, -500, 1000, -1000, 1500 }) do
+                to = { X = at.X + math.cos(a) * side, Y = at.Y + math.sin(a) * side, Z = at.Z + 60 }
+                if not clash(to) then break end
+            end
             local root = ownCar.RootComponent
             pcall(function() root:SetSimulatePhysics(false) end)
-            ownCar:K2_SetActorLocationAndRotation(to, { Pitch = 0, Yaw = host.Yaw, Roll = 0 }, false, {}, true)
+            ownCar:K2_SetActorLocationAndRotation(to, { Pitch = 0, Yaw = at.Yaw, Roll = 0 }, false, {}, true)
             local path = (ownCar:GetFullName():gsub("^%S+ ", ""))
             After(300, function()
                 local c = SFO(path)
@@ -248,14 +279,14 @@ function M.applyGates(path, ownCar, keepCar)
                     r:SetPhysicsAngularVelocityInDegrees({ X = 0, Y = 0, Z = 0 }, false, FName("None"))
                 end) end
             end)
-            moved = string.format("car moved %.0f m to the host's", d / 100)
+            moved = string.format("car moved %.0f m to the host's %s", d / 100, arrive and "entrance" or "car")
             M.stats.carMoved = (M.stats.carMoved or 0) + 1
         end
     end
+    if split then M.stats.splitApplied = (M.stats.splitApplied or 0) + 1 end
     M.stats.gatesSet = (M.stats.gatesSet or 0) + set
     return string.format("gates: %d set, %s", set, moved)
 end
-
 -- The host's map location from a descriptor file (nil when there is none yet).
 function M.hostMapLocation(descPath)
     local s = readText(descPath)

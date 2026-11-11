@@ -6,8 +6,11 @@ local M = {}
 CoopSyncConfig = M
 
 local RELOAD_S = 5
+-- (the tests - their channel set by COOPSYNC_CHAN - get no split entrances unless they write one: a test is to know
+-- where the guest arrives)
+local TESTS = (os.getenv("COOPSYNC_CHAN") or "") ~= ""
 M.DEFAULTS = {
-    entrance_split_chance = 0.25,
+    entrance_split_chance = TESTS and 0 or 0.25,
     zone_from_save = 0,
 }
 local TEMPLATE = [[
@@ -47,7 +50,7 @@ local function read()
     local f = io.open(path, "rb")
     if not f then
         local w = io.open(path, "wb")
-        if w then w:write(TEMPLATE) w:close() end
+        if w then w:write(TESTS and (TEMPLATE:gsub("entrance_split_chance = 0.25", "entrance_split_chance = 0")) or TEMPLATE) w:close() end
         values = {}
         return
     end

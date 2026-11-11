@@ -57,6 +57,12 @@ Leaving together (the guest's drive-out and the next junction):
 - The guest joins about 15 s faster (a story zone: 27 s instead of 41 s from the drive-out). Its game loaded the zone
   a second time from the host's save, but the game never took the host's zone from it (it served the guest's own slot
   from memory), so the second load bought nothing. Now one load; the mod makes the zone the host's as before.
+The zone's entrance:
+- The guest comes in by the host's entrance: its car stands next to where the host's car came in, not next to the host
+  wherever it drove since. The host's entrance and exits are the guest's; if the host's car still stands at the
+  entrance, the guest's is put a little further to the side.
+- Now and then (about one zone in four) the two come in by different entrances on purpose and have to find each other;
+  the exits are the same for both. Set in the settings file (entrance_split_chance; 0 turns it off).
 Settings:
 - A settings file, <Saved>/CoopSync/config.txt (in the game's save folder; an update of the mod keeps it), written with
   the defaults and their explanations the first time. Changes apply within a few seconds.

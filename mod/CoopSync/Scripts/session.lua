@@ -378,6 +378,7 @@ local function clientTick(gstate, world)
         if session.world == world then
             local okG, g = Hitch.timed("gates on arrival", Run.applyGates, Link.docPath(chan, "inbox", "host-gates.txt"), FindFirstOf("BP_CarManager_C").NewCarActor)
             S.gatesNote = okG and tostring(g) or ("gates failed: " .. tostring(g))
+            pcall(Hitch.note, "timeline gates on arrival: " .. S.gatesNote)
         end
     end
     -- (the own car built in this world first: the load into the current world carries the car over - loaded before the

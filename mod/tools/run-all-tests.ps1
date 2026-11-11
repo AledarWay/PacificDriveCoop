@@ -1,4 +1,4 @@
-﻿# Runs the automated two-instance tests one after another (never in parallel) and prints a summary.
+# Runs the automated two-instance tests one after another (never in parallel) and prints a summary.
 #   (no switch)   full suite (~85 min)
 #   -Quick        the core set after a change: join + spawn/loot, interaction, driving, own-car mode, session, map
 #                 (on-foot guest tests only in the full suite: the on-foot mode is frozen, owner 2026-10-24)
@@ -72,6 +72,7 @@ $tests = @(
     @{ name = 'backseat';      quick = $true;  cmd = { & "$t\backseat-test.ps1" } },
     @{ name = 'trunk';         quick = $true;  cmd = { & "$t\trunk-test.ps1" } },
     @{ name = 'gates';         quick = $true;  cmd = { & "$t\gates-test.ps1" } },
+    @{ name = 'gates-split';   quick = $false; cmd = { & "$t\gates-test.ps1" -Split } },
     @{ name = 'esc';           quick = $true;  cmd = { & "$t\esc-test.ps1" } },
     @{ name = 'contact';       quick = $true;  cmd = { & "$t\contact-test.ps1" } },
     @{ name = 'cars';          quick = $true;  cmd = { & "$t\cars-test.ps1" } },

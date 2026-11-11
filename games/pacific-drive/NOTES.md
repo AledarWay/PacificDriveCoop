@@ -3989,4 +3989,9 @@ game (host instance, early-garage made binary by SaveGame, the host zone saves o
   the own slot current again and slot 0 deleted once the car is in. With it on the scene arrives (48/48), but the
   guest's car was missing in startflow's late join, nextzone's next zone and gates' join (in_car_on_load=true, the
   player at 0,0 - the game seated it in a car it never built); the first join of startflow had it. Cause not found.
-  Off, startflow's join: 27 s from the drive-out to playing (41 s with the old second load).
+  Off, startflow's join: 27 s from the drive-out to playing (41 s with the old second load).- Item 2 (entrance): the host's gates line has A (where its car came in, kept per zone - runsync M.arrival) and S (the
+  zone's split, rolled once per zone from config entrance_split_chance, the host's value; tests default 0). The guest's
+  car goes beside A (5 m to its side, further while the host's car stands there - the overlap that threw a car up);
+  split: no move, the guest's own entrance kept, the exits the host's. gates-test: the guest's own entrance was 948 m
+  from the host's (moved there); gates-test -Split: kept. Not done: the map's arrow / cross marks are the transitions'
+  flags here - not looked at with graphics.

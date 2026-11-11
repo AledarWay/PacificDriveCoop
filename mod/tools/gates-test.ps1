@@ -1,9 +1,12 @@
-﻿# The zone's gates and the arrival place at both players (owner's real test: "different exits marked on the map,
+# The zone's gates and the arrival place at both players (owner's real test: "different exits marked on the map,
 # we appeared at different places"). Host from the advanced save (a zone with several gates), guest a new game in
 # its garage, CoopNet over the local TCP link: the lobby forms, the host starts the run from its zone, the guest
 # drives out through its garage exit and arrives on the host's map. Then:
 #   the guest's transitions have the host's entrance / exits; the guest's car is near the host's (< 40 m).
-param([switch]$Keep, [switch]$NetExe, [int]$Port = 47861, [string]$Save = "C:\PacificDriveCoop\local\advsave\odsave9.sav")
+# -Split: the host's config with entrance_split_chance = 1 (owner's two-games test 2026-11-11: a random zone where the
+#   two come in by different entrances and have to find each other): the guest keeps its own entrance and place, the
+#   exits are the host's.
+param([switch]$Keep, [switch]$NetExe, [int]$Port = 47861, [string]$Save = "C:\PacificDriveCoop\local\advsave\odsave9.sav", [switch]$Split)
 $root = "C:\PacificDriveCoop"; $t = "$root\mod\tools"; $inst = "$root\local\instances"
 $hd = "$inst\host\coopdev"; $cd = "$inst\client\coopdev"
 function Send($dir, [string]$code) {
@@ -38,6 +41,7 @@ Get-Process PenDriverPro-Win64-Shipping, CoopNet -ErrorAction SilentlyContinue |
 $id = Get-Date -f HHmmss
 $hchan = "$inst\host\chan-g$id"; $cchan = "$inst\client\chan-g$id"
 New-Item -ItemType Directory -Force "$hchan\outbox", "$hchan\inbox", "$cchan\outbox", "$cchan\inbox" | Out-Null
+if ($Split) { Set-Content "$hchan\config.txt" "entrance_split_chance = 1" -Encoding ascii }
 . "$t\netlink.ps1"
 $rh = NetExeStart $hchan Host
 $rc = NetExeStart $cchan Guest
@@ -65,10 +69,17 @@ do {
 } while ((($hg -split ' car=')[0]) -ne (($cg -split ' car=')[0]) -and (Get-Date) -lt $end)
 "  host:  $hg"; "  guest: $cg"
 $hs = ($hg -split ' car=')[0]; $cs = ($cg -split ' car=')[0]
-Check "the guest's entrance and exits are the host's" ($hs -eq $cs -and $hs -ne '') "host $hs | guest $cs"
+$note = (Get-Content (Get-ChildItem $cchan -Recurse -Filter hitches.log | Select-Object -First 1).FullName -ErrorAction SilentlyContinue | Where-Object { $_ -match 'gates on arrival' } | Select-Object -Last 1)
+"  guest: $note"
+function Exits($s) { (($s -split ',') | Where-Object { $_ -match '=X$' }) -join ',' }
+if ($Split) {
+    Check "split: the guest kept its own entrance and place, the exits are the host's" ($note -match 'split' -and (Exits $hs) -eq (Exits $cs) -and (Exits $hs) -ne '') "host exits $(Exits $hs) | guest exits $(Exits $cs) | $note"
+} else {
+    Check "the guest's entrance and exits are the host's" ($hs -eq $cs -and $hs -ne '') "host $hs | guest $cs"
 $hc = (($hg -split ' car=')[1] -split ','); $cc = (($cg -split ' car=')[1] -split ',')
 $dist = [math]::Sqrt([math]::Pow([double]$hc[0] - [double]$cc[0], 2) + [math]::Pow([double]$hc[1] - [double]$cc[1], 2)) / 100
-Check "the guest's car is near the host's" ($dist -lt 40) ("{0:N0} m apart" -f $dist)
+    Check "the guest's car is at the host's entrance, near the host's (owner: the same entrance, not a teleport to the host)" ($dist -lt 40 -and $note -match 'entrance|car stays') ("{0:N0} m apart | $note" -f $dist)
+}
 $roll = Send $cd "local r = FindFirstOf('BP_CarManager_C').NewCarActor:K2_GetActorRotation() return string.format('pitch=%.1f roll=%.1f', r.Pitch, r.Roll)"
 Check "and stands on its wheels" ($roll -match 'pitch=(-?[\d.]+) roll=(-?[\d.]+)' -and [math]::Abs([double]$Matches[1]) -lt 25 -and [math]::Abs([double]$Matches[2]) -lt 25) $roll
 
