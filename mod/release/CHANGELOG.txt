@@ -89,6 +89,8 @@ Cars:
   friend's car on your side stopped your own engine.
 - The guest's car is no longer there twice after a zone loads. The game sometimes built it twice from the same
   parts; getting out could put the player into the other copy. The copy is removed once the zone plays.
+- A part of the other's car that took its white bar and is on the red one shows the red bar on your side too.
+  Before, it showed an empty white bar (only the white one went along).
 The radio:
 - One station for both: when both radios are on, in any cars, they play the same track at the same place, the host's
   (or the guest's when the host's radio is off). Skipping a track on either radio skips it for both. Before, each car

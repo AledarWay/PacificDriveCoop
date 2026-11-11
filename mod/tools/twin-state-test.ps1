@@ -1,4 +1,4 @@
-﻿# Automated test of the twins' part state (twin rework stage B): health / fuel / battery of the owner's parts reach
+# Automated test of the twins' part state (twin rework stage B): health / fuel / battery of the owner's parts reach
 # its twin on the other side (ES lines); a repair / refuel there reaches the owner's real car (EY lines); damage on
 # the twin is the owner's business (not sent, the owner's value comes back). Two instances over the test network.
 #   1. host damages its own wheel, empties a fuel can by half -> the guest's twin shows it
@@ -64,6 +64,12 @@ $tw = PartState $cd 'twin' $w
 $mat = Send $cd "$hcOf local T = CoopPlayers.twinModule() for _, c in ipairs(FindAllOf('BP_PlayerCarNew_C') or {}) do if c:IsValid() and T.isTwin(c) then local m = hcOf(T.twinContainer(c)).CachedMaterialList[1] local arr = m.ScalarParameterValues for j = 1, arr:GetArrayNum() do local e = arr[j] if e.ParameterInfo.Name:ToString() == 'Impact_Amount' then return string.format('%.2f', e.ParameterValue) end end end end return 'none'"
 Check "guest: the twin's wheel shows the dents (value and material)" ([math]::Abs((Num $tw 3) - 0.7) -lt 0.02 -and $mat -match '^0\.7') "twin wheel=$tw material Impact_Amount=$mat"
 
+"=== 1c. the host's wheel past its white bar into the red one (owner's two-games test 2026-11-11: the other side showed an empty white bar)"
+"  host: " + (Send $hd "$hcOf local hc = hcOf(FindFirstOf('BP_InventoryManager_C').Inventory_CarEquipped) hc.CanBeBreaking = true hc:SetHealth(0) hc:SetBreakHealth(6) return string.format('health %.1f break %.1f', hc:HC_GetHealth(), hc:HC_GetBreakHealth())")
+Start-Sleep 4
+$hw = PartState $hd 'own' $w; $tw = PartState $cd 'twin' $w
+Check "guest: the twin's wheel has the host's red bar (health 0, break 6)" ((Num $tw 0) -lt 0.5 -and [math]::Abs((Num $tw 6) - 6) -lt 0.5) "host wheel=$hw | twin wheel=$tw"
+"  host: " + (Send $hd "$hcOf local hc = hcOf(FindFirstOf('BP_InventoryManager_C').Inventory_CarEquipped) hc:SetBreakHealth(0) hc:SetHealth(60) return 'back to 60'"); Start-Sleep 4
 "=== 2. the guest repairs the host car's wheel on its twin"
 "  guest: " + (SetPart $cd 'twin' $w 'health = 175')
 Start-Sleep 4

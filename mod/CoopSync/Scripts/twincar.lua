@@ -626,7 +626,7 @@ end
 -- shown as the part materials' Impact_Amount / Burn_Amount / Radiation_Amount by UpdateDamageVisuals (SetHealth
 -- changes no material - probed 2026-11-02; owner's alpha 18 item 14: "an almost broken part of the host's car looks new
 -- on the guest"). These three go along as kinds i / r / u: owner -> twin only (the owner's hits make them).
---   ES <time> <slot>=<health>,<fuel>,<battery>,<impact>,<radiation>,<burn>;...   owner -> the other side
+--   ES <time> <slot>=<health>,<fuel>,<battery>,<impact>,<radiation>,<burn>,<break>;...   owner -> the other side
 --                                                     (changed: every 1 s, else every 10 s)
 --   EY <time> <slot> <h|f|b> <delta>                    the other side -> owner
 local COMP = "/Game/Gameplay/Inventory/GenericItemProperties/Components/"
@@ -671,9 +671,17 @@ for kind, pat in pairs(VIS) do
         end,
     }
 end
-local KIND_ORDER = { "h", "f", "b", "i", "r", "u" }
-local KIND_FMT = { h = "%.1f", f = "%.1f", b = "%.1f", i = "%.2f", r = "%.2f", u = "%.2f" }
-local OWNER_ONLY = { i = true, r = true, u = true } -- (not sent back from the twin: the owner's hits make them)
+-- the break health (k): the red bar, after the white one ran out - hits fill it up to the item's MaxBreak, then the
+-- part breaks off (statesync CoopSyncWreck; owner's two-games test 2026-11-11: "a part's bar gone red showed as an
+-- empty white bar on the other side" - only the white one went along). The twin's part can break then
+-- (CanBeBreaking, as the guest's wreck parts).
+KINDS.k = {
+    get = function(c) return c:HC_GetBreakHealth() end,
+    set = function(c, v) if v > 0 then c.CanBeBreaking = true end c:SetBreakHealth(v) end,
+}
+local KIND_ORDER = { "h", "f", "b", "i", "r", "u", "k" }
+local KIND_FMT = { h = "%.1f", f = "%.1f", b = "%.1f", i = "%.2f", r = "%.2f", u = "%.2f", k = "%.1f" }
+local OWNER_ONLY = { i = true, r = true, u = true, k = true } -- (not sent back from the twin: the owner's hits make them)
 -- (kept 5 s per item: GetActorManifestation + 3 component lookups per part made the state line 6 ms. As native
 -- weak handles: Lua objects kept across a travel were freed memory - IsValid passed, a property read crashed the
 -- host, revisit test 2026-10-28. The manifestation's address checked too: a new item can come at an old address.)
@@ -715,7 +723,7 @@ function M._partComps(it)
         -- overridden - so on the twin it read the own car, and setting it did nothing; soak test 2026-10-28)
         if x and x:IsValid() and not (k == "b" and x:GetClass():GetFName():ToString() == "BP_BatteryComponent_ChargePort_C") then t[k] = x end
     end
-    if t.h then t.i, t.r, t.u = t.h, t.h, t.h end -- (the visual damage: the health component's)
+    if t.h then t.i, t.r, t.u, t.k = t.h, t.h, t.h, t.h end -- (the visual damage, the break health: the health component's)
     return t
 end
 -- slot -> { comps = { kind = component }, v = { kind = value } } of a container's parts with any state
@@ -773,7 +781,7 @@ function M.parseState(s)
     end
     return t
 end
-local STATE_EPS = { h = 0.5, f = 0.05, b = 0.05, i = 0.015, r = 0.015, u = 0.015 }
+local STATE_EPS = { h = 0.5, f = 0.05, b = 0.05, i = 0.015, r = 0.015, u = 0.015, k = 0.5 }
 -- The other side: the owner's values onto the twin's parts (a slot the local player just changed waits PENDING_S
 -- for the owner's line to have it)
 function M.applyState(twin, want)

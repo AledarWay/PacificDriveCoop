@@ -3946,3 +3946,12 @@ Guest's load timeline (hitches.log; the host's TravelTo 23:35:53):
   container path, ownerEquip): the guest's car and the host's twin of it moved 0. Not tried: the game's own take-off
   (the part through the hands / inventory, a DROP world item on the other side next to the car). Asked the owner which
   screen showed it and how the parts were taken off.
+- Item 9 (a part's red bar an empty white one on the other side): the red bar is the health component's break health
+  (HC_GetBreakHealth / SetBreakHealth), never in the ES line. Kind k now (owner -> twin only; CanBeBreaking set on the
+  twin's part when it is > 0). twin-state 1c: health 0 / break 6 on both.
+- Item 10 (the host's driver's door glass broken, not on the guest): not found. The door (BP_CarPart_Door_Base_C,
+  SM_CarPart_Door_Steel_Reinforced_01_T_Wagon on the advanced save) has no glass / window component or property, its
+  materials only Impact / Burn / Radiation (synced); its health component has breaking status effects
+  (GetBreakingSEs, TryApplyAdditionalBreakingSE, HandleStartBreaking - needs 2 parameters). Likely the glass is the
+  breaking state's look (item 9: the red bar) or a door type with glass; needs a look with graphics. Asked the owner
+  when it broke (a crash? the bar red?) and which door it was.
