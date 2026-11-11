@@ -56,7 +56,16 @@ foreach ($role in 'host', 'client') {
     Check "$($role): from the back seat no key / lever / driver's door, its exit yes" (($r -join ' ') -match 'Highlight_Key=false' -and ($r -join ' ') -match 'Highlight_ExitDoor=true' -and ($r -join ' ') -notmatch 'Gearbox=true') ($r -join ' ')
     $xh = Send $hd (Get-Content "$t\cmds\exit-highlight.lua" -Raw)
     Check "$($role): the exit outlines the back door, not the driver's" ($xh -match 'Door_Base') $xh
-    "  out: " + (E "CE_CAR = 'own' CE_HL = 'ExitDoor'"); Start-Sleep 6
+    # (which door opens on the way out - owner's two-games test 2026-11-11: the driver's door opened, the player went
+    # through the back door; only "out" was checked here)
+    "  watch: " + (Send $hd "EW_S = 7 return dofile('$($t.Replace('\', '/'))/cmds/exit-watch.lua')")
+    "  out: " + (E "CE_CAR = 'own' CE_HL = 'ExitDoor'"); Start-Sleep 8
+    $w = Send $hd "return EW_READ()"
+    "  exit: $w"
+    $op = if ($w -match 'opened=(\S+)') { $Matches[1] } else { '?' }
+    Check "$($role): out by its back door: that door opened, the driver's did not" ($op -match "$bn" -and $op -notmatch '1') "opened $op"
+    $ey = if ($w -match 'end=-?\d+,(-?\d+)') { [double]$Matches[1] } else { 0 }
+    Check "$($role): it stands on that door's side of the car" ($(if ($bn -eq 3) { $ey -lt -80 } else { $ey -gt 80 })) "end y $ey (door $bn)"
     $a = Send $hd $att; $s = Send $hd $sock
     Check "$($role): out again, the seat socket back at the wheel" ($a -match 'false') "attached: $a socket $s"
     "  in at the wheel: " + (E "CE_CAR = 'own' CE_HL = 'EnterDoor'"); Start-Sleep 7

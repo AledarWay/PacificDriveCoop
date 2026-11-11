@@ -861,6 +861,7 @@ local function clientApply(t)
             end
             pickSent[key] = nil
         end
+        if CoopSyncMap[key] then reverse[CoopSyncMap[key]] = nil end
         CoopSyncMap[key] = nil
         state.applied[key] = nil
         state.pending[key] = nil
@@ -2453,6 +2454,9 @@ local function detectOne(key, live)
             request(key, "PICK\t" .. key)
         end
         CoopSyncMap[key] = nil
+        -- (and its reverse: a pooled copy the game brought back out later stood unmapped, but the stray sweep skips
+        -- reversed paths - 4 bollards at one spot on the guest, its respawns of a key and the old ones back; range 2026-11-11)
+        reverse[path] = nil
         if HZ.mine[key] then HZ.died(key) return end -- (one this side ran: gone for the host too, not put back)
         -- a hazard that went off here on its own (imported landmines did, the host's stayed): the host is
         -- the authority, put it back where the host has it (a few times at most)

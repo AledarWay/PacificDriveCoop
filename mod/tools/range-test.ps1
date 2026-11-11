@@ -1,4 +1,4 @@
-﻿# Automated "range-started hazards and tourists" test (owner, alpha 18 item 23: "the saw lags on the guest", "the geyser
+# Automated "range-started hazards and tourists" test (owner, alpha 18 item 23: "the saw lags on the guest", "the geyser
 # fires later on the guest", "the mannequin is in other poses, it does not sway on a kick"). Host: local\advsave\swamp14.sav
 # (Wilderness_Swamp_14 with saw blades and tourists, made by zone-census.ps1 + cmds/save-probe.lua 'save'); guest joins.
 #   1. every mapped tourist's body has the host's pose on the guest (mesh, yaw)
@@ -175,7 +175,8 @@ Check "both copies stopped" (($h -split ' ')[1] -eq 'idle' -and ($g -split ' ')[
 
 "=== 4. a tourist set swaying on one side sways on the other"
 # a mapped tourist by this side's car (the car put 2000 from it: nearer, it set tourists off), its body pushed at the tip as a kick would; the other side's
-# copy: its body's tilt from its rest pose over the next 1.5 s
+# copy: its body's tilt from its rest pose over the next 1.5 s. (Its tilt fuse held off for 7 s: something re-armed it
+# mid-sway - armed for 1 s of it, 2026-11-10 - and a run's pushed mine went off instead, req_TS=0)
 $near = @"
 local far = FAR_FROM and CoopSync.deref(CoopSyncMap[FAR_FROM])
 local fl = far and far:K2_GetActorLocation()
@@ -193,9 +194,9 @@ end
 return 'none'
 "@
 function Spin($dir, $k) {
-    Send $dir "local a = CoopSync.deref(CoopSyncMap and CoopSyncMap['$k'] or '$k') local l = a:K2_GetActorLocation() local car = FindFirstOf('BP_CarManager_C').NewCarActor car:K2_SetActorLocationAndRotation({ X = l.X - 2000, Y = l.Y, Z = l.Z + 300 }, { Pitch = 0, Yaw = 0, Roll = 0 }, false, {}, true) car.RootComponent:SetPhysicsLinearVelocity({ X = 0, Y = 0, Z = 0 }, false, FName('None')) a.PreventExplodeOnAngle = true Dev.after(1500, function() local b = a.Body b:AddImpulseAtLocation({ X = 300 * b:GetMass(), Y = 0, Z = 0 }, a.TipScene:K2_GetComponentLocation(), FName('None')) end) return 'pushed'"
+    Send $dir "local a = CoopSync.deref(CoopSyncMap and CoopSyncMap['$k'] or '$k') local l = a:K2_GetActorLocation() local car = FindFirstOf('BP_CarManager_C').NewCarActor car:K2_SetActorLocationAndRotation({ X = l.X - 2000, Y = l.Y, Z = l.Z + 300 }, { Pitch = 0, Yaw = 0, Roll = 0 }, false, {}, true) car.RootComponent:SetPhysicsLinearVelocity({ X = 0, Y = 0, Z = 0 }, false, FName('None')) local T = CoopSyncTour or {} local function fuseOff() a.PreventExplodeOnAngle = true if T.fuse then T.fuse[a] = nil end end fuseOff() local fn = 0 local fh fh = LoopInGameThreadWithDelay(100, function() fn = fn + 1 if fn > 70 or not a:IsValid() then CancelDelayedAction(fh) return end pcall(fuseOff) end) Dev.after(1500, function() fuseOff() SW_INLIST = 'no' for _, x in ipairs(T.list or {}) do if x == a then SW_INLIST = 'yes' end end SW_INNEAR = 'no' for _, x in ipairs(T.near or {}) do if x == a then SW_INNEAR = 'yes' end end local b = a.Body b:AddImpulseAtLocation({ X = 300 * b:GetMass(), Y = 0, Z = 0 }, a.TipScene:K2_GetComponentLocation(), FName('None')) end) return 'pushed'"
 }
-$tilt = "local a = CoopSync.deref(CoopSyncMap and CoopSyncMap['KEY'] or 'KEY') local r0 = a.Body:K2_GetComponentRotation() SW_MAX = 0 local n = 0 local h h = LoopInGameThreadWithDelay(50, function() n = n + 1 if n > 120 or not a:IsValid() then CancelDelayedAction(h) return end local r = a.Body:K2_GetComponentRotation() SW_MAX = math.max(SW_MAX, math.abs(r.Pitch - r0.Pitch) + math.abs(r.Roll - r0.Roll)) end) return 'watching'"
+$tilt = "local a = CoopSync.deref(CoopSyncMap and CoopSyncMap['KEY'] or 'KEY') local r0 = a.Body:K2_GetComponentRotation() SW_MAX = 0 SW_W = 0 SW_ARMED = 0 SW_GONE = nil local n = 0 local h h = LoopInGameThreadWithDelay(50, function() n = n + 1 if n > 120 or not a:IsValid() then if not a:IsValid() then SW_GONE = n * 50 end CancelDelayedAction(h) return end local r = a.Body:K2_GetComponentRotation() SW_MAX = math.max(SW_MAX, math.abs(r.Pitch - r0.Pitch) + math.abs(r.Roll - r0.Roll)) pcall(function() local w = a.Body:GetPhysicsAngularVelocityInDegrees(FName('None')) SW_W = math.max(SW_W or 0, math.sqrt(w.X ^ 2 + w.Y ^ 2 + w.Z ^ 2)) end) pcall(function() if not a.PreventExplodeOnAngle then SW_ARMED = (SW_ARMED or 0) + 1 end end) end) return 'watching'"
 $k1 = Send $cd "FAR_FROM = nil $near"
 "  host spins $k1`: " + (Spin $hd $k1) + " | guest " + (Send $cd $tilt.Replace('KEY', $k1))
 Start-Sleep 7
@@ -208,6 +209,6 @@ Start-Sleep 7
 $hMax = Send $hd "return string.format('%.1f', SW_MAX)"
 $hr = Send $hd "return CoopSyncState.report()"
 # (the guest's own: did its mine sway, did it send - a miss had req_TS=0 on the host, quick suite 2026-11-10)
-$g2 = Send $cd "local a = CoopSync.deref(CoopSyncMap['$k2']) local l = a and a:K2_GetActorLocation() local p = FindFirstOf('PlayerController').Pawn:K2_GetActorLocation() local car = FindFirstOf('BP_CarManager_C').NewCarActor local c = car:K2_GetActorLocation() local function d(x) return l and math.floor(math.sqrt((x.X - l.X) ^ 2 + (x.Y - l.Y) ^ 2)) or -1 end return string.format('tilted=%.1f rq_TS=%s pawn_d=%s car_d=%s car=%s', SW2_MAX or -1, CoopSyncState.report():match('rq_TS=(%d+)') or '0', d(p), d(c), car:GetFName():ToString())"
+$g2 = Send $cd "local a = CoopSync.deref(CoopSyncMap['$k2']) local l = a and a:K2_GetActorLocation() local p = FindFirstOf('PlayerController').Pawn:K2_GetActorLocation() local car = FindFirstOf('BP_CarManager_C').NewCarActor local c = car:K2_GetActorLocation() local function d(x) return l and math.floor(math.sqrt((x.X - l.X) ^ 2 + (x.Y - l.Y) ^ 2)) or -1 end return string.format('tilted=%.1f rq_TS=%s pawn_d=%s car_d=%s car=%s w=%.0f armed=%s gone_ms=%s inlist=%s innear=%s', SW2_MAX or -1, CoopSyncState.report():match('rq_TS=(%d+)') or '0', d(p), d(c), car:GetFName():ToString(), SW_W or -1, tostring(SW_ARMED), tostring(SW_GONE), tostring(SW_INLIST), tostring(SW_INNEAR))"
 Check "the guest's sway reached the host's copy" ([double]$hMax -gt 3 -and (Stat $hr 'req_TS') -ge 1) "host body tilted $hMax deg; host req_TS=$(Stat $hr 'req_TS') | guest: $g2"
 Finish

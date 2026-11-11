@@ -1,4 +1,4 @@
-﻿# The players and the two cars, through the game's own paths (owner, alpha 16: "the weakest and the most important part"):
+# The players and the two cars, through the game's own paths (owner, alpha 16: "the weakest and the most important part"):
 # the E presses go through the highlight manager and the character's Command Interact like a player's, never the mod's
 # teleports. Two instances over the relays, own-car mode. Each side, both directions:
 #   1. getting out of the own car (the game's ExitDoor): its door opens, here and on the other side's twin
@@ -293,6 +293,12 @@ Check "the host's car stands parked after the guest got out, its doors and lid s
 # highlight either - then step 8's guest-in-the-host's-car checks cover items 11 / 12)
 $d1 = Send $cd "local d = CoopPlayers.twinModule().door(CoopPlayers.twinModule().ownCar(), 1) return d and d:GetClass():GetFName():ToString() or '-'"
 if ($d1 -notmatch 'Door_Base') { "  SKIP: the guest's car has no driver's door ($d1)" } else {
+# (its car turned to a clear, flat way ahead first: driven into a tree or a rock by the start spot, it bounced back to
+# 223 off its start, then would not move on the throttle in step 9 - 2026-11-10)
+"  guest car turned to a clear way: " + (Send $cd "return dofile('$($t.Replace('\', '/'))/cmds/car-clear-dir.lua')")
+# (at rest, the host's twin of it there too: the host is put by the twin's door - 2400 off when the twin had not caught up)
+for ($i = 0; $i -lt 15; $i++) { Start-Sleep 1; $o1 = OwnAt $cd; $tw1 = Send $hd "$(Twin) local l = tw:K2_GetActorLocation() return string.format('%.0f,%.0f', l.X, l.Y)"; Start-Sleep 1; if ((Moved $o1 (OwnAt $cd)) -le 10 -and (Moved $o1 $tw1) -le 60) { break } }
+"  guest car at rest: $o1, host's twin $tw1"
 # (the guest stands 5 m off its car, out of the host's way)
 "  guest steps away: " + (Send $cd "local p = FindFirstOf('PlayerController').Pawn local car = CoopPlayers.twinModule().ownCar() local l, r = car:K2_GetActorLocation(), car:GetActorRightVector() p:K2_SetActorLocation({ X = l.X + r.X * 600, Y = l.Y + r.Y * 600, Z = l.Z + 80 }, false, {}, true) return 'away'")
 Start-Sleep 2
@@ -362,16 +368,20 @@ Check "after the guest drove: the host's twin of its car still has the hood in i
 # aim at its back door missed, 2026-11-04)
 "  host car home: " + (Send $hd "local c = CoopPlayers.twinModule().ownCar() if not CARS_HOME then return 'no home' end c:K2_SetActorLocationAndRotation({ X = CARS_HOME.l.X, Y = CARS_HOME.l.Y, Z = CARS_HOME.l.Z + 30 }, CARS_HOME.r, false, {}, true) pcall(function() c.RootComponent:SetPhysicsLinearVelocity({ X = 0, Y = 0, Z = 0 }, false, FName('None')) end) return 'back'")
 Start-Sleep 3
-"  host to its back left door: " + (Send $hd "local p = FindFirstOf('PlayerController').Pawn local car = CoopPlayers.twinModule().ownCar() local KML = StaticFindObject('/Script/Engine.Default__KismetMathLibrary') local w = KML:TransformLocation(car:GetTransform(), { X = 0, Y = -260, Z = 0 }) p:K2_SetActorLocation({ X = w.X, Y = w.Y, Z = w.Z + 100 }, false, {}, true) return 'there'")
-Start-Sleep 2
+# (from a second / third spot if the aim found no back door: on a slope it missed, and the E then got the host in at
+# the wheel - the step's checks all failed, 2026-11-11)
 $aim = ''
-foreach ($dz in 0, 20, -20, 40) {
-    Send $hd "LOOK_OWN = true LOOK_DZ = $dz LOOK_SLOT = 'DoorsRL' $look" | Out-Null; Start-Sleep -Milliseconds 700
-    Send $hd "LOOK_OWN = true LOOK_DZ = $dz LOOK_SLOT = 'DoorsRL' $look" | Out-Null; Start-Sleep -Milliseconds 500
-    $aim = Send $hd "return CoopPlayers.ownBackDoorAimed and tostring(CoopPlayers.ownBackDoorAimed()) or '?'"
+foreach ($spot in @(@(0, -260), @(-30, -220), @(20, -240))) {
+    "  host to its back left door ($($spot -join ',')): " + (Send $hd "local p = FindFirstOf('PlayerController').Pawn local car = CoopPlayers.twinModule().ownCar() local KML = StaticFindObject('/Script/Engine.Default__KismetMathLibrary') local w = KML:TransformLocation(car:GetTransform(), { X = $($spot[0]), Y = $($spot[1]), Z = 0 }) p:K2_SetActorLocation({ X = w.X, Y = w.Y, Z = w.Z + 100 }, false, {}, true) return 'there'")
+    Start-Sleep 2
+    foreach ($dz in 0, 20, -20, 40) {
+        Send $hd "LOOK_OWN = true LOOK_DZ = $dz LOOK_SLOT = 'DoorsRL' $look" | Out-Null; Start-Sleep -Milliseconds 700
+        Send $hd "LOOK_OWN = true LOOK_DZ = $dz LOOK_SLOT = 'DoorsRL' $look" | Out-Null; Start-Sleep -Milliseconds 500
+        $aim = Send $hd "return CoopPlayers.ownBackDoorAimed and tostring(CoopPlayers.ownBackDoorAimed()) or '?'"
+        if ($aim -match '^3') { break }
+    }
     if ($aim -match '^3') { break }
-}
-"  host: " + (Press $hd) + " (aimed back door: $aim)"
+}"  host: " + $(if ($aim -match '^3') { Press $hd } else { 'no E (no back door aimed)' }) + " (aimed back door: $aim)"
 Start-Sleep 6
 "  host door 3: " + (Send $hd "return CoopPlayers.doorInfo(3)")
 $hw = KV (Send $hd "return CoopPlayers.wheelInfo()")

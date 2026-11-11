@@ -61,7 +61,18 @@ The own car's back seat in the garage:
 Cars:
 - Getting out of the other player's car always opens its door on the owner's side too. Before, now and then the
   owner saw the door stay shut.
-- Each car drives by its own parts. Both cars took their engine and tire values from one place in the game, written by
+- Getting out of a back seat opens that back door, not the driver's, and you stand on that door's side. Before, the
+  driver's door swung open, you went out through the shut back door, and out of a right back seat you stood on the
+  left. In the garage and in the zone, in your own car and the other's.
+- The driver's door can be opened, shut and taken off while the other player sits behind it. Before, it was not
+  highlighted at all.
+- A back seat whose door was taken off can be used: look at the empty doorway and press E (your car or the other's).
+  Before, nothing there could be pressed.
+- The other's car's back door shuts once when you get in. Before, it shut, bounced open and shut again.
+- The other's trunk lid opens and shuts every time. Before, when its owner had just been at your car, the shut did
+  nothing on its side: the lid stood open for good (or opened and shut by itself on your side).
+- Pressing E at something else of the other's car right after its lid (its trunk box, a tow hook) no longer counts as
+  pressing the lid. The lid could shut on you and keep slamming.- Each car drives by its own parts. Both cars took their engine and tire values from one place in the game, written by
   whichever car was last; in the other's car a player drove on the own car's parts (your upgraded car and your
   friend's starting one behaved the other way round). Now each car has its own, and the other's car gets its owner's.
 - The other's car's fuel tank works: its gas cap shows that car's fuel, a canister fills it and can siphon from it
@@ -77,6 +88,9 @@ Fuel canisters:
 - A canister put down on the ground has the same fuel for both. Before, the other player's copy came empty.
 - A canister put into a container (a crate, a trunk, the car's storage) keeps its fuel for the other player too.
   Before, it came out with the default fuel.
+Hazards:
+- The guest no longer gets extra copies of a hazard at one spot (several bollards standing in one place): a hazard
+  its game parked and brought back was kept next to the copy put in its place.
 Abandoned cars:
 - An abandoned car that loads in a little later gets the host's paint within seconds, not after 20 s.
 The pause menu:
@@ -89,15 +103,18 @@ part-break test (an abandoned car's parts sawed and broken off from both sides);
 compares the abandoned cars' parts' paint; the start-flow test checks that the host
 shares its zone without a fixed wait; a new fuel canister test; a new tuning test (each car on its own tires, the host on
 offroad ones, also with the guest at the wheel of the host's car); a new gas cap test (filling and siphoning the other's car, and the own engine running while the other's car
-is set up again); the car storage test opens the other's trunk box the game's way.
+is set up again); the car storage test opens the other's trunk box the game's way; a new back-seat test (out by each back
+door on both sides, the driver's door with the other at the wheel, the doorway of a taken-off door, the door shutting
+once); a new trunk test (the other's lid opened and shut four times, the owner having been at the other's car); the
+garage-seat test checks which door opens and where the player stands.
 Known issues:
 - The anchor in both players' hands is still not reproduced in the tests (a stable anchor on a pedestal, the
   game's own long grab on the other side gives nobody an item). Please send a report right after it happens.
 - The ARC map's north: both games have the same north in the tests, yet the owner saw the ARC maps turned 90 degrees
   against each other. Not reproduced yet.
 - The instability glow on the guest's garage map can still differ a little from the host's.
-- The trunk lid that kept slamming after it was shut is not reproduced yet (opening and shutting the other's trunk,
-  also with its car driving, slams once). Please note who opened it, whose car and whether it was moving.
+- The other's trunk box: in the tests it cannot be lit on the other's car (that copy of it has no collision). If its E
+  does nothing or opens the wrong trunk, please send a report.
 
 
 0.1.0-alpha21 (2026-11-07)

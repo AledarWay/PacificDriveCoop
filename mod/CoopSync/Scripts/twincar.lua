@@ -1555,7 +1555,9 @@ function M.pose(car)
             local x = Sync.deref(p)
             -- a door only while open and 3 s after (its closed pose is the twin's own)
             if x and n:find("^D%d%.") then
-                local ok, open = pcall(function() return x:IsSimulatingPhysics(FName("None")) end)
+                -- (a hidden one is shut for the other side: the driver's door swinging unseen for a back seat's exit, playersync
+                -- TD.backSeatExit)
+                local ok, open = pcall(function() return x:IsSimulatingPhysics(FName("None")) and x:IsVisible() end)
                 if ok and open then c.doorOpenAt[n] = now end
                 if now - (c.doorOpenAt[n] or -1e9) > 3 then x = nil end
             end
@@ -1734,7 +1736,9 @@ function M.applyPose(twin, s)
         if name:byte(1) == 68 and name:find("^D%d%.") then -- "D<n>."
             local key = x .. "," .. y .. "," .. z .. "," .. p .. "," .. yw .. "," .. r
             -- (native cars: a door the game opened here simulates - the pose leaves it, M.doorLocal: playersync)
-            if c.last[name] ~= key and not M.doorLocal[tonumber(name:sub(2, 2))] then
+            -- (and not while a shut this side did holds: M.shutEase's hold)
+            local dn = tonumber(name:sub(2, 2))
+            if c.last[name] ~= key and not M.doorLocal[dn] and not (M.doorHold[dn] and now < M.doorHold[dn]) then
                 -- (eased there by M.doorEase)
                 c.doorGoal = c.doorGoal or {}
                 c.doorGoal[name] = { l = { X = tonumber(x), Y = tonumber(y), Z = tonumber(z) }, r = { Pitch = tonumber(p), Yaw = tonumber(yw), Roll = tonumber(r) } }
@@ -1759,7 +1763,12 @@ function M.applyPose(twin, s)
     return n
 end
 -- Door n of the twin eased shut from where its mesh is (the shut pose: the mesh on its door's root), with the doors
-function M.shutEase(twin, n)
+-- hold: seconds the owner's pose lines leave that door alone - this side's own shut, whose last open poses were still on
+-- their way: the door eased shut, then swung open again to 42 deg and shut a second time (owner's two-games test
+-- 2026-11-11: "the back door tries to shut, stays open, then shuts"; backseat-test)
+M.doorHold = {}
+function M.shutEase(twin, n, hold)
+    if hold then M.doorHold[n] = os.clock() + hold end
     local c = poseComps(twin)
     local d = M.door(twin, n)
     if not (c and d) then return false end
@@ -2499,10 +2508,10 @@ function M.startEntry(twin, door)
     return ok
 end
 function M.finishEntry(pawn, door)
-    if door then return pcall(function() pawn:CommandEnterCar(false, door, false) end) end
-    -- (no door: the game's way in without one - the walk to the seat socket, else put on it)
-    if pcall(function() pawn:CommandEnterCar(false, nil, false) end) then return true end
-    return pcall(function() pawn:CommandEnterCar(true, nil, false) end)
+    -- (a doorway: its slot's EmptyDoor is the door here - playersync. CommandEnterCar with no door at all made the game
+    -- take the car's driver's door off, the OWN car's: never called so - backseat-test 2026-11-11)
+    if not door then return false end
+    return pcall(function() pawn:CommandEnterCar(false, door, false) end)
 end
 -- The owner's real door n: "open" | "shut" | "toggle" (open = its mesh simulates). Returns what was done.
 function M.doorOpen(car, n)

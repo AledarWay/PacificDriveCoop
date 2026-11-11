@@ -738,6 +738,7 @@ function TD.logDoor(kind, n, op)
 end
 function TD.sendDoor(n, op)
     TD.logDoor("s", n, op)
+    if op == "shut" then TD.shutSentMs = TD.shutSentMs or {} TD.shutSentMs[n] = M.nowMs() end
     append(outFile, string.format("DR\t%d\t%d\t%s", M.nowMs(), n, op))
     st.doorsSent = (st.doorsSent or 0) + 1
     st.lastDoorSent = n .. ":" .. op
@@ -770,8 +771,14 @@ end
 -- (no door on that side - taken off: owner's alpha 20 test, the guest could not get onto a back seat then - the
 -- player gets in through the empty doorway: the car the game's context, the seat socket at seat n, CommandEnterCar
 -- without a door)
+-- (a slot's EmptyDoor - the door taken off - is no door: in through the doorway)
+function TD.realDoor(car, n)
+    local d = car and Twin.door(car, n)
+    if d and d:GetClass():GetFName():ToString() == "BP_CarPart_EmptyDoor_C" then return nil end
+    return d
+end
 function TD.twinEnter(pawn, g, tag, n)
-    local door = Twin.door(g, n)
+    local door = TD.realDoor(g, n)
     TD.aimSeatSocket(g, n)
     if door then
         if not Twin.startEntry(g, door) then return false end
@@ -781,8 +788,12 @@ function TD.twinEnter(pawn, g, tag, n)
         st.doorlessEntries = (st.doorlessEntries or 0) + 1
     end
     local now = M.nowMs()
+    -- (no door: the walk in by the slot's EmptyDoor - it has the entry points; CommandEnterCar with no door at all made the
+    -- game take the car's driver's door off - the OWN car's, backseat-test 2026-11-11)
+    local empty = not door and Twin.door(g, n)
     inGhost = { tag = tag, seat = nil, pending = false, entry = { X = SEAT_DOOR[n].X, Y = SEAT_DOOR[n].Y }, twin = true, since = now,
-        aimed = n, door = door and n or nil, doorPath = door and Sync.ref(door) or nil, enterAt = now + TD.ENTRY_STEP_MS, native = TD.native or nil }
+        aimed = n, door = door and n or nil, doorPath = door and Sync.ref(door) or nil, emptyPath = empty and Sync.ref(empty) or nil,
+        enterAt = now + TD.ENTRY_STEP_MS, native = TD.native or nil }
     if tag == "H" then myAssigned, seatPending = nil, false end
     st.ghostBoarded = (st.ghostBoarded or 0) + 1
     return true
@@ -794,7 +805,7 @@ end
 TD.ownSeat = nil
 function TD.ownEnter(pawn, n)
     local own = Twin.ownCar()
-    local door = own and Twin.door(own, n)
+    local door = own and TD.realDoor(own, n)
     local function no(why) st.ownEnter = n .. ":" .. why return false end
     if not own then return no("no_car") end
     if Sync.parentOf(pawn) then return no("in_a_car") end
@@ -806,7 +817,8 @@ function TD.ownEnter(pawn, n)
     if door and not pcall(function() door:StartEntry(true) end) then TD.aimSeatSocket(own, 1) return no("entry_failed") end
     st.ownEnter = n .. (door and ":started" or ":started_doorless")
     local now = M.nowMs()
-    TD.ownSeat = { n = n, since = now, door = door and Sync.ref(door) or nil, enterAt = now + TD.ENTRY_STEP_MS, shutAt = door and (now + TD.ENTRY_SHUT_MS) or nil }
+    local empty = not door and Twin.door(own, n) -- (the doorway's EmptyDoor: the walk in by it - TD.twinEnter)
+    TD.ownSeat = { n = n, since = now, door = door and Sync.ref(door) or nil, empty = empty and Sync.ref(empty) or nil, enterAt = now + TD.ENTRY_STEP_MS, shutAt = door and (now + TD.ENTRY_SHUT_MS) or nil }
     st.ownBackEntries = (st.ownBackEntries or 0) + 1
     return true
 end
@@ -839,7 +851,8 @@ end
 -- other's. Getting into / out of the other's car, its key, levers, horn, pedals: the game's own.
 TD.native = false
 TD.SWEEP_MS = 10000
-TD.NATIVE_LET_GO_MS = 2000 -- the other's car not aimed at this long: the own car is the context again
+TD.NATIVE_LET_GO_MS = 2000
+TD.DR_CTX_MS = 2500 -- the own car stays the context this long after the other player worked one of its doors -- the other's car not aimed at this long: the own car is the context again
 TD.aimed = nil -- { n = door } of the other's car the player last aimed at (its seat is taken on getting in)
 local DOOR_OF_ENUM = { [0] = 1, [1] = 2, [2] = 3, [3] = 4, [5] = 5 } -- the manager's door enum -> door number
 -- the other's car's door n the highlight is on (its door actor, the door slot's spot, the body's EnterDoor), else nil
@@ -860,7 +873,10 @@ function TD.aimNative(tw, h)
         n = TD.catSlot[key] or nil
     end
     if not n and h:GetFName():ToString() == "Highlight_EnterDoor" then n = 1 end
-    if not n then return end
+    -- (something else of the car lit - its trunk box: no door aimed. The lid tapped before stayed "aimed", and the box's E
+    -- changing the manager's trunk flag went to the owner as the player's shut - owner's two-games test 2026-11-11: the
+    -- lid shut on the guest at the box's E and kept slamming; trunk-test)
+    if not n then TD.aimed = nil return end
     if not (TD.aimed and TD.aimed.n == n) then
         TD.aimed = { n = n }
         -- (the game walks the player to the car's one seat socket: moved to the seat behind this door first)
@@ -982,7 +998,11 @@ function TD.twinDoorReconcile(tw)
                 local pn = TD.seatNow and TD.seatNow.n or (TD.passengerExit and now < TD.passengerExit.untilMs and TD.passengerExit.n)
                 local exitDoor = n == 1 and pn and pn ~= 1 and not TD.ownerDoorOpen(1) and now - TD.doorLocalSince[n] >= TD.EXIT_DOOR_MS
                 if exitDoor then st.exitDoorsShut = (st.exitDoorsShut or 0) + 1 end
-                if exitDoor or now - TD.doorLocalSince[n] > (TD.openedForOwner[n] and TD.OWNER_SHUT_MS or TD.DOOR_LOCAL_MS) then
+                -- (this side shut it - the entry's shut, the player's E: sent to the owner - and the owner's pose has it shut:
+                -- eased shut now, not after TD.DOOR_LOCAL_MS; owner's two-games test 2026-11-11: "the back door does not
+                -- shut the first time, it tries, stays open, then shuts")
+                local mineShut = now - ((TD.shutSentMs or {})[n] or -1e9) < 4000
+                if exitDoor or now - TD.doorLocalSince[n] > ((TD.openedForOwner[n] or mineShut) and TD.OWNER_SHUT_MS or TD.DOOR_LOCAL_MS) then
                     -- (the game's shut first; on the kinematic twin it does not close the door (cars-test: 128 tries, still
                     -- open) - then the door stops simulating and its owner's pose has it again)
                     local d = Twin.door(tw, n)
@@ -1000,7 +1020,7 @@ function TD.twinDoorReconcile(tw)
                             mesh:K2_AttachToComponent(d.RootComponent, FName("None"), 1, 1, 1, true)
                         end)
                         Twin.forgetDoorPose(tw, n)
-                        pcall(Twin.shutEase, tw, n)
+                        pcall(Twin.shutEase, tw, n, mineShut and 1.5 or nil)
                         st.twinDoorsPosed = (st.twinDoorsPosed or 0) + 1
                     end
                     TD.doorLocalSince[n] = now
@@ -1026,6 +1046,7 @@ function TD.nativeTick()
     local want
     if inGhost then want = tw -- (in the other's car, getting in / out included)
     elseif parCar then want = parCar
+    elseif own and M.nowMs() < (TD.ownCtxUntil or 0) then want = own -- (a door of it the other player works: DR)
     else
         local hm = (CoopSyncFirst or FindFirstOf)("BP_HighlightManager_C")
         local h = hm and hm.CurrentHighlight
@@ -1055,7 +1076,7 @@ end
 -- opens is the one it got in by (the character's CarEntryTransitionPoint). For a player on seat n they are moved to
 -- that seat's door (mirrored for the right side: ExitCheckPoints turned round) - looking at the own door + E gets out
 -- through it, the game's own animation.
-TD.EXIT_COMPS = { "UICollision_ExitHandle", "UICollision_ExitHandle2", "ExitPoint" }
+TD.EXIT_COMPS = { "UICollision_ExitHandle", "UICollision_ExitHandle2", "ExitPoint", "TempExitLocation", "TempExitLocation_StartTrace" }
 TD.exitHome = {} -- car path -> { comp name -> its relative location as built }
 TD.exitSeat = {} -- car path -> the seat its exit is placed for
 function TD.placeExit(car, n)
@@ -1077,18 +1098,13 @@ function TD.placeExit(car, n)
             pcall(function() c:K2_SetRelativeLocation({ X = r.X + dx, Y = right and -r.Y or r.Y, Z = r.Z }, false, {}, true) end)
         end
     end
-    -- (the check points' capsules stand left of the car: turned round for the right side, then the X back in place)
+    -- (the spot the player is put at: ExitCheckPoints' TempExitLocation (and its trace start) - moved itself, mirrored
+    -- for the right side. The check points turned round instead put it right in the world, yet the game took the
+    -- spot's own relative place: out by the right back door the player stood on the left - owner's two-games test
+    -- 2026-11-11, garage-seat-test. Their parent stays where it was built.)
     local cp = car.ExitCheckPoints
     if cp and cp:IsValid() then
-        pcall(function()
-            if right then
-                local t = car.TempExitLocation and car.TempExitLocation.RelativeLocation
-                local tx = t and t.X or 0
-                cp:K2_SetRelativeLocationAndRotation({ X = dx + 2 * tx, Y = 0, Z = 0 }, { Pitch = 0, Yaw = 180, Roll = 0 }, false, {}, true)
-            else
-                cp:K2_SetRelativeLocationAndRotation({ X = dx, Y = 0, Z = 0 }, { Pitch = 0, Yaw = 0, Roll = 0 }, false, {}, true)
-            end
-        end)
+        pcall(function() cp:K2_SetRelativeLocationAndRotation({ X = 0, Y = 0, Z = 0 }, { Pitch = 0, Yaw = 0, Roll = 0 }, false, {}, true) end)
     end
     -- (the exit's outline: Highlight_ExitDoor draws its HighlightVisuals - the driver door's DoorInteriorHighlightMesh
     -- - wherever its collision is; a passenger getting out saw the DRIVER's door lit, owner's alpha 18 items 13 / 19:
@@ -1303,7 +1319,10 @@ function TD.passengerMayReach(hc)
     if not sn then
         local n = TD.doorOfHighlight(car, hc, owner)
         local tag = Twin.isTwin(car) and otherTag() or myTag()
-        if n == 1 and seatTakenByOther(tag, n) then return false end
+        -- (the car body's way-in spot only: the door itself stays lit - its E opens / shuts it, TD.takenDoorPress - and
+        -- its own E handlers are parked meanwhile, TD.entryPark; owner's two-games test 2026-11-11: "with the other at
+        -- the wheel the door is not highlighted, nothing can be done with it")
+        if n == 1 and seatTakenByOther(tag, n) and hc:GetFName():ToString() == "Highlight_EnterDoor" then return false end
     end
     if not (here and sn.n ~= 1) then return true end -- (on foot / the driver: the rest is the game's)
     if hc:GetFName():ToString() == "Highlight_ExitDoor" then return true end
@@ -1333,6 +1352,7 @@ function TD.hookPassengerReach()
             if allow:get() and not f(hc:get()) then
                 allow:set(false)
                 CoopSyncReachHook.denied = CoopSyncReachHook.denied + 1
+
             end
         end)
     end)
@@ -1400,7 +1420,7 @@ function TD.doorTick()
         inGhost.enterAt = nil
         local pawn, door = localPawn(), inGhost.doorPath and Sync.deref(inGhost.doorPath)
         if pawn and door and Twin.finishEntry(pawn, door) then inGhost.shutAt = now + TD.ENTRY_SHUT_MS - TD.ENTRY_STEP_MS
-        elseif pawn and not inGhost.doorPath and Twin.finishEntry(pawn, nil) then -- (the doorway: no door to shut)
+        elseif pawn and not inGhost.doorPath and Twin.finishEntry(pawn, inGhost.emptyPath and Sync.deref(inGhost.emptyPath)) then -- (the doorway: no door to shut)
         elseif pawn then ghostLeave(pawn, "entry failed") end
     end
     -- (the own car's back seat, TD.ownEnter: the game's CommandEnterCar after the door's StartEntry, as for the other's
@@ -1409,7 +1429,8 @@ function TD.doorTick()
     if ownS and ownS.enterAt and now >= ownS.enterAt then
         ownS.enterAt = nil
         local pawn, door = localPawn(), ownS.door and Sync.deref(ownS.door)
-        if not (pawn and (door or not ownS.door) and Twin.finishEntry(pawn, door)) then st.ownEnter = ownS.n .. ":enter_failed" end
+        local by = door or (ownS.empty and Sync.deref(ownS.empty))
+        if not (pawn and (door or not ownS.door) and by and Twin.finishEntry(pawn, by)) then st.ownEnter = ownS.n .. ":enter_failed" end
     end
     if ownS and ownS.shutAt and now >= ownS.shutAt then
         ownS.shutAt = nil
@@ -1507,8 +1528,73 @@ function TD.catShow(cat)
     -- its open door is also pressed by looking at it, TD.lookedAtOpenDoor)
     return true
 end
+-- E at the driver's door while the other player sits behind it (its E handlers parked: TD.entryPark): the door opens /
+-- shuts - the own car's here, the other's by its owner (DR toggle). True when it was that.
+function TD.takenDoorPress()
+    local hm = (CoopSyncFirst or FindFirstOf)("BP_HighlightManager_C")
+    local h = hm and hm.CurrentHighlight
+    local o = h and h:IsValid() and h:GetOwner()
+    local car = o and o:IsValid() and Native and Native.carOf(o)
+    if not car then return false end
+    local d1 = Twin.door(car, 1)
+    -- (the door actor or its slot's spot - lit while the door is shut; not the body's way-in spot)
+    if not d1 or h:GetFName():ToString() == "Highlight_EnterDoor" or TD.doorOfHighlight(car, h, o) ~= 1 then return false end
+    local twin = Twin.isTwin(car)
+    if not seatTakenByOther(twin and otherTag() or myTag(), 1) then return false end
+    if twin then TD.sendDoor(1, "toggle")
+    else
+        pcall(Native.use, car) -- (the door goes by the context car's flag: DR)
+        local open = Twin.doorOpen(car, 1)
+        pcall(function() if open then d1:AttemptShut() else d1:AttemptOpen() end end)
+    end
+    st.takenDoorPresses = (st.takenDoorPresses or 0) + 1
+    return true
+end
+-- A back seat's empty doorway the player looks at (owner's two-games test 2026-11-11: "no door on the back seat: no
+-- way to sit there"): the slot holds the game's BP_CarPart_EmptyDoor_C, which the game never lights (no highlight
+-- trace hits it). The camera's line passing within 70 of the doorway's middle (the seat's side, mid height), 3.3 m at
+-- most: the own car's -> { own = true, n }, the other's twin's -> { tag, n }. backseat-test.
+-- (car-relative: the back doors hang at X 8, Y +-94, Z 19 and reach back ~90 - probed on the guest's car 2026-11-11)
+TD.DOORWAY_MID = { [3] = { X = -40, Y = -94, Z = 0 }, [4] = { X = -40, Y = 94, Z = 0 } }
+function TD.lookedAtDoorway()
+    local ok, cm = pcall(function() return (CoopSyncFirst or FindFirstOf)("PlayerController").PlayerCameraManager end)
+    if not (ok and cm) then return nil end
+    local cam, fwd = cm:GetCameraLocation(), KML:GetForwardVector(cm:GetCameraRotation())
+    local cars = {}
+    local own = Twin.ownCar()
+    if own then cars[#cars + 1] = { car = own, own = true, tag = myTag() } end
+    local tw = ghostOf(otherTag())
+    if tw and Twin.isTwin(tw) then cars[#cars + 1] = { car = tw, tag = otherTag() } end
+    for _, c in ipairs(cars) do
+        for n, mid in pairs(TD.DOORWAY_MID) do
+            local d = Twin.door(c.car, n)
+            if d and not TD.realDoor(c.car, n) then
+                local h = KML:TransformLocation(c.car:GetTransform(), mid)
+                local v = { X = h.X - cam.X, Y = h.Y - cam.Y, Z = h.Z - cam.Z }
+                local along = v.X * fwd.X + v.Y * fwd.Y + v.Z * fwd.Z
+                local off = math.sqrt(math.max(0, v.X * v.X + v.Y * v.Y + v.Z * v.Z - along * along))
+                TD.doorwaySeen = string.format("%s%d:along=%.0f,off=%.0f", c.own and "own" or c.tag, n, along, off)
+                if along > 0 and along < 330 and off < 70 then
+                    return { own = c.own, tag = c.tag, n = n }
+                end
+            end
+        end
+    end
+    return nil
+end
 function TD.onHighlightPress(isPress)
+    st.highlightPresses = (st.highlightPresses or 0) + 1
     if M.stopped or isPress ~= true or inGhost then return end
+    -- (an empty back doorway: a tap there gets in - TD.ownEnter / TD.twinEnter, through the doorway)
+    if not TD.seatNow and not Sync.parentOf(localPawn()) then
+        local dw = TD.lookedAtDoorway()
+        if dw then
+            TD.doorPress = { own = dw.own, tag = dw.tag, n = dw.n, ms = M.nowMs() }
+            st.doorwayPresses = (st.doorwayPresses or 0) + 1
+            return
+        end
+    end
+    if not garage and TD.native and TD.seatNow == nil and TD.takenDoorPress() then return end
     -- (the garage lobby: the guest's start there is not native - its back doors only opened, owner's alpha 21 test: "the
     -- friend could not get onto his own back seat in the garage"; the own car's back seat for both there)
     if garage and not TD.native then
@@ -1524,6 +1610,17 @@ function TD.onHighlightPress(isPress)
         local on = TD.ownBackDoorAimed()
         if on then TD.doorPress = { own = true, tag = myTag(), n = on, ms = M.nowMs() } return end
         local tn = TD.aimed and TD.aimed.n
+        -- (the aim now: the other's car lit, or its open door looked at - a stale aim sent the guest's E at its own empty
+        -- doorway to the host's back door, which opened; backseat-test 2026-11-11)
+        if tn then
+            local hm = (CoopSyncFirst or FindFirstOf)("BP_HighlightManager_C")
+            local h = hm and hm.CurrentHighlight
+            local hc = h and h:IsValid() and h:GetOwner() and Native.carOf(h:GetOwner())
+            local tw0 = ghostOf(otherTag())
+            local litTwin = hc and tw0 and hc:GetAddress() == tw0:GetAddress()
+            local _, on = TD.lookedAtOpenDoor()
+            if not (litTwin or on == tn) then tn = nil st.staleAims = (st.staleAims or 0) + 1 end
+        end
         if tn and tn >= 2 and tn <= 4 then TD.doorPress = { tag = otherTag(), n = tn, ms = M.nowMs() } end
         -- (E at an open door / lid of the other's car: the game's own shut does not close a door of the kinematic twin
         -- (TD.twinDoorReconcile) - the lid stayed open in 4 of 6 cars-test runs, owner's alpha 18 item 24. When the game
@@ -2126,6 +2223,13 @@ function M.twinModule() return Twin end
 function M.ownBackDoorAimed() return TD.ownBackDoorAimed() end
 -- (tests: the seat this side's player sits on now, and whether it may reach a highlight of its own car by name)
 function M.seatNowN() return TD.seatNow and TD.seatNow.n or 0 end
+-- (tests: the other's trunk box opened here - the menu pointed at its container)
+function M.trunkInfo() return string.format("trunk_menu=%d last_menu=%s trunk_refresh=%d", st.trunkMenuPointed or 0, tostring(st.lastTrunkMenu), st.trunkRefreshBack or 0) end
+-- (tests: the empty doorways - where the camera's line passes them, and the E presses)
+function M.doorwayInfo()
+    local dw = TD.lookedAtDoorway()
+    return string.format("looked=%s seen=%s presses=%d doorway_presses=%d aimed=%s doorless=%d own_enter=%s", dw and ((dw.own and "own" or dw.tag) .. dw.n) or "none", tostring(TD.doorwaySeen), st.highlightPresses or 0, st.doorwayPresses or 0, tostring(TD.aimed and TD.aimed.n), st.doorlessEntries or 0, tostring(st.ownEnter))
+end
 function M.ownSeatDevice(n) local own = Twin.ownCar() return tostring(own and seatDevice(own, n)) end
 function M.mayReachOwn(name)
     local own = Twin.ownCar()
@@ -2271,7 +2375,61 @@ local function carOfPart(a)
     end
     return car
 end
+-- Out of the own car's back seat (owner's two-games test 2026-11-11: "out of the back seat by the back door the driver's
+-- door opened, I went through the back door"): the game's exit works the driver's door only (its animation's door; a
+-- back door's slot made the exit a jump - TD.contextSlot). On the own car that door really swung open (on the other's
+-- twin it is kinematic - TD.twinDoorReconcile shuts it there). So right after its AttemptDoorExit (the hook runs after
+-- the body) the driver's door is hidden while it swings and the seat's own door opens, shut again TD.EXIT_SHUT_MS
+-- later as the game shuts the driver's. backseat-test.
+function TD.backSeatExit(own, n)
+    local d1, dn = Twin.door(own, 1), TD.realDoor(own, n)
+    TD.doorGuard = true
+    -- (the driver's door swings unseen: shut at once the game's exit waited for it and never let go of the player -
+    -- backseat-test; on the twin it stays open TD.EXIT_DOOR_MS for that)
+    pcall(function() d1.MainMesh:SetVisibility(false, true) end)
+    if dn then pcall(function() dn:AttemptOpen() end) end
+    TD.doorGuard = false
+    local dp, d1p = dn and Sync.ref(dn), Sync.ref(d1)
+    CoopSyncAfter(TD.EXIT_SHUT_MS, function()
+        local d2 = dp and Sync.deref(dp)
+        if d2 then TD.doorGuard = true pcall(function() d2:AttemptShut() end) TD.doorGuard = false end
+    end)
+    -- (seen again once the game's own shut has it home)
+    CoopSyncAfter(TD.EXIT_SHUT_MS + 1500, function()
+        local d = Sync.deref(d1p)
+        if d then pcall(function() d.MainMesh:SetVisibility(true, true) end) end
+    end)
+    st.backSeatExits = (st.backSeatExits or 0) + 1
+end
 function TD.onDoorCall(door, what)
+    if what == "exit" and not (M.stopped or TD.doorGuard) and door and door:IsValid() and TD.ownSeat and TD.ownSeat.n ~= 1 then
+        local own = Twin.ownCar()
+        local d1 = own and Twin.door(own, 1)
+        if d1 and d1:GetAddress() == door:GetAddress() then TD.backSeatExit(own, TD.ownSeat.n) return end
+    end
+    -- (native: the game's own shut of a door of the other's twin - its entry's shut, the player's E - swung it into its
+    -- frame and it bounced open again on the kinematic car, then shut a second time (owner's two-games test 2026-11-11:
+    -- "the back door tries to shut, stays open, then shuts"; backseat-test: 55 -> 4 -> 40 -> 0 deg): the door is taken
+    -- off its physics at once and eased shut, the owner's late open poses held off meanwhile.)
+    if what == "shut" and TD.native and not (M.stopped or TD.doorGuard) and door and door:IsValid() then
+        local tw = carOfPart(door)
+        if tw and Twin.isTwin(tw) then
+            for k = 1, 5 do
+                local d = Twin.door(tw, k)
+                if d and d:GetAddress() == door:GetAddress() and Twin.doorOpen(tw, k) then
+                    pcall(function()
+                        local mesh = d.MainMesh
+                        mesh:SetSimulatePhysics(false)
+                        mesh:K2_AttachToComponent(d.RootComponent, FName("None"), 1, 1, 1, true)
+                    end)
+                    Twin.forgetDoorPose(tw, k)
+                    pcall(Twin.shutEase, tw, k, 1.5)
+                    TD.doorShutHere[k] = M.nowMs()
+                    st.twinShutsEased = (st.twinShutsEased or 0) + 1
+                end
+            end
+        end
+    end
     if M.stopped or TD.doorGuard or TD.native or not (door and door:IsValid()) then return end -- (native: TD.seatEntryPoint)
     local twin = carOfPart(door)
     if not Twin.isTwin(twin) then return end
@@ -2814,13 +2972,21 @@ function TD.garageSeat(pawn, par)
         TD.ownSeat.seated = true
         local n = TD.ownSeat.n
         pcall(TD.placeExit, own, n)
+        -- (and the door the exit takes the player to: out by the right back door it stood on the left side, as the
+        -- zone's native path sets it - owner's two-games test 2026-11-11, garage-seat-test)
+        pcall(TD.seatEntryPoint, pawn, own, n)
         TD.seatNow = { car = Sync.ref(own), n = n }
     elseif inOwn then
         if TD.seatNow and TD.seatNow.n ~= 1 then pcall(TD.placeExit, own, 1) end
         TD.seatNow = { car = Sync.ref(own), n = 1 }
     else
         if TD.ownSeat and (TD.ownSeat.seated or M.nowMs() - TD.ownSeat.since > 4000) then
-            if own then pcall(TD.aimSeatSocket, own, 1) pcall(TD.placeExit, own, 1) end
+            -- (the exit's spot back at the wheel a moment later: the game puts the player at that spot after it let go -
+            -- moved back at once, out by the right back door stood on the left; garage-seat-test)
+            if own then
+                pcall(TD.aimSeatSocket, own, 1)
+                CoopSyncAfter(1500, function() local o = Twin.ownCar() if o and not TD.ownSeat then pcall(TD.placeExit, o, 1) end end)
+            end
             TD.ownSeat = nil
             st.garageSeatBack = (st.garageSeatBack or 0) + 1
         end
@@ -3653,6 +3819,14 @@ local function applyTick()
         elseif t[1] == "DR" then
             -- the other player works a door of this side's car (from its twin of it)
             local car = role == "host" and localCar() or Sync.deref(ownCarPath)
+            -- (the own car the game's context first, held TD.DR_CTX_MS: a door's open / shut goes by the manager's flag of
+            -- the context car - with the other's twin the context (this player had aimed at it), the lid read "shut"
+            -- and the other player's shut did nothing; it stood open for good. Owner's two-games test 2026-11-11: "the
+            -- trunk can shut and not open again"; trunk-test)
+            if car and TD.native and Native and not inGhost and not Sync.parentOf(localPawn()) then
+                pcall(Native.use, car)
+                TD.ownCtxUntil = M.nowMs() + TD.DR_CTX_MS
+            end
             local r = car and Twin.setDoor(car, tonumber(t[3]) or 0, t[4] or "toggle") or "no car"
             TD.logDoor("d", t[3], r)
             st.doorsDone = (st.doorsDone or 0) + 1

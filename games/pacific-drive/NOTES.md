@@ -3853,3 +3853,83 @@ Owner: "I open the friend's trunk and see my own things".
   mine exploded (ev_X / ev_D) as the guest's car was teleported near it; the stray-hazard check had 3 guest bollards
   more than the host (unmapped list printed now).
 - anomaly hz_grant=0 once (the rerun passed); no data.
+
+- range sway, found 2026-11-10: the pushed mine's tilt fuse (PreventExplodeOnAngle) came back on mid-sway (armed for
+  1 s of it; not the mod's TOUR.fuse - cleared), so the mine went off instead of swaying and nothing was sent. The
+  test holds the fuse off for 7 s now (11/11). Who re-arms it is not known (the game's blueprint, likely).
+- cars 8b / 9 were the guest's car driven into a tree or a rock by the start spot (bounced back, then stuck nose-on):
+  cmds/car-clear-dir.lua turns the car to a clear, flat way (16 yaws, bumper / roof traces 4000 out) before 8b, and
+  the host's twin is waited for. Turning the host's car the same before step 8 made it worse (a slope, it rolled;
+  step 10's back door missed) - not done.
+
+### The owner's two-games test on cdc4e8d (2026-11-11)
+Report local: scratchpad rep11 (CoopSync-report-two-games-2026-11-11_00-18-18.zip; player1 = guest, player2 = host,
+Wilderness_Forest_18). The owner's list:
+1. In the garage: in the own car's back seat, out by the same back door - the driver's door opens, the player goes
+   through the back door and ends up as if out of the driver's door. The same in the zone in the guest's car.
+2. Entry gate: instead of teleporting the guest to the host, the guest takes the same entrance as the host's car
+   came in by (the maps show different entrances: a fork marked by an arrow, a dead end by a cross). A check that the
+   guest's car does not spawn inside the host's (moved a little). A random event: now and then the two get different
+   entrances and have to find each other on the map.
+3. The guest's load into the host's zone felt long (all under the loading screen otherwise).
+4. Map: both players are blue markers - the other player green. Players' own map markers synced: one's own blue,
+   the other's green.
+5. While one sits at the wheel the door is not highlighted and nothing can be done with it.
+6. No door on the back seat: can't get in there. The guest's back door does not close the first time (tries, stays
+   open, then closes - by the forced sync, likely).
+7. The trunk slamming, reproduced: the guest opened the host's trunk, came close, E opened the trunk's container
+   (inventory up) and the lid shut, hit the guest and kept making the shut sound on the guest. The trunk is unstable
+   in general (can shut and not open again, start slamming): test it better, refactor.
+8. Pickups are late on the guest - in that lag an item can be picked up again (duplicated): an event system for
+   quick point syncs? Dropped items appear late and without the throw animation.
+9. Part durability: a bar gone red shows as an empty white bar on the other side.
+10. The host's driver's door broken glass is missing on the guest.
+11. Driving the other's car: lags and jerks on actions - the lever late and jumping back for a while; the ceiling
+    light, headlights, ignition late.
+12. Radio on both, each in the other's car: tracks differ; skipping does not sync. Tracks between different cars?
+13. The host taking parts off / putting them on its car jerked the guest's car - it even turned over.
+Guest's load timeline (hitches.log; the host's TravelTo 23:35:53):
+- 36:00 the guest's car in the exit volume, "waiting for the host's zone" until 36:11 (the host: LoadMap 4.6 s,
+  generating 9.9 s, published 36:12). 11 s.
+- 36:11-36:18 the guest's LoadMap (7 s), 36:18-36:28 its game's own generation (10 s, thrown away after).
+- 36:28 the host's zone save loaded: LoadMap 5.1 s, the game to state 5 at 36:46 (18 s).
+- import 4.5 s (3656 ms over 78 frames), cleaning 3.1 s + 2.4 s (1365 ms over 29 frames). Playing 36:56.
+- 56 s from the exit, 63 s from the host's start. Cuts: the guest's travel at the host's TravelTo (the route is known
+  then) overlaps the host's 17 s; the import / cleaning under the cover with a larger frame budget (paused anyway).Work on the list (2026-11-11):
+- Item 1 (back-seat exit). Two bugs. (a) The game's exit works the driver's door only (its animation); on the own car
+  it really swung open. TD.backSeatExit (the door's AttemptDoorExit hook, also native): the driver's door hidden
+  (SetVisibility false) while it swings - shut at once the exit never let go of the player - the seat's door
+  AttemptOpen, shut TD.EXIT_SHUT_MS later; twincar's pose sends no hidden door. (b) The place the game puts the player
+  is ExitCheckPoints' child TempExitLocation by its own relative place: turning the parent 180 for the right side moved
+  it in the world, not for the game - out by the right back door stood left. placeExit moves TempExitLocation /
+  _StartTrace themselves (mirrored), the parent stays; the garage put the exit back at the wheel the moment the player
+  let go, before the game placed it - 1.5 s later now; the garage also sets the seat's entry point.
+  Why the tests missed it: cars step 10 / garage-seat checked only "off the seat". Now: cmds/exit-watch.lua (doors seen
+  open - visible - and the end spot), backseat-test (zone, both sides, doors 3 and 4, the other side's twin doors),
+  garage-seat side check.
+- Item 5: passengerMayReach still hid the driver's door when the other sat behind it (the older contact-test rule),
+  after twincar parkEntry had been made for exactly that (alpha 20 item 8): only Highlight_EnterDoor is hidden now; E
+  at the door / its slot spot -> TD.takenDoorPress (own: AttemptOpen / Shut in the own context; twin: DR toggle).
+  Missed: no test had a player at a door with the other at that wheel. backseat-test step 2.
+- Item 6a (doorless back seat): the slot holds BP_CarPart_EmptyDoor_C (a door subclass, with entry points) that no
+  highlight trace hits. TD.lookedAtDoorway: the camera's line within 70 of the doorway's middle (car-relative -40, +-94,
+  0), 3.3 m at most, E = a tap there; TD.realDoor treats EmptyDoor as no door; the walk in goes by the EmptyDoor.
+  Found: CommandEnterCar with no door took the car's driver's door off (the own car's) - twincar.finishEntry never
+  does that now. Also found: a stale TD.aimed (the twin's door looked at earlier) took an E at nothing to the host's
+  back door; onHighlightPress needs the twin lit / its open door looked at now. Missed: "in through the doorway" was
+  done in alpha 21 and never tested.
+- Item 6b (the twin's back door shutting twice): the game's own shut of the twin's door (the entry's) swung it into
+  its frame on the kinematic car, it bounced to 40 deg, then shut (backseat-test timeline 55 -> 4 -> 40 -> 0). The
+  door's AttemptShut hook (native) takes such a door off physics at once and eases it shut, the owner's late open
+  poses held off 1.5 s (twincar shutEase hold). Missed: the tests checked the door open / shut, not its way.
+- Item 7 (trunk): (a) the owner side's own car's door works by the manager's flag of the CONTEXT car: with the other's
+  twin the context (the owner had been at the other's car) the DR shut / open did nothing - the lid stood open for good.
+  DR now makes the own car the context and holds it TD.DR_CTX_MS. (b) aimNative kept TD.aimed (the lid) when something
+  else of the twin was lit: a flag change from the box's E went to the owner as the player's lid. trunk-test: 4 open /
+  shut rounds after the host stood at the guest's car. Open: the twin's trunk box has no collision
+  (SM_CarPart_Interior_Storage_Trunk_Basic_01, CollisionEnabled 0) - not lit in the test; what the owner pressed is not
+  known (the twin's RearTow attachment spot is lit there). Missed: cars step 6 ran with the host far from the guest's car.
+- range: the guest's stray bollards - an unmapped key kept its reverse[] entry, so a pooled copy back out was never a
+  stray (4 at one spot). reverse cleared on unmap / D.
+- Test lesson: restarting CoopPlayers many times on a reused pair broke its Lua state; ExitDoor pressed by a test on
+  foot took the car's driver's door off (the tests exit only when seated now).
