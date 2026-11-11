@@ -79,6 +79,8 @@ if ($Split) {
 $hc = (($hg -split ' car=')[1] -split ','); $cc = (($cg -split ' car=')[1] -split ',')
 $dist = [math]::Sqrt([math]::Pow([double]$hc[0] - [double]$cc[0], 2) + [math]::Pow([double]$hc[1] - [double]$cc[1], 2)) / 100
     Check "the guest's car is at the host's entrance, near the host's (owner: the same entrance, not a teleport to the host)" ($dist -lt 40 -and $note -match 'entrance|car stays') ("{0:N0} m apart | $note" -f $dist)
+    # (owner 2026-11-11: "the guest's car came in sideways on the guardrail": a spot nothing stands on)
+    Check "on a free spot (no guardrail, gate building or car under it)" ($note -match 'spot \d+ free|car stays') $note
 }
 $roll = Send $cd "local r = FindFirstOf('BP_CarManager_C').NewCarActor:K2_GetActorRotation() return string.format('pitch=%.1f roll=%.1f', r.Pitch, r.Roll)"
 Check "and stands on its wheels" ($roll -match 'pitch=(-?[\d.]+) roll=(-?[\d.]+)' -and [math]::Abs([double]$Matches[1]) -lt 25 -and [math]::Abs([double]$Matches[2]) -lt 25) $roll

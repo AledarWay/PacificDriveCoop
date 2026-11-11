@@ -61,6 +61,9 @@ The zone's entrance:
 - The guest comes in by the host's entrance: its car stands next to where the host's car came in, not next to the host
   wherever it drove since. The host's entrance and exits are the guest's; if the host's car still stands at the
   entrance, the guest's is put a little further to the side.
+- The guest's car is put only where nothing stands: a guardrail, the gate's building, a rock or the host's car next to
+  the entrance moves it to the next free place beside, ahead of or behind the entrance (it once came in sideways on a
+  guardrail).
 - Now and then (about one zone in four) the two come in by different entrances on purpose and have to find each other;
   the exits are the same for both. Set in the settings file (entrance_split_chance; 0 turns it off).
 Settings:

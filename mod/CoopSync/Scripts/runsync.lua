@@ -218,6 +218,66 @@ M.stats = M.stats or {}
 -- The zone's split (S): different entrances on purpose - the guest keeps its own entrance and where it came in; the
 -- exits are the host's all the same (both leave by the same ways). ownCar: the guest's car (not a twin).
 local NEAR_CM, CLASH_CM = 4000, 450
+-- A free place for the own car near at (owner's two-games test 2026-11-11: "the guest's car came in sideways on the
+-- road's guardrail"): each spot beside / ahead of / behind the entrance gets a car-sized box dropped from above
+-- (KismetSystemLibrary BoxTraceSingle, Visibility, the own car and its parts ignored) and a line under its middle; the
+-- box stopping clearly higher than the ground under the middle = something in the way (a guardrail, the gate's
+-- building, a rock, a car), STEP_CM. The car is put that high over the ground there as it stands over its own now.
+-- Measured at the zone's entrance: 5 m to the side the box stops on the gate's building 4.9 m over the road.
+local SPOTS = { { 0, 500 }, { 0, -500 }, { 800, 0 }, { 0, 1000 }, { 0, -1000 }, { 1400, 0 }, { -800, 0 },
+    { 800, 600 }, { 800, -600 }, { 2000, 0 }, { 0, 1500 }, { 0, -1500 } } -- (ahead cm, right cm)
+local BOX = { X = 260, Y = 120, Z = 10 } -- (the car's half size and a little: about 4.6 x 2 m)
+local STEP_CM, UP_CM = 45, 300
+function M.freeSpot(car, at, clash)
+    local ksl = StaticFindObject("/Script/Engine.Default__KismetSystemLibrary")
+    local ign = { car }
+    pcall(function()
+        local att = {}
+        car:GetAttachedActors(att, true)
+        for _, a in ipairs(att) do ign[#ign + 1] = a:get() end
+    end)
+    local red, green = { R = 1, G = 0, B = 0, A = 1 }, { R = 0, G = 1, B = 0, A = 1 }
+    local function ground(x, y, z0)
+        local h, ok = {}, false
+        pcall(function() ok = ksl:LineTraceSingle(car, { X = x, Y = y, Z = z0 + UP_CM }, { X = x, Y = y, Z = z0 - 600 }, 0, false, ign, 0, h, true, red, green, 0) end)
+        return ok and h.ImpactPoint and h.ImpactPoint.Z or nil
+    end
+    local function top(x, y, z0, yaw)
+        local h, ok = {}, false
+        pcall(function() ok = ksl:BoxTraceSingle(car, { X = x, Y = y, Z = z0 + UP_CM }, { X = x, Y = y, Z = z0 - 600 }, BOX, { Pitch = 0, Yaw = yaw, Roll = 0 }, 0, false, ign, 0, h, true, red, green, 0) end)
+        local nm = "?"
+        pcall(function() nm = h.Actor:Get():GetFName():ToString() end)
+        return ok and h.ImpactPoint and h.ImpactPoint.Z or nil, nm
+    end
+    -- (how high the car's origin stands over the ground under it: 77 cm measured)
+    local l = car:K2_GetActorLocation()
+    local g0 = ground(l.X, l.Y, l.Z)
+    local lift = g0 and math.max(30, math.min(150, l.Z - g0)) or 80
+    local f, r = math.rad(at.Yaw), math.rad(at.Yaw + 90)
+    local first, notes = nil, {}
+    for i, s in ipairs(SPOTS) do
+        local x = at.X + math.cos(f) * s[1] + math.cos(r) * s[2]
+        local y = at.Y + math.sin(f) * s[1] + math.sin(r) * s[2]
+        local g = ground(x, y, at.Z)
+        local spot = { X = x, Y = y, Z = (g or at.Z) + lift + 30 }
+        first = first or (not clash(spot) and spot) or nil
+        if not g then notes[#notes + 1] = i .. ":no ground"
+        elseif g > at.Z + 150 then notes[#notes + 1] = i .. ":roof" -- (a ceiling or a ledge, not the road)
+        elseif clash(spot) then notes[#notes + 1] = i .. ":host car"
+        else
+            local t, nm = top(x, y, at.Z, at.Yaw)
+            if t and t - g > STEP_CM then notes[#notes + 1] = string.format("%d:%s %.0f", i, nm, t - g)
+            else
+                M.stats.spotTries = (M.stats.spotTries or 0) + i
+                return spot, string.format("spot %d free%s", i, #notes > 0 and (", " .. table.concat(notes, ",")) or "")
+            end
+        end
+    end
+    -- (nothing free: the first spot clear of the host's car, as before)
+    local s = SPOTS[1]
+    return first or { X = at.X + math.cos(r) * s[2], Y = at.Y + math.sin(r) * s[2], Z = at.Z + 60 },
+        "no free spot: " .. table.concat(notes, ",")
+end
 function M.applyGates(path, ownCar, keepCar)
     local data = readText(path)
     if not data then return "no gates file" end
@@ -260,12 +320,8 @@ function M.applyGates(path, ownCar, keepCar)
         local d = math.sqrt((l.X - at.X) ^ 2 + (l.Y - at.Y) ^ 2)
         local function clash(p) return host and (p.X - host.X) ^ 2 + (p.Y - host.Y) ^ 2 < CLASH_CM ^ 2 end
         if d > NEAR_CM or clash(l) then
-            -- beside the entrance spot: 5 m to its right, then 10, 15 m (left too) while the host's car is in the way
-            local a, to = math.rad(at.Yaw + 90), nil
-            for _, side in ipairs({ 500, -500, 1000, -1000, 1500 }) do
-                to = { X = at.X + math.cos(a) * side, Y = at.Y + math.sin(a) * side, Z = at.Z + 60 }
-                if not clash(to) then break end
-            end
+            local to, why = M.freeSpot(ownCar, at, clash)
+            M.lastSpot = why
             local root = ownCar.RootComponent
             pcall(function() root:SetSimulatePhysics(false) end)
             ownCar:K2_SetActorLocationAndRotation(to, { Pitch = 0, Yaw = at.Yaw, Roll = 0 }, false, {}, true)
@@ -279,7 +335,7 @@ function M.applyGates(path, ownCar, keepCar)
                     r:SetPhysicsAngularVelocityInDegrees({ X = 0, Y = 0, Z = 0 }, false, FName("None"))
                 end) end
             end)
-            moved = string.format("car moved %.0f m to the host's %s", d / 100, arrive and "entrance" or "car")
+            moved = string.format("car moved %.0f m to the host's %s (%s)", d / 100, arrive and "entrance" or "car", why)
             M.stats.carMoved = (M.stats.carMoved or 0) + 1
         end
     end
