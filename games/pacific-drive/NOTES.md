@@ -4108,3 +4108,9 @@ game (host instance, early-garage made binary by SaveGame, the host zone saves o
   still gets RolledOnOpenItems); M.freshOwners() rebuilds the containers map after the destroy / spawn steps; stats
   "same=". gates-test 6/6: loot same=256, containers / templates applied 0, the import 0.5 s, playing 28 s after the
   drive-out (33 before). The old zone path (no save) compares too: a mismatch applies as before.
+- Quick suite with it (44): range (the guest's mine sway, the known open one), twin-outside (jerk 0.24-0.26 against
+  0.3 / the host's own car's), esc, f7 failed in some runs and passed in others - flakes. seat-measure and cars 8b
+  failed with and without the change: cars-test's "guest car aside" (freeSpot, 2026-11-12) put the guest's car 8 m
+  ahead of the host's (both sides blocked by the gate building) - in the host's way. Its clash now also rejects spots
+  ahead of the host's car (350 to the side): spot 9 taken; seat-measure 1/1, cars 38/39 (step 9's drive 191 < 300,
+  the old nose-on flake) then 39/39.
