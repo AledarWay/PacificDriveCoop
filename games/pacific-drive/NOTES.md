@@ -4101,3 +4101,10 @@ game (host instance, early-garage made binary by SaveGame, the host zone saves o
   Regression with the first cut: sync, interact, fuelcan, knock, range, runover, car-store, part-break, contact green.
 - Not done: the guest's own pick-up of an item the host just took inside that window is still the contest path
   (contested_pick_reverted gives the copy back on the host's D).
+
+### The import's loot over the exact zone (2026-11-12)
+- The 3.8 s left were the loot apply of every matched actor, though over the host's zone save they hold the host's
+  contents already. lootsync M.same(a, loot): the actor serializes to exactly the host's loot -> no apply (a container
+  still gets RolledOnOpenItems); M.freshOwners() rebuilds the containers map after the destroy / spawn steps; stats
+  "same=". gates-test 6/6: loot same=256, containers / templates applied 0, the import 0.5 s, playing 28 s after the
+  drive-out (33 before). The old zone path (no save) compares too: a mismatch applies as before.

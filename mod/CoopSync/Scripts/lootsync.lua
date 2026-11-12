@@ -769,6 +769,17 @@ function M.spawnWorldItem(loot, xf)
     return M.inventorySystem():SpawnItemActor(FindFirstOf("PlayerController"), xf, arch, 0, 4)
 end
 
+-- The import over the host's exact zone (2026-11-12): most actors already hold the host's contents (the same zone
+-- save). same(a, loot): the actor serializes to exactly the host's loot -> nothing to apply (a container still gets
+-- RolledOnOpenItems: the host owns the on-open roll). freshOwners() before a run of them (the map is per pass).
+function M.freshOwners() buildOwners() end
+function M.same(a, loot)
+    local ok, s = pcall(M.serialize, a)
+    if not ok or s ~= loot then return false end
+    if loot:sub(1, 2) == "C|" then pcall(function() a.RolledOnOpenItems = true end) end
+    stats.same = (stats.same or 0) + 1
+    return true
+end
 function M.resetStats()
     stats = { containers = 0, templates = 0, parts = 0, items = 0, failed = 0, missing = {} }
     CoopSyncLootPending = {}
@@ -776,8 +787,8 @@ end
 function M.stats()
     local miss = {}
     for k in pairs(stats.missing) do miss[#miss + 1] = k end
-    return string.format("containers=%d templates=%d parts=%d items=%d failed=%d fuel=%d/%d %s %s",
-        stats.containers, stats.templates, stats.parts, stats.items, stats.failed, stats.fuelSet or 0, stats.fuelFailed or 0,
+    return string.format("same=%d containers=%d templates=%d parts=%d items=%d failed=%d fuel=%d/%d %s %s",
+        stats.same or 0, stats.containers, stats.templates, stats.parts, stats.items, stats.failed, stats.fuelSet or 0, stats.fuelFailed or 0,
         table.concat(miss, " "), stats.err or "")
 end
 

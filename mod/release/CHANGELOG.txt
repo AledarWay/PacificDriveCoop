@@ -72,6 +72,7 @@ Leaving together (the guest's drive-out and the next junction):
 - Faster into the host's exact zone: the guest's game no longer removes and rebuilds the zone's objects it already
   has from the host's save (they come back under other names after the load; matched now by kind and place). In the
   tests the guest's import took 3.8 s instead of 11.7 s, and it plays about 13 s sooner after the drive-out.
+  The loot of objects that already hold the host's contents is no longer laid out again: the import 0.5 s.
 The zone's entrance:
 - The guest comes in by the host's entrance: its car stands next to where the host's car came in, not next to the host
   wherever it drove since. The host's entrance and exits are the guest's; if the host's car still stands at the

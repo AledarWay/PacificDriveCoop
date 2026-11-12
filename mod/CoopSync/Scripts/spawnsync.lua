@@ -1009,6 +1009,7 @@ local function importSteps(path)
             -- 3) loot: make every matched actor carry the host's contents
             Loot.resetStats()
             Loot.beginBatch() -- the items' sub-containers filled once at the end (Loot.fillDeferred)
+            pcall(Loot.freshOwners) -- for Loot.same: the containers as they are after the destroy / spawn
             return true
         end,
         function(job)
@@ -1017,7 +1018,7 @@ local function importSteps(path)
                 local e = list[job.li]
                 job.li = job.li + 1
                 local a = e.loot ~= "" and e.actorPath and M.deref(e.actorPath) or nil
-                if a then
+                if a and not Loot.same(a, e.loot) then
                     local ok, err = pcall(function() Loot.apply(a, e.loot) end)
                     if not ok then CoopSyncLootErr = tostring(err) end
                     if M.overBudget() then return false end
