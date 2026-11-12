@@ -4083,3 +4083,21 @@ game (host instance, early-garage made binary by SaveGame, the host zone saves o
   the game's take-over; stop. 10/10. Not seen on screen (the test games have no window): to check by eye with the
   owner - the colors on the ARC map, PlaceWaypoint / ClearWaypoints with a green one there, the HUD's objective arrow
   of a green one (SC_GenericObjective).
+
+### Item 8: pickups and drops (2026-11-12)
+- loot-live 5b-5d (new): the host picks a world item -> gone on the guest 1421 ms; the host drops it -> on the guest's
+  ground 1428 ms; the guest drops -> on the host's 405 ms (its DROP request). The host's pick-up went with its pass
+  (D in hostFinish), the dropped item with the next root scan (spawnsync RESCAN_S 2 s) and the pass after it.
+- statesync hostLive on LH.inv (the host's inventory changed): hostLivePick - every prev W| entry whose actor is gone
+  or pooled gets its D at once (ev_D_live); Sync.rescanNow() (spawnsync: a scan now, or one more after the running
+  one) and a pass after it, again 0.4 s on (the thrown item comes a moment after the inventory lets it go). Now 679 /
+  675 ms (the test's poll steps ~300 ms: 370 / 680 are its floor).
+- The throw: a moved world item is "hot" now like a hazard (HZ.moved: Loot.isItemActor too) - the host streams its
+  pose (HM, 10 Hz for 3 s after each seen move), the guest eases its puppet onto it; before, M with the pass (1 s
+  jumps). The guest never claims world items (HZ.claim: hazards only). Not checked by eye.
+- First cut on every LH.inv: the inventory manager's car equipment changes all the time - a rescan and a pass each
+  time, anomaly 4/9 (its hazard's copies lost each other). Now only the player's own containers (Inventory_Player /
+  Inventory_PlayerHand by address in the slot hook: LH.invPlayer): anomaly 9/9 twice, loot-live 17/17 (403 / 717 ms).
+  Regression with the first cut: sync, interact, fuelcan, knock, range, runover, car-store, part-break, contact green.
+- Not done: the guest's own pick-up of an item the host just took inside that window is still the contest path
+  (contested_pick_reverted gives the copy back on the host's D).

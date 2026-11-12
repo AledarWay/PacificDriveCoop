@@ -282,6 +282,7 @@ function M.scanFrame(deadline)
     rootPaths = scan.out
     scan = nil
     M.scanGeneration = (M.scanGeneration or 0) + 1
+    if M.rescanAfter then M.rescanAfter = nil lastScan = -1e9 end
     return true
 end
 function M.roots(force)
@@ -304,6 +305,10 @@ function M.roots(force)
     return out, false
 end
 function M.rootPaths() return rootPaths end
+-- a scan now (statesync: the host's player dropped something - a new root); one under way is followed by another
+function M.rescanNow()
+    if scan then M.rescanAfter = true else lastScan = -1e9 end
+end
 
 local function dist2(a, b) return (a.X - b.X) ^ 2 + (a.Y - b.Y) ^ 2 + (a.Z - b.Z) ^ 2 end
 

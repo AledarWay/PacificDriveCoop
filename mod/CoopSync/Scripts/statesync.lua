@@ -243,10 +243,18 @@ local function hookContainers()
             pcall(Hook, p, function(ctx)
                 if LH.quiet or not LH.on then return end
                 pcall(function()
-                    local o = ctx:get():GetOuter()
+                    local c = ctx:get()
+                    local o = c:GetOuter()
                     if not (o and o:IsValid()) then return end
                     local n = o:GetFullName()
-                    if n:find("^BP_InventoryManager_C ") then LH.inv = true LH.fuelInv = true
+                    if n:find("^BP_InventoryManager_C ") then
+                        LH.inv = true LH.fuelInv = true
+                        -- (what the player carries: a pick-up / drop - not the car's equipment, which changes all the
+                        -- time: a rescan on each made the anomaly test's hazards fail, 4/9)
+                        local ad = c:GetAddress()
+                        pcall(function()
+                            if ad == o.Inventory_Player:GetAddress() or ad == o.Inventory_PlayerHand:GetAddress() then LH.invPlayer = true end
+                        end)
                     else LH.dirty[n:gsub("^%S+ ", "")] = true end
                 end)
             end)
@@ -563,13 +571,45 @@ local function hostFinish()
     pend("pass_finish", t0)
 end
 
+-- The host's player picked a world item up: its D at once, not with the pass (owner's alpha 21 item 8: "pickups are
+-- late on the guest - in that lag an item can be picked up again (duplicated)"; loot-live 5b: 1.4 s). Only whether the
+-- mapped world items are gone (cheap, as the guest's live pick).
+local function hostLivePick()
+    if not prev then return end
+    for k, loot in pairs(prev) do
+        if loot:sub(1, 2) == "W|" then
+            local a = Sync.deref(k)
+            if not a or Sync.inPool(a) then
+                send("host.events", "D\t" .. k)
+                count("ev_D_live")
+                prev[k] = nil
+                if pass then pass.snap[k] = nil end
+            end
+        end
+    end
+end
+-- ... and one it dropped is a new root: the roots scanned again now (and once more 0.4 s on: the game spawns the
+-- thrown item a moment after the inventory lets it go), a pass after each scan (the next root scan took up to 2 s:
+-- loot-live 5c 1.4 s, the item already lying when the guest got it)
+local invScan
 -- Every frame: the client's requests, then the containers the slot hooks marked (their U at once).
 local function hostLive(deadline)
     for _, line in ipairs(receive("client.requests")) do
         local ok, e = pcall(hostHandle, split(line))
         if not ok then err("handle " .. line:sub(1, 80) .. ": " .. tostring(e)) end
     end
-    if LH.inv then LH.inv = false lastPassStart = -1e9 end -- (the player picked up / dropped something: a pass now)
+    if LH.inv then -- (the player picked up / dropped something: a pass now)
+        LH.inv = false
+        lastPassStart = -1e9
+        if LH.invPlayer then
+            LH.invPlayer = false
+            local okP, eP = pcall(hostLivePick)
+            if not okP then err("live pick: " .. tostring(eP)) end
+            Sync.rescanNow()
+            invScan = { gen = Sync.scanGeneration, left = 2 }
+            count("inv_player")
+        end
+    end
     if not (prev and next(LH.dirty)) then return end
     for k in pairs(LH.dirty) do
         LH.dirty[k] = nil
@@ -598,6 +638,14 @@ local function hostFrame(deadline)
     local ts = pstart()
     Sync.scanFrame(deadline)
     pend("scan_frame", ts)
+    if invScan then
+        if invScan.due and os.clock() >= invScan.due then invScan.due = nil Sync.rescanNow() end
+        if Sync.scanGeneration ~= invScan.gen then
+            lastPassStart = -1e9
+            invScan.left = invScan.left - 1
+            if invScan.left <= 0 then invScan = nil else invScan.gen, invScan.due = Sync.scanGeneration, os.clock() + 0.4 end
+        end
+    end
     if not pass then
         if os.clock() * 1000 - lastPassStart < TICK_MS then return end
         lastPassStart = os.clock() * 1000
@@ -988,8 +1036,10 @@ end
 function HZ.moved(k)
     local h = HZ.isHz[k]
     if h == nil then
+        -- (and the loose world items: one thrown down flew on the guest in once-a-second jumps, the pass's M - owner's
+        -- alpha 21 item 8 "dropped items appear late and without the throw"; the guest never claims them: HZ.claim)
         local a = Sync.deref(k)
-        h = a and Sync.clsName(a):find("^BP_Hazard") ~= nil or false
+        h = a and (Sync.clsName(a):find("^BP_Hazard") ~= nil or Loot.isItemActor(a)) or false
         HZ.isHz[k] = h
     end
     if h then HZ.hot[k] = os.clock() + HZ.HOT_S end

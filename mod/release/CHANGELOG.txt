@@ -37,6 +37,11 @@ The instability and the sky:
 - The sun and the fog follow the host's more closely: the host sends its sky 4 times a second instead of every 2 s.
   The fog and the sun swing back and forth with the weather, and the guest was up to 2 s behind (up to 10 % brighter
   or darker at a moment); now within about 1 %.
+Things picked up and dropped:
+- What the host picks up is gone for the guest about twice as fast (in the tests 0.7 s instead of 1.4 s), so the
+  guest has less time to pick up the same thing again.
+- What the host drops shows for the guest sooner (0.7 s instead of 1.4 s). While a thrown item is moving, its
+  position goes to the guest 10 times a second instead of once a second.
 Abandoned cars' parts:
 - The guest can saw and break an abandoned car's parts. Before, the guest's saw took the white bar and the red one
   never came, so the part never broke off: the guest's copies of the host's parts were never set up to break.

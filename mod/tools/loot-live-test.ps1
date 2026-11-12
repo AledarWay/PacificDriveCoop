@@ -78,6 +78,31 @@ $k, $arch = (Share $cd 'client' "LS_OP = 'pickable'") -split "`t"
 $ms = Until { (Share $hd 'host' "LS_OP = 'exists' LS_KEY = '$k'") -eq 'no' }
 Check "host: gone from its world (<= $LimitMs ms)" ($ms -ge 0 -and $ms -le $LimitMs) "after $ms ms"
 
+# (owner's alpha 21 item 8: "pickups are late on the guest - in that lag an item can be picked up again (duplicated);
+# dropped items appear late". The host's pick-up went with its next pass, a dropped item with the next root scan, 2 s)
+"=== 5b. the host picks a world item up"
+$k2, $arch2 = (Share $cd 'client' "LS_OP = 'pickable'") -split "`t"
+"  item: $k2 ($arch2)"
+"  host: " + (Share $hd 'host' "LS_OP = 'pick' LS_KEY = '$k2'")
+$ms = Until { (Share $cd 'client' "LS_OP = 'exists' LS_KEY = '$k2'") -eq 'no' }
+Check "guest: gone from its world (<= 1000 ms)" ($ms -ge 0 -and $ms -le 1000) "after $ms ms"
+"=== 5c. the host drops it"
+$dr = Share $hd 'host' "LS_OP = 'drop' LS_ARCH = '$arch2'"
+"  host: $dr"
+if ($dr -match 'at (-?\d+),(-?\d+),(-?\d+)') {
+    $x, $y, $z = $Matches[1], $Matches[2], $Matches[3]
+    $ms = Until { (Share $cd 'client' "LS_OP = 'near' LS_ARCH = '$arch2' LS_X = $x LS_Y = $y LS_Z = $z") -ne 'none' }
+    Check "guest: the host's dropped item on its ground (<= 1000 ms)" ($ms -ge 0 -and $ms -le 1000) "after $ms ms"
+} else { Check "guest: the host's dropped item on its ground (<= 1000 ms)" $false "drop: $dr" }
+"=== 5d. the guest drops the one it picked"
+$dr = Share $cd 'client' "LS_OP = 'drop' LS_ARCH = '$arch'"
+"  guest: $dr"
+if ($dr -match 'at (-?\d+),(-?\d+),(-?\d+)') {
+    $x, $y, $z = $Matches[1], $Matches[2], $Matches[3]
+    $ms = Until { (Share $hd 'host' "LS_OP = 'near' LS_ARCH = '$arch' LS_X = $x LS_Y = $y LS_Z = $z") -ne 'none' }
+    Check "host: the guest's dropped item on its ground (<= 1000 ms)" ($ms -ge 0 -and $ms -le 1000) "after $ms ms"
+} else { Check "host: the guest's dropped item on its ground (<= 1000 ms)" $false "drop: $dr" }
+
 # a wreck's trunk (owner, alpha 16: the host's changes there reached the guest, the guest's never reached the host -
 # the trunk's container belongs to the trunk part's item; this test only had lootable containers)
 function Sub($dir, $role, [string]$op, $key, $sub, $arch) { Share $dir $role "LS_OP = '$op' LS_KEY = '$key' LS_SUB = '$sub' LS_ARCH = '$arch'" }
