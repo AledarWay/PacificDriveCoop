@@ -4004,6 +4004,9 @@ local function applyTick()
         elseif (t[1] == "W" or t[1] == "WE" or t[1] == "WC") and role == "client" and M.onWeather then
             local okW, eW = pcall(M.onWeather, t) -- weathersync.lua
             if not okW then err("weather: " .. tostring(eW)) end
+        elseif t[1] == "MK" and M.onMarks then
+            local okM, eM = pcall(M.onMarks, t) -- marksync.lua
+            if not okM then err("marks: " .. tostring(eM)) end
         end
     end
     ts = section("apply_parse", ts)

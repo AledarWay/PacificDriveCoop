@@ -70,6 +70,7 @@ $tests = @(
     @{ name = 'part-break';    quick = $true;  cmd = { & "$t\part-break-test.ps1" } },
     @{ name = 'garage-seat';   quick = $true;  cmd = { & "$t\garage-seat-test.ps1" } },
     @{ name = 'backseat';      quick = $true;  cmd = { & "$t\backseat-test.ps1" } },
+    @{ name = 'marks';         quick = $true;  cmd = { & "$t\marks-test.ps1" } },
     @{ name = 'trunk';         quick = $true;  cmd = { & "$t\trunk-test.ps1" } },
     @{ name = 'gates';         quick = $true;  cmd = { & "$t\gates-test.ps1" } },
     @{ name = 'gates-split';   quick = $false; cmd = { & "$t\gates-test.ps1" -Split } },

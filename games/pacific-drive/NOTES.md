@@ -4042,3 +4042,44 @@ game (host instance, early-garage made binary by SaveGame, the host zone saves o
   guest's earlier runs (21 parts, hp 2042) lack; its slots (CAR_SLOTS) the same as before the load, 6 tool items in
   the trunk (battery chargers x3, 5 gal can, scrapper T2, vacuum) that car-before.txt did not list. The spawnpoint's
   AddAllHardpointUpgrades is false. To check against item 10 (glass) with the owner.
+
+### The import over the host's exact zone (2026-11-12)
+- Why it still removed / spawned hundreds (11.7 s, 1835 removed, 1454 spawned): after the zone-save load the actors
+  come back under new names (32 hex digits) at exactly the host's spots - 1589 of the 1822 removed sat 0 cm from a host
+  entry of their class. spawnsync importSteps' decide: first by name (level actors, as before), then every unmatched
+  client root by class and spot - the nearest host R / L entry of its class no one holds within RUNTIME_TOL 50 cm is
+  adopted (kept, moved onto it, mapped); the rest doomed, counted by why (nocls / lt10m / far / static). The result
+  line: kept / adopted / removed (why). gates-test 6/6: kept 1744, adopted 1595, removed 11 (far), spawned 1; import
+  3.8 s (mostly the loot apply over 75 frames), playing 33 s after the drive-out (46 before). Further: the loot apply
+  could skip an adopted actor whose contents already match - not done. Old zone (interact): adopted 40, the extras
+  right after the import (140-180) are as on 2026-11-05 (the cleanup takes them).
+- Quick suite with it (42): interact (2 client-only raw items mid-run, the last check green), fuelcan, knock green
+  re-run - flakes. twin-outside: the host's car stood still once (mean 0) and once the host's own car's jerk 0.37 was
+  over the bar - green twice since. backseat 13/17 every time: the guest's back right door never aimed - its car lay on
+  its roof (roll 166; another run roll -17): cars-test's "guest car aside" put the car 8 m beside the host's on the
+  roadside's slope without the host's yaw (as collide's). Now NewCarActor on runsync.freeSpot beside the host's car,
+  the host's yaw: 17/17.
+- runsync.freeSpot also wants flat ground (the four corners' ground SIDE_CM 30 apart across, LEN_CM 80 along; the
+  flattest blocked spot when none is free), takes car = nil (the spot to build on: hostSpot now uses it instead of a
+  fixed 5 m to the right), and applyGates moves a car standing tilted (roll / pitch > 9 deg) even when it is near.
+  Not seen by the mod's own placement yet - the two tilts seen were the test's.
+
+### Item 4: the map marks (2026-11-12)
+- The cars' map icon: BP_PlayerCarNew_C.MapIcon (MinimapPlugin UMapIconComponent), IconDrawColor 0.04/0.15/0.46 on
+  both own car and twin (no layers: GetIconLayerCount 0). marksync.paintTwin (twincar's spawn, when CoopSyncMarks is
+  loaded) sets 0.1/1/0.2 by SetIconDrawColor (+ per layer if any). The players on foot have no map icon (no MapIcon
+  class besides the car, waypoints, transitions, anchors, events) - the car is the player's marker.
+- Waypoints: BP_WaypointActor_C (/Game/UI/CarEquipment/Internal/Gobbler/BP_WaypointActor; MapIcon, SC_GenericObjective),
+  placed by UMG_GobblerScreen PlaceWaypoint; the screen keeps one, its Waypoint: FindExistingWaypoint took a mod-spawned
+  green one for it (probed). marksync.lua: each side sends its own (all waypoints but the ones it spawned) as
+  "MK n x y z..." on playersync's fast channel (M.send / onMarks) when they change, else every 5 s; the other spawns
+  them (GS deferred spawn, green) and destroys the ones gone. A green one moved > 1 m (the game's pin moved it) is let
+  go: its color back, own from then on, sent - the other's mark comes back on the next line. The host's zone save
+  holds the guest's copies too: after its load the guest takes an own waypoint at a host mark's spot for that mark; the
+  host spawns none over an own one. session starts / stops it with the weather (Marks.start / stop).
+- A destroyed waypoint stays in FindAllOf, IsValid, IsActorBeingDestroyed false, at exactly 0,0,0 until the GC: such
+  are skipped (they counted as own and were sent: green ghosts at 0,0).
+- Test marks-test.ps1 (cars-test pair, quick suite): twin green / own blue on both; a mark each way; moved / removed;
+  the game's take-over; stop. 10/10. Not seen on screen (the test games have no window): to check by eye with the
+  owner - the colors on the ARC map, PlaceWaypoint / ClearWaypoints with a green one there, the HUD's objective arrow
+  of a green one (SC_GenericObjective).

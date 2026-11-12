@@ -228,33 +228,51 @@ local SPOTS = { { 0, 500 }, { 0, -500 }, { 800, 0 }, { 0, 1000 }, { 0, -1000 }, 
     { 800, 600 }, { 800, -600 }, { 2000, 0 }, { 0, 1500 }, { 0, -1500 } } -- (ahead cm, right cm)
 local BOX = { X = 260, Y = 120, Z = 10 } -- (the car's half size and a little: about 4.6 x 2 m)
 local STEP_CM, UP_CM = 45, 300
+-- and flat (2026-11-12, backseat / collide through the host's exact zone: the guest's car built 5 m beside the host's
+-- entrance stood on the roadside's slope, roll -17 - its right back door could not be aimed at, a hit rolled it): the
+-- ground under the four corners at most SIDE_CM apart across (~9 deg over 1.8 m) and LEN_CM along (~10 deg over 4.6 m)
+local SIDE_CM, LEN_CM, TILT_DEG = 30, 80, 9
+-- car: the own car (nil: none yet - the spot to build it on)
 function M.freeSpot(car, at, clash)
     local ksl = StaticFindObject("/Script/Engine.Default__KismetSystemLibrary")
     local ign = { car }
-    pcall(function()
+    if car then pcall(function()
         local att = {}
         car:GetAttachedActors(att, true)
         for _, a in ipairs(att) do ign[#ign + 1] = a:get() end
-    end)
+    end) else ign = {} end
+    local ctx = car or FindFirstOf("PlayerController")
     local red, green = { R = 1, G = 0, B = 0, A = 1 }, { R = 0, G = 1, B = 0, A = 1 }
     local function ground(x, y, z0)
         local h, ok = {}, false
-        pcall(function() ok = ksl:LineTraceSingle(car, { X = x, Y = y, Z = z0 + UP_CM }, { X = x, Y = y, Z = z0 - 600 }, 0, false, ign, 0, h, true, red, green, 0) end)
+        pcall(function() ok = ksl:LineTraceSingle(ctx, { X = x, Y = y, Z = z0 + UP_CM }, { X = x, Y = y, Z = z0 - 600 }, 0, false, ign, 0, h, true, red, green, 0) end)
         return ok and h.ImpactPoint and h.ImpactPoint.Z or nil
     end
     local function top(x, y, z0, yaw)
         local h, ok = {}, false
-        pcall(function() ok = ksl:BoxTraceSingle(car, { X = x, Y = y, Z = z0 + UP_CM }, { X = x, Y = y, Z = z0 - 600 }, BOX, { Pitch = 0, Yaw = yaw, Roll = 0 }, 0, false, ign, 0, h, true, red, green, 0) end)
+        pcall(function() ok = ksl:BoxTraceSingle(ctx, { X = x, Y = y, Z = z0 + UP_CM }, { X = x, Y = y, Z = z0 - 600 }, BOX, { Pitch = 0, Yaw = yaw, Roll = 0 }, 0, false, ign, 0, h, true, red, green, 0) end)
         local nm = "?"
         pcall(function() nm = h.Actor:Get():GetFName():ToString() end)
         return ok and h.ImpactPoint and h.ImpactPoint.Z or nil, nm
     end
     -- (how high the car's origin stands over the ground under it: 77 cm measured)
-    local l = car:K2_GetActorLocation()
-    local g0 = ground(l.X, l.Y, l.Z)
-    local lift = g0 and math.max(30, math.min(150, l.Z - g0)) or 80
+    local lift = 80
+    if car then
+        local l = car:K2_GetActorLocation()
+        local g0 = ground(l.X, l.Y, l.Z)
+        lift = g0 and math.max(30, math.min(150, l.Z - g0)) or 80
+    end
     local f, r = math.rad(at.Yaw), math.rad(at.Yaw + 90)
-    local first, notes = nil, {}
+    -- the ground's rise across and along the car's footprint at x, y (nil: no ground under a corner)
+    local function slope(x, y)
+        local z = {}
+        for i, c in ipairs({ { 230, 90 }, { 230, -90 }, { -230, 90 }, { -230, -90 } }) do
+            z[i] = ground(x + math.cos(f) * c[1] + math.cos(r) * c[2], y + math.sin(f) * c[1] + math.sin(r) * c[2], at.Z)
+            if not z[i] then return nil end
+        end
+        return math.max(math.abs(z[1] - z[2]), math.abs(z[3] - z[4])), math.max(math.abs(z[1] - z[3]), math.abs(z[2] - z[4]))
+    end
+    local first, flat, notes = nil, nil, {}
     for i, s in ipairs(SPOTS) do
         local x = at.X + math.cos(f) * s[1] + math.cos(r) * s[2]
         local y = at.Y + math.sin(f) * s[1] + math.sin(r) * s[2]
@@ -266,16 +284,20 @@ function M.freeSpot(car, at, clash)
         elseif clash(spot) then notes[#notes + 1] = i .. ":host car"
         else
             local t, nm = top(x, y, at.Z, at.Yaw)
+            local across, along = slope(x, y)
+            if across and (not flat or across + along < flat.s) then flat = { p = spot, s = across + along } end
             if t and t - g > STEP_CM then notes[#notes + 1] = string.format("%d:%s %.0f", i, nm, t - g)
+            elseif not across then notes[#notes + 1] = i .. ":edge"
+            elseif across > SIDE_CM or along > LEN_CM then notes[#notes + 1] = string.format("%d:slope %.0f/%.0f", i, across, along)
             else
                 M.stats.spotTries = (M.stats.spotTries or 0) + i
                 return spot, string.format("spot %d free%s", i, #notes > 0 and (", " .. table.concat(notes, ",")) or "")
             end
         end
     end
-    -- (nothing free: the first spot clear of the host's car, as before)
+    -- (nothing free: the flattest spot clear of the host's car, else the first clear of it, as before)
     local s = SPOTS[1]
-    return first or { X = at.X + math.cos(r) * s[2], Y = at.Y + math.sin(r) * s[2], Z = at.Z + 60 },
+    return (flat and flat.p) or first or { X = at.X + math.cos(r) * s[2], Y = at.Y + math.sin(r) * s[2], Z = at.Z + 60 },
         "no free spot: " .. table.concat(notes, ",")
 end
 function M.applyGates(path, ownCar, keepCar)
@@ -319,7 +341,13 @@ function M.applyGates(path, ownCar, keepCar)
         local l = ownCar:K2_GetActorLocation()
         local d = math.sqrt((l.X - at.X) ^ 2 + (l.Y - at.Y) ^ 2)
         local function clash(p) return host and (p.X - host.X) ^ 2 + (p.Y - host.Y) ^ 2 < CLASH_CM ^ 2 end
-        if d > NEAR_CM or clash(l) then
+        -- (or standing tilted: built beside the host's entrance on a slope - an older spot, the game's own)
+        local tilted = false
+        pcall(function()
+            local r = ownCar:K2_GetActorRotation()
+            tilted = math.abs(r.Roll) > TILT_DEG or math.abs(r.Pitch) > TILT_DEG
+        end)
+        if d > NEAR_CM or clash(l) or tilted then
             local to, why = M.freeSpot(ownCar, at, clash)
             M.lastSpot = why
             local root = ownCar.RootComponent
@@ -335,7 +363,7 @@ function M.applyGates(path, ownCar, keepCar)
                     r:SetPhysicsAngularVelocityInDegrees({ X = 0, Y = 0, Z = 0 }, false, FName("None"))
                 end) end
             end)
-            moved = string.format("car moved %.0f m to the host's %s (%s)", d / 100, arrive and "entrance" or "car", why)
+            moved = string.format("car moved %.0f m to the host's %s%s (%s)", d / 100, arrive and "entrance" or "car", tilted and ", was tilted" or "", why)
             M.stats.carMoved = (M.stats.carMoved or 0) + 1
         end
     end
@@ -343,8 +371,8 @@ function M.applyGates(path, ownCar, keepCar)
     M.stats.gatesSet = (M.stats.gatesSet or 0) + set
     return string.format("gates: %d set, %s", set, moved)
 end
--- Guest: where the host's car came in (A), else where it stands (C), from the host's gates file - {X, Y, Z, Yaw}, 5 m
--- to its right (the own car built there after a zone-save load; applyGates puts it on a free spot after)
+-- Guest: where the host's car came in (A), else where it stands (C), from the host's gates file - {X, Y, Z, Yaw}: the
+-- first free flat spot beside it (M.freeSpot, no car yet; the own car built there after a zone-save load)
 function M.hostSpot(path)
     local data = readText(path)
     if not data then return nil end
@@ -359,6 +387,12 @@ function M.hostSpot(path)
     end
     local p = a or c
     if not p then return nil end
+    local function clash(q) return c and (q.X - c.X) ^ 2 + (q.Y - c.Y) ^ 2 < CLASH_CM ^ 2 end
+    local ok, to, why = pcall(M.freeSpot, nil, p, clash)
+    if ok and to then
+        M.lastSpot = "build: " .. tostring(why)
+        return { X = to.X, Y = to.Y, Z = to.Z - 110 + 30, Yaw = p.Yaw } -- (the ground + 30: spawnOwnCar lifts it 1 m)
+    end
     local r = math.rad(p.Yaw + 90)
     return { X = p.X + math.cos(r) * 500, Y = p.Y + math.sin(r) * 500, Z = p.Z, Yaw = p.Yaw }
 end

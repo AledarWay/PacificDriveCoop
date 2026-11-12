@@ -35,7 +35,10 @@ if (-not $Reuse) {
     "=== 0. the guest joins with its own car"
     & "$t\sync-test.ps1" -KeepHost -KeepClient -Net -GuestJoin | Select-String 'arrived|matched on client'
     $sess = @{}; Get-Content "$inst\net-session.txt" | ForEach-Object { $k, $v = $_ -split '=', 2; $sess[$k] = $v }
-    "  guest car aside: " + (Send $cd "local c for _, x in ipairs(FindAllOf('BP_PlayerCarNew_C') or {}) do if x:IsValid() and x:GetFullName():find(':PersistentLevel.', 1, true) then c = x break end end local h = $(Send $hd "local c = FindFirstOf('BP_PlayerCarNew_C') local l = c:K2_GetActorLocation() return string.format('{X=%.1f,Y=%.1f,Z=%.1f}', l.X, l.Y - 800, l.Z + 60)") c:K2_SetActorLocation(h, false, {}, true) c.RootComponent:SetPhysicsLinearVelocity({ X = 0, Y = 0, Z = -50 }, false, FName('None')) return 'moved'")
+    # (the guest's own car by NewCarActor - the first level car may be another; on a free flat spot beside the host's car by
+    # the mod's own runsync.freeSpot, the host's yaw: through the host's exact zone 8 m to its side was the roadside's
+    # slope - the car lay on its roof, backseat-test's door 4 out of reach, 2026-11-12)
+    "  guest car aside: " + (Send $cd "local c = FindFirstOf('BP_CarManager_C').NewCarActor local R = dofile('$($t.Replace('\', '/'))/../CoopSync/Scripts/runsync.lua') local at = $(Send $hd "local c = FindFirstOf('BP_CarManager_C').NewCarActor local l, r = c:K2_GetActorLocation(), c:K2_GetActorRotation() return string.format('{X=%.1f,Y=%.1f,Z=%.1f,Yaw=%.2f}', l.X, l.Y, l.Z, r.Yaw)") local to, why = R.freeSpot(c, at, function(q) return (q.X - at.X) ^ 2 + (q.Y - at.Y) ^ 2 < 450 ^ 2 end) c.RootComponent:SetSimulatePhysics(false) c:K2_SetActorLocationAndRotation(to, { Pitch = 0, Yaw = at.Yaw, Roll = 0 }, false, {}, true) c.RootComponent:SetSimulatePhysics(true) c.RootComponent:SetPhysicsLinearVelocity({ X = 0, Y = 0, Z = -50 }, false, FName('None')) return 'moved: ' .. tostring(why)")
     Start-Sleep 3
     "host: " + (Send $hd "$mute$lib CoopSyncState.start(CoopSync, 'host', '$(P $sess.hchan)') return CoopPlayers.start(CoopSync, 'host', '$(P $sess.hchan)')")
     "client: " + (Send $cd "$mute$lib CoopSyncState.start(CoopSync, 'client', '$(P $sess.cchan)', '$(P "$($sess.cchan)\inbox\host-spawnlist.tsv")') return CoopPlayers.start(CoopSync, 'client', '$(P $sess.cchan)', { ownCar = true })")

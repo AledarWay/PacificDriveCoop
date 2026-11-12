@@ -17,6 +17,9 @@ The ARC map:
 - The ARC map in the car points the same way for both. Its view takes its turn from the zone's north once, when it
   appears; the guest's had appeared with its own north before the host's came. The guest now turns it to the host's.
 - A sky line from the host's next zone no longer turns the guest's north while the guest is still in the old one.
+- The other player's car is green on the ARC map; your own stays blue.
+- Map marks are shared: a mark you place on the ARC map shows on the other player's map too, green there; theirs show
+  green on yours. Moving or removing a mark moves or removes it for the other player within a second.
 A guest left behind:
 - When the host goes on to its next zone (or home) and the guest stays, the guest's sync stops in the old zone. Before,
   the guest took the host's new zone's events there and the game crashed soon after. Driving into an exit later, the
@@ -61,6 +64,9 @@ Leaving together (the guest's drive-out and the next junction):
 - One load from the garage: the guest goes straight into the host's zone instead of first travelling into a zone of
   its own (in the tests about 15 s faster from the drive-out to playing). If that load fails, the guest travels the
   old way. Off in the settings file: direct_load = 0.
+- Faster into the host's exact zone: the guest's game no longer removes and rebuilds the zone's objects it already
+  has from the host's save (they come back under other names after the load; matched now by kind and place). In the
+  tests the guest's import took 3.8 s instead of 11.7 s, and it plays about 13 s sooner after the drive-out.
 The zone's entrance:
 - The guest comes in by the host's entrance: its car stands next to where the host's car came in, not next to the host
   wherever it drove since. The host's entrance and exits are the guest's; if the host's car still stands at the
@@ -68,6 +74,8 @@ The zone's entrance:
 - The guest's car is put only where nothing stands: a guardrail, the gate's building, a rock or the host's car next to
   the entrance moves it to the next free place beside, ahead of or behind the entrance (it once came in sideways on a
   guardrail).
+- The guest's car is put only on flat ground: a spot by the host's entrance on a roadside slope is skipped like a
+  blocked one, and a car that stands tilted when it arrives is moved to a flat spot.
 - Now and then (about one zone in four) the two come in by different entrances on purpose and have to find each other;
   the exits are the same for both. Set in the settings file (entrance_split_chance; 0 turns it off).
 Settings:

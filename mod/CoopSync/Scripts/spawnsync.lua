@@ -39,6 +39,10 @@ local DERIVED = {
 }
 -- a client derived actor this close to a host one of its class is the same (kept at import)
 local DERIVED_TOL = 50
+-- a client actor its name did not match this close to a host one of its class is the same (kept at import): over the
+-- host's exact zone (its save loaded) the runtime actors are the host's, under new names (owner 2026-11-11: the import
+-- over it still removed and spawned hundreds, 11.7 s)
+local RUNTIME_TOL = 50
 
 local function anyMatch(list, s)
     for _, p in ipairs(list) do if s:find(p) then return true end end
@@ -848,7 +852,8 @@ local function phaseEnd(what) M.phases[what] = table.concat(phaseList, ",") end
 -- the loot's sub-containers. Objects are only used in the frame they were found in (kept / spawned actors by path).
 local function importSteps(path)
     local list, hostLevel, keptKeys, doomed = nil, {}, {}, {}
-    local kept, moved, spawned, failed, missing = 0, 0, 0, 0, {}
+    local kept, moved, spawned, failed, missing, adopted = 0, 0, 0, 0, {}, 0
+    local why = {} -- why client actors were not kept, counted
     local destroyCur = {}
     local function spawnStep(sites, label)
         return function(job)
@@ -857,7 +862,7 @@ local function importSteps(path)
             while job[k] <= #list do
                 local e = list[job[k]]
                 job[k] = job[k] + 1
-                local need = e.kind == "R" or (e.kind == "L" and not keptKeys[e.key])
+                local need = (e.kind == "R" or e.kind == "L") and not keptKeys[e.key]
                 if need and M.isSiteSpawner(e.cls:match("[^%.]+$") or "") == sites then
                     local a, err = M.spawnEntry(e)
                     if a then
@@ -890,7 +895,29 @@ local function importSteps(path)
             Loot.resetCache()
             list = readList(path)
             phase("read")
-            for _, e in ipairs(list) do if e.kind == "L" then hostLevel[e.key] = e end end
+            local hostSpots = {} -- class -> its host R and L entries
+            for _, e in ipairs(list) do
+                if e.kind == "L" then hostLevel[e.key] = e end
+                if e.kind == "L" or e.kind == "R" then
+                    local c = e.cls:match("[^%.]+$")
+                    hostSpots[c] = hostSpots[c] or {}
+                    table.insert(hostSpots[c], e)
+                end
+            end
+            -- the nearest host entry of the class within RUNTIME_TOL that no client actor holds yet
+            local function spotOnHost(a)
+                local es = hostSpots[clsName(a)]
+                if not es then return nil, "nocls" end
+                local l, best, hit = a:K2_GetActorLocation(), math.huge, nil
+                for _, e in ipairs(es) do
+                    if not keptKeys[e.key] then
+                        local d = dist2(l, e.loc)
+                        if d < best then best, hit = d, e end
+                    end
+                end
+                if hit and best < RUNTIME_TOL * RUNTIME_TOL then return hit end
+                return nil, (best < 1000 * 1000) and "lt10m" or "far"
+            end
             -- host derived actors by class, to keep the client's identical ones
             local hostDerived = {}
             for _, e in ipairs(list) do
@@ -912,30 +939,44 @@ local function importSteps(path)
             -- 1) decide per client root: keep (level actor the host also has), else destroy.
             --    Derived actors are removed unless the host has the same one there: a kept creator (a level gas
             --    pump) does not re-create its handle, a replaced one does.
+            --    First by name (level actors), then the rest by class and spot: over the host's exact zone its
+            --    runtime actors come back under new names (32 hex digits: 1589 of 1822 removed sat 0 cm from the
+            --    host's own of their class - 2026-11-12)
             CoopSyncKeep = {}
-            local doomedSet, doomedSpots = {}, {}
+            local doomedSet, doomedSpots, pending = {}, {}, {}
+            local function keep(a, e)
+                if dist2(a:K2_GetActorLocation(), e.loc) > 1 then
+                    pcall(function() a:K2_SetActorLocationAndRotation(e.loc, e.rot, false, {}, true) end)
+                    moved = moved + 1
+                    -- static actors ignore the move (a pneumatic mailbox stayed 5 km off): replace it instead
+                    if dist2(a:K2_GetActorLocation(), e.loc) > 100 then return false end
+                end
+                CoopSyncKeep[a:GetFullName()] = true
+                keptKeys[e.key] = true
+                e.actorPath = M.ref(a)
+                kept = kept + 1
+                return true
+            end
+            local function doom(a, why1)
+                doomedSet[a:GetFullName()] = true
+                if M.isSiteSpawner(clsName(a)) then doomedSpots[#doomedSpots + 1] = a:K2_GetActorLocation() end
+                if why1 then why[why1] = (why[why1] or 0) + 1 end
+            end
             for _, a in ipairs(M.collect()) do
                 if M.isDerived(clsName(a)) then
                     if derivedOnHost(a) then CoopSyncKeep[a:GetFullName()] = true kept = kept + 1
                     else doomedSet[a:GetFullName()] = true end
                 else
                     local e = (not isRuntime(a)) and hostLevel[key(a)] or nil
-                    if e and dist2(a:K2_GetActorLocation(), e.loc) > 1 then
-                        pcall(function() a:K2_SetActorLocationAndRotation(e.loc, e.rot, false, {}, true) end)
-                        moved = moved + 1
-                        -- static actors ignore the move (a pneumatic mailbox stayed 5 km off): replace it instead
-                        if dist2(a:K2_GetActorLocation(), e.loc) > 100 then e = nil end
-                    end
-                    if e then
-                        CoopSyncKeep[a:GetFullName()] = true
-                        keptKeys[e.key] = true
-                        e.actorPath = M.ref(a)
-                        kept = kept + 1
-                    else
-                        doomedSet[a:GetFullName()] = true
-                        if M.isSiteSpawner(clsName(a)) then doomedSpots[#doomedSpots + 1] = a:K2_GetActorLocation() end
-                    end
+                    if e and not keptKeys[e.key] then
+                        if not keep(a, e) then doom(a, "static") end
+                    else pending[#pending + 1] = a end
                 end
+            end
+            for _, a in ipairs(pending) do
+                local e, why1 = spotOnHost(a)
+                if e and keep(a, e) then adopted = adopted + 1
+                else doom(a, why1 or "static") end
             end
             -- what the doomed site spawners built goes with them (building frame, prefab settings, container)
             for _, p in ipairs(siteProducts(doomedSpots)) do doomedSet[p.a:GetFullName()] = true end
@@ -994,8 +1035,10 @@ local function importSteps(path)
             phaseEnd("import")
             local miss = {}
             for k in pairs(missing) do miss[#miss + 1] = k end
-            job.result = string.format("kept=%d moved=%d removed=%d spawned=%d failed=%d %s | loot: %s %s | %s",
-                kept, moved, destroyCur.n or 0, spawned, failed, table.concat(miss, " "), Loot.stats(), CoopSyncLootErr or "", "frames: at cleanup")
+            local wt = {}
+            for k, v in pairs(why) do wt[#wt + 1] = k .. "=" .. v end
+            job.result = string.format("kept=%d adopted=%d moved=%d removed=%d (%s) spawned=%d failed=%d %s | loot: %s %s | %s",
+                kept, adopted, moved, destroyCur.n or 0, table.concat(wt, ","), spawned, failed, table.concat(miss, " "), Loot.stats(), CoopSyncLootErr or "", "frames: at cleanup")
             return true
         end,
     }

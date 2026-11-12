@@ -66,7 +66,7 @@ local CLEANUP_AFTER_S = 3    -- import -> cleanup (the imported actors' own spaw
 
 local S = { role = nil, mode = "car", go = false, state = "idle", seq = 0, note = "" }
 local chan, ctlOff = nil, 0
-local Sync, Run, State, Players, Weather, Map
+local Sync, Run, State, Players, Weather, Map, Marks
 local TwinMod -- twincar.lua (session start)
 local Hitch = require("hitch")
 -- the host's zone through the game's own save (zonesave.lua); CoopSyncZoneSave = false: the old way (the guest keeps
@@ -264,6 +264,7 @@ local function hostTick(gstate, world)
     State.start(Sync, "host", chan, chan .. "/" .. list)
     Players.start(Sync, "host", chan)
     Weather.start(Players, "host")
+    pcall(Marks.start, Players, "host")
     S.state = "hosting"
     S.note = string.format("published %d actors; zone save: %s", n or 0, tostring(S.zsaveNote or (zoneSaveOn() and "?" or "off")))
 end
@@ -273,7 +274,7 @@ local function clientTick(gstate, world)
     S.lastSession = session
     if gstate == 4 then
         -- home again: its own sky (not in the lobby: there the garage follows the host's sky, lobbyTick)
-        if S.zoneWorld and not S.garageWorld then Weather.release() end
+        if S.zoneWorld and not S.garageWorld then Weather.release() pcall(Marks.stop) end
         -- a new trip to the same zone (late join of a run member) imports the host's list again
         -- (and loads the host's zone save again: its own game generated the zone anew - startflow's late join)
         S.zoneWorld, S.importedSeq, S.zoneLoadedSeq, S.zoneWaitSince, S.fromSave = nil, nil, nil, nil, nil
@@ -387,6 +388,7 @@ local function clientTick(gstate, world)
         State.start(Sync, "client", chan, S.list)
         Players.start(Sync, "client", chan, { ownCar = S.mode == "car" })
         Weather.start(Players, "client")
+        pcall(Marks.start, Players, "client")
         S.note = "the host is back in this zone: sync again"
     end
     -- at a zone's exit gate: after the host to its next zone (onGuestExit, zoneExitTick)
@@ -473,6 +475,7 @@ local function clientTick(gstate, world)
         local seq = tonumber(session.seq)
         Sync.importJob(list, function(ok, r)
             S.note = ok and tostring(r):sub(1, 120) or ("import failed: " .. tostring(r))
+            pcall(Hitch.note, "timeline import result: " .. tostring(r):sub(1, 400))
             S.imported, S.list, S.seq = nowS(), list, seq or S.seq
             S.importedSeq = seq
             S.state = ok and "zone: imported" or "zone: waiting for the host's list"
@@ -495,10 +498,12 @@ local function clientTick(gstate, world)
         S.state = "zone: cleaning"
         Sync.cleanupJob(function(ok, r)
             S.note = ok and tostring(r):sub(1, 120) or ("cleanup failed: " .. tostring(r))
+            pcall(Hitch.note, "timeline cleanup result: " .. tostring(r):sub(1, 400))
             if S.state ~= "zone: cleaning" then return end
             State.start(Sync, "client", chan, S.list)
             Players.start(Sync, "client", chan, { ownCar = S.mode == "car" })
             Weather.start(Players, "client")
+            pcall(Marks.start, Players, "client")
             S.state = "playing"
             pcall(Run.applyGates, Link.docPath(chan, "inbox", "host-gates.txt"), nil, true) -- the game may have shut an exit since
             -- (the load's second copy of the own car, if it built one: gone before the screen lifts)
@@ -1158,6 +1163,7 @@ end
 function M.start(syncModule, runModule, chanDir)
     Sync, Run = syncModule, runModule
     State, Players, Weather, Map = require("statesync"), require("playersync"), require("weathersync"), require("mapsync")
+    Marks = require("marksync") -- the map marks, both ways (alpha 22 item 4)
     ZoneSave = require("zonesave")
     chan = chanDir or os.getenv("COOPSYNC_CHAN")
     if not chan or chan == "" then
@@ -1213,6 +1219,7 @@ function M.debug(action)
             State.start(Sync, S.role, chan, S.role == "host" and (chan .. "/" .. string.format("host-spawnlist-%d.tsv", S.seq)) or S.list)
             Players.start(Sync, S.role, chan, { ownCar = S.role == "client" and S.mode == "car" })
             Weather.start(Players, S.role)
+            pcall(Marks.start, Players, S.role)
         end)
         return L("sess.sync_restarting")
     elseif action == "teleport" then
@@ -1226,6 +1233,7 @@ function M.debug(action)
         Players.stop()
         S.role, S.go, S.state = nil, false, "idle"
         Weather.release()
+        pcall(Marks.stop)
         return L("sess.left_session")
     end
     return L("sess.unknown_action", tostring(action))

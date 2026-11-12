@@ -1074,6 +1074,8 @@ function M.spawn(loc, rot, equip)
     pcall(puppet, twin)
     op("twin puppet")
     M.stats.spawned = M.stats.spawned + 1
+    -- (the other player's car green on the map, the own one stays the game's blue: marksync.lua, alpha 22 item 4)
+    if CoopSyncMarks then pcall(CoopSyncMarks.paintTwin, twin) end
     print(string.format("[CoopSync] twin spawned %s at %.0f,%.0f,%.0f (cars now %d)\n", twin:GetFName():ToString(), loc.X, loc.Y, loc.Z, #(FindAllOf("BP_PlayerCarNew_C") or {})))
     return twin
 end
