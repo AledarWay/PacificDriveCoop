@@ -4114,3 +4114,53 @@ game (host instance, early-garage made binary by SaveGame, the host zone saves o
   ahead of the host's (both sides blocked by the gate building) - in the host's way. Its clash now also rejects spots
   ahead of the host's car (350 to the side): spot 9 taken; seat-measure 1/1, cars 38/39 (step 9's drive 191 < 300,
   the old nose-on flake) then 39/39.
+
+### journey-test: a whole session, the mod as installed (2026-11-13)
+Owner: "more extended, realistic tests - find and fix the problems".
+- **journey-test.ps1** (full suite): two games from the advanced save, the in-game network's test link through
+  **lag-proxy.ps1** (a TCP proxy: -Lag 80,40,1 = delay, jitter, % of chunks held 3 x more - in order, as TCP), every
+  game at -Fps 30. The session's own flow: lobby in the garages -> the host leaves, the guest drives out (one load)
+  -> zone A: bots play (bot-lib.ps1: the soak's actions and state comparison, now shared with soak-test) -> the exit
+  gate, the host picks a junction, the guest follows -> zone B, play -> the host home (the guest stays, own-car
+  mode), the guest home -> out again -> zone C, play. Checks per zone: arrival (same map, cars 2/1, puppets), every
+  comparison alike (cars / twins, players / puppets), the world's loot alike, games alive, no mod errors.
+- The bots work on the running session: main.lua runs <COOPDEV_DIR>/scmd.lua in CoopSync's own Lua state (test games
+  only - COOPDEV_DIR unset for players), send.ps1 -Session; CoopSyncSession.testMods() for the session's modules.
+  CoopDev's state has none of them (its own Lua state: CoopSyncSession nil there).
+- Found / fixed:
+  1. **CoopPlayers was never set in a real game**: statesync reads the global for the other's car (what the twin
+     broke, the ARC deposit's twin filter, the trunk's items in a drop) - only the tests' CoopDev state had it, so
+     the three were off for players. session.start sets it.
+  2. **The zone's dressing doubled over the host's zone save**: alignDressing matched the guest's dressing only under
+     prefabs; after the load it is detached - 465 / 186 / 527 host rows spawned over copies already there (every
+     mesh, light, poster twice). The missing rows now match a loose actor of that class + mesh on the spot first
+     ("loose" in the info): spawned 20 / 0 / 11.
+  3. **A site built twice, loot duplicated**: over the host's zone save the guest's game built a site of its own later
+     (a trailer's BP_Spawn_Resource_Converter: lockers, crates, cabinets, 15 resources) next to the host's copies (52 /
+     127 client-only world items; a pick-up of the guest's copy never reached the host). The stray sweep (hazards
+     only) covers lootables, storage cabinets, resource spawners / converters and world items now (not the car's
+     items, not within 6 m of the player; grace 10 s): every zone's loot 100 %, no client-only.
+  4. **The twin's gas cap showed the can too**: the cap's GetFuelTanks lists a fuel can in an attachment slot
+     (IA_Tool_Target_FuelCan) the game's own cap leaves out - the host's 45 showed 55 on the guest. gascap skips IA_Tool_.
+  5. The guest's event backlog after a load (3472 / 7310 lines at once): the per-event cost logged ("state ev <op>"
+     over 30 ms: S 86 ms average, up to 401 - a template / site spawned with its parts); old poses (M / HM of a key
+     with a later one queued) dropped when over 400 wait (few: the backlog is not poses). Open: the S cost itself.
+  6. **Grab resources twice** (zone B: 8 gravity clusters of the guest's own roll at two spots): the sweep's bases
+     take BP_Spawn_Resource_GrabBase_C too (anchors, clusters; the host's come mapped). anchor / anomaly green.
+- Quick suite after these (44): sync / interact LOOT FAIL - raw resources of a pile swapped (host Cartridge, guest
+  Chemicals at the spot). The import's class-and-spot adoption (2026-11-12) took a guest world item for the host's
+  of another item, and W| is never applied over an actor (spawned with its item): only the same item is adopted
+  now (spawnsync spotOnHost). Both green. fuelcan failed on HEAD too: the container was full, the host's second
+  can went nowhere (cmds put ignored AddItem's false) - put says "full", the test takes an item out first; 5/5.
+  runover / nextzone / part-break green alone; collide (the hit's physics) and cars (one drive) the known flakes.
+- journey-test now 21/21 (lag 80/40/1, 30 fps). Its loot check is asked again 15 s on when it fails (the guest's own
+  sites after a zone-save load keep coming for ~1 min, the sweep's 10 s grace); the first miss is logged.
+- Open: the guest's game builds sites over the host's zone save for a minute after the load (strays every 3 s,
+  lockers / crates / converters / world items); their Owner / Instigator are none - the builder unknown. Once (of 6
+  runs) the guest's game died in zone C in Lua's call on a freed UObject (UClass::HasAllCastFlags under
+  GetFunctionByNameInChain, from a LoopInGameThreadWithDelay action) - not reproduced.
+- Seen, by design: the host home -> the guest stays in its zone, its sync stopped (own-car mode), goes home itself.
+  The loads: 18-49 s frames under the loading screen (the zone save's LoadGame) - the owner's "the load felt long".
+- soak-test: -Lag with spaces ("80 40 1" from PowerShell) left the relays with no delay - fixed. Its guest join timed
+  out once at 25 fps; sync-test -GuestJoin at 25 fps joined fine (not reproduced).
+

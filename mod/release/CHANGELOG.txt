@@ -73,6 +73,16 @@ Leaving together (the guest's drive-out and the next junction):
   has from the host's save (they come back under other names after the load; matched now by kind and place). In the
   tests the guest's import took 3.8 s instead of 11.7 s, and it plays about 13 s sooner after the drive-out.
   The loot of objects that already hold the host's contents is no longer laid out again: the import 0.5 s.
+- Found by a new whole-session test (lag, 30 fps, three zones, home and out again):
+  - The zone's buildings no longer appear twice for the guest (every mesh, light and poster was built a second time
+    over the host's zone).
+  - Loot the guest's game rolled on its own (a site built a second time: lockers, crates, resources next to the
+    host's) is removed - before, the guest could take a copy the host never had.
+  - The other's car's gas cap shows its real fuel (it counted a fuel can carried on the car too).
+  - Three things that only worked in the tests now work in a real game: what the other's car breaks, the ARC deposit
+    on the right car, the trunk's items in a drop.
+  - Resources lying in a pile are the host's for the guest too (they could swap types, chemicals for cartridges).
+  - The gravity clusters an anomaly grows no longer appear twice for the guest.
 The zone's entrance:
 - The guest comes in by the host's entrance: its car stands next to where the host's car came in, not next to the host
   wherever it drove since. The host's entrance and exits are the guest's; if the host's car still stands at the

@@ -79,6 +79,7 @@ $tests = @(
     @{ name = 'cars';          quick = $true;  cmd = { & "$t\cars-test.ps1" } },
     @{ name = 'f7';            quick = $true;  cmd = { & "$t\f7-test.ps1" } },
     @{ name = 'revisit';       quick = $true;  cmd = { & "$t\revisit-test.ps1" } },
+    @{ name = 'journey';       quick = $false; cmd = { & "$t\journey-test.ps1" } },
     @{ name = 'soak';          quick = $false; cmd = { & "$t\soak-test.ps1" -Minutes 20 } }
 )
 # (-Only a,b through powershell -File arrives as one string "a,b": nothing ran)

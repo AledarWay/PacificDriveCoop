@@ -785,6 +785,7 @@ function M.resetStats()
     CoopSyncLootPending = {}
 end
 function M.stats()
+    if not stats then return "none yet" end
     local miss = {}
     for k in pairs(stats.missing) do miss[#miss + 1] = k end
     return string.format("same=%d containers=%d templates=%d parts=%d items=%d failed=%d fuel=%d/%d %s %s",

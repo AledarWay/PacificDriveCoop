@@ -60,7 +60,7 @@ $h3 = Near $hd $at1; $c3 = Near $cd $at1
 Check "the guest's follows" ((Same $h3 '0.5') -and (Same $c3 '0.5')) "host $h3 | guest $c3"
 
 "=== 4. the guest puts a carried canister with 1.37 into a container"
-$ck = ((Share $cd 'client' "LS_OP = 'takeable'") -split "`t")[0]
+$ck = ((Share $cd 'client' "LS_OP = 'takeable' LS_ROOM = 2") -split "`t")[0]
 "  container: $ck"
 "  guest gets one: " + (Share $cd 'client' "LS_OP = 'give' LS_ARCH = '$can'")
 Start-Sleep 3
@@ -75,7 +75,14 @@ Check "the host's container has it with the guest's fuel" ($h4 -eq '1.37' -and $
 "  host gets one: " + (Share $hd 'host' "LS_OP = 'give' LS_ARCH = '$can'")
 Start-Sleep 3
 "  host's fuel: " + (Share $hd 'host' "LS_OP = 'setcarriedfuel' LS_ARCH = '$can' LS_FUEL = 2.61")
-"  host: " + (Share $hd 'host' "LS_OP = 'put' LS_KEY = '$ck' LS_ARCH = '$can'")
+$put = Share $hd 'host' "LS_OP = 'put' LS_KEY = '$ck' LS_ARCH = '$can'"
+# (a full container took the second can nowhere: the host takes one other item out first, as a player would)
+for ($i = 0; $i -lt 4 -and $put -eq 'full'; $i++) {
+    "  host: full, " + (Share $hd 'host' "LS_OP = 'makeroom' LS_KEY = '$ck' LS_ARCH = '$can'")
+    Start-Sleep 3
+    $put = Share $hd 'host' "LS_OP = 'put' LS_KEY = '$ck' LS_ARCH = '$can'"
+}
+"  host: $put"
 Start-Sleep 10
 $h5 = Share $hd 'host' "LS_OP = 'fuelin' LS_KEY = '$ck' LS_ARCH = '$can'"; $c5 = Share $cd 'client' "LS_OP = 'fuelin' LS_KEY = '$ck' LS_ARCH = '$can'"
 $cst = Send $cd 'return CoopSync.Loot.stats()'

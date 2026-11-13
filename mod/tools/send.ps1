@@ -5,7 +5,8 @@
 param(
     [Parameter(Mandatory)] [string] $File,
     [string] $Dir = "C:\PacificDriveCoop\local\coopdev",
-    [int] $TimeoutSec = 30
+    [int] $TimeoutSec = 30,
+    [switch] $Session
 )
 $log = Join-Path $Dir "start.log"
 $gamePid = $null
@@ -15,10 +16,12 @@ if (Test-Path $log) {
 }
 function Alive { (-not $gamePid) -or [bool](Get-Process -Id $gamePid -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like 'PenDriverPro*' }) }
 if (-not (Alive)) { throw "GAME DEAD: pid $gamePid of $Dir is not running" }
-$out = Join-Path $Dir "out.txt"
+# -Session: into the CoopSync mod's own Lua state (the running session: main.lua's scmd.lua / sout.txt)
+$cn, $on = if ($Session) { "scmd.lua", "sout.txt" } else { "cmd.lua", "out.txt" }
+$out = Join-Path $Dir $on
 $start = if (Test-Path $out) { (Get-Item $out).Length } else { 0 }
-Copy-Item $File (Join-Path $Dir "cmd.lua.tmp") -Force
-Move-Item (Join-Path $Dir "cmd.lua.tmp") (Join-Path $Dir "cmd.lua") -Force
+Copy-Item $File (Join-Path $Dir "$cn.tmp") -Force
+Move-Item (Join-Path $Dir "$cn.tmp") (Join-Path $Dir $cn) -Force
 $deadline = (Get-Date).AddSeconds($TimeoutSec)
 $n = 0
 while ((Get-Date) -lt $deadline) {
@@ -34,5 +37,5 @@ while ((Get-Date) -lt $deadline) {
     $n++
     if ($n % 7 -eq 0 -and -not (Alive)) { throw "GAME DEAD: pid $gamePid of $Dir exited while waiting" }
 }
-"TIMEOUT (game not polling? state: cmd.lua exists = $(Test-Path (Join-Path $Dir 'cmd.lua')))"
+"TIMEOUT (game not polling? state: $cn exists = $(Test-Path (Join-Path $Dir $cn)))"
 exit 1

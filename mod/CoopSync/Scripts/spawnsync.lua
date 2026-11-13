@@ -812,7 +812,44 @@ function M.alignDressingStep(list, cur)
             if hit then hit.used = true kept = kept + 1
             elseif not (CoopSyncKeep or {})[d.a:GetFullName()] then pcall(function() d.a:K2_DestroyActor() end) removed = removed + 1 end
         end
-        cur.todo, cur.i, cur.kept, cur.removed, cur.spawned, cur.failed = {}, 1, kept, removed, 0, 0
+        -- the rows still missing: an actor of that class and look already on the spot, though under no prefab (after
+        -- a load of the host's zone save its dressing came back detached: 465 / 186 / 527 host rows spawned over
+        -- copies already there - every mesh, light and poster twice; journey-test 2026-11-13). Kept, never removed.
+        local cell = function(l) return math.floor(l.X / 200) .. "," .. math.floor(l.Y / 200) end
+        local grid, classes, listed, loose = {}, {}, {}, 0
+        for _, d in ipairs(dressing()) do listed[d.a:GetFullName()] = true end
+        for _, hs in pairs(host) do
+            for _, h in ipairs(hs) do
+                if not h.used then
+                    local k = cell(h.e.loc)
+                    grid[k] = grid[k] or {}
+                    table.insert(grid[k], h)
+                    classes[h.e.cls:match("[^%.]+$")] = true
+                end
+            end
+        end
+        for c in pairs(classes) do
+            for _, a in ipairs(FindAllOf(c) or {}) do
+                if alive(a) and not listed[a:GetFullName()] then
+                    local l = a:K2_GetActorLocation()
+                    local hs = grid[cell(l)]
+                    if hs then
+                        local id = c .. "|" .. (dressLook(a, c):match("^m=([^~]*)") or "")
+                        for _, h in ipairs(hs) do
+                            if not h.used and h.id == nil then h.id = h.e.cls:match("[^%.]+$") .. "|" .. ((h.e.loot or ""):match("^m=([^~]*)") or "") end
+                            if not h.used and h.id == id and dist2(h.e.loc, l) < DRESS_TOL2 then
+                                h.used = true
+                                loose = loose + 1
+                                CoopSyncKeep = CoopSyncKeep or {}
+                                CoopSyncKeep[a:GetFullName()] = true
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        cur.todo, cur.i, cur.kept, cur.removed, cur.spawned, cur.failed, cur.loose = {}, 1, kept + loose, removed, 0, 0, loose
         for _, hs in pairs(host) do
             for _, h in ipairs(hs) do if not h.used then cur.todo[#cur.todo + 1] = h.e end end
         end
@@ -831,7 +868,7 @@ function M.alignDressingStep(list, cur)
         else cur.failed = cur.failed + 1 end
         if M.overBudget() then return false end
     end
-    cur.info = string.format("dressing: kept=%d removed=%d spawned=%d failed=%d", cur.kept, cur.removed, cur.spawned, cur.failed)
+    cur.info = string.format("dressing: kept=%d (loose %d) removed=%d spawned=%d failed=%d", cur.kept, cur.loose or 0, cur.removed, cur.spawned, cur.failed)
     return true
 end
 function M.alignDressing(list)
@@ -914,8 +951,16 @@ local function importSteps(path)
                 local es = hostSpots[clsName(a)]
                 if not es then return nil, "nocls" end
                 local l, best, hit = a:K2_GetActorLocation(), math.huge, nil
+                -- (a world item's item is never applied over (W| spawns the actor with it): only the same item is
+                -- adopted - a resource pile's guest roll took the host's spots crosswise, sync / interact 2026-11-13)
+                local own
                 for _, e in ipairs(es) do
-                    if not keptKeys[e.key] then
+                    local w = not keptKeys[e.key] and (e.loot or ""):sub(1, 2) == "W|"
+                    if w and own == nil then
+                        local ok, s = pcall(Loot.serialize, a)
+                        own = ok and s or false
+                    end
+                    if not keptKeys[e.key] and (not w or own == e.loot) then
                         local d = dist2(l, e.loc)
                         if d < best then best, hit = d, e end
                     end

@@ -185,16 +185,21 @@ elseif op == "pickable" or op == "takeable" then
             elseif op == "takeable" then
                 local ok, c = pcall(function() return a.InventoryContainer end)
                 if ok and c and c:IsValid() and c.Slots:GetArrayNum() > 0 then
-                    local counts, firstArch = {}, nil
+                    local counts, firstArch, free = {}, nil, 0
                     for i = 1, c.Slots:GetArrayNum() do
                         local s = c.Slots[i]
+                        local cap = s.Capacity or 0
+                        free = free + ((cap < 0) and 99 or math.max(0, cap - s.Items:GetArrayNum()))
                         for j = 1, s.Items:GetArrayNum() do
                             local p = objPath(s.Items[j].Archetype)
                             counts[p] = (counts[p] or 0) + 1
                             firstArch = firstArch or p
                         end
                     end
-                    for p, n in pairs(counts) do if n == 1 then found = k .. "\t" .. p break end end
+                    -- (LS_ROOM: that many empty slots too - fuelcan puts two canisters in; a full one took the second nowhere)
+                    if free >= (rawget(_G, "LS_ROOM") or 0) then
+                        for p, n in pairs(counts) do if n == 1 then found = k .. "\t" .. p break end end
+                    end
                     if found then break end
                 end
             end
@@ -302,11 +307,29 @@ elseif op == "put" then
         local inst = inv:FindItemOfType(arch)
         if inst and inst:IsValid() then
             inv:RemoveItem(inst)
-            a.InventoryContainer:AddItem(inst, true)
+            local ok, added = pcall(function() return a.InventoryContainer:AddItem(inst, true) end)
+            if ok and added == false then inv:AddItem(inst, true) return "full" end
             return "put " .. arch:GetFName():ToString()
         end
     end
     return "not carried"
+elseif op == "makeroom" then
+    -- takes one item that is not LS_ARCH out of the container (the host's take, as a player's)
+    local a = actorOf(LS_KEY)
+    if not a then return "gone" end
+    local c = a.InventoryContainer
+    for i = 1, c.Slots:GetArrayNum() do
+        local s = c.Slots[i]
+        for j = 1, s.Items:GetArrayNum() do
+            local it = s.Items[j]
+            local p = objPath(it.Archetype)
+            if p ~= LS_ARCH then
+                local ok = pcall(function() c:RemoveItem(it) end)
+                return (ok and "took " or "failed ") .. p:match("[^%.]+$")
+            end
+        end
+    end
+    return "nothing"
 elseif op == "setcarriedfuel" then
     -- the fuel of a carried item of LS_ARCH (the item's own property: what a container gets)
     local arch = Loot.find(LS_ARCH)

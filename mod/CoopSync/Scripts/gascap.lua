@@ -31,6 +31,11 @@ local function tankComps(cap)
     for i = 1, (b.NumFuelTanks or 0) do
         local it = a[i]
         if it and it.get then it = it:get() end
+        -- (a fuel can carried in an attachment slot is among the car's "tanks" but the game's own cap leaves it out:
+        -- the host's cap 45 of tanks 20 + 25 + its can's 10; the guest's twin cap showed 55 - journey-test 2026-11-13)
+        local tool = false
+        pcall(function() tool = it:IsValid() and it.Archetype:GetFName():ToString():find("^IA_Tool_") ~= nil end)
+        if tool then it = nil end
         local act = it and it:IsValid() and it:GetActorManifestation()
         local fc = act and act:IsValid() and act:GetComponentByClass(fcCls)
         if fc and fc:IsValid() then out[#out + 1] = fc end

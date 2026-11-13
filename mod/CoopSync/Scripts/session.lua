@@ -1164,6 +1164,10 @@ function M.start(syncModule, runModule, chanDir)
     Sync, Run = syncModule, runModule
     State, Players, Weather, Map = require("statesync"), require("playersync"), require("weathersync"), require("mapsync")
     Marks = require("marksync") -- the map marks, both ways (alpha 22 item 4)
+    -- statesync finds the other's car through the global CoopPlayers (otherCarPrimitive: what the twin broke; the ARC
+    -- deposit's twin filter; the trunk's items in a drop). Only the tests' CoopDev state ever set it: in a real game the
+    -- three were off (journey-test, 2026-11-13). Set here: this mod's own Lua state.
+    CoopPlayers = rawget(_G, "CoopPlayers") or Players
     ZoneSave = require("zonesave")
     chan = chanDir or os.getenv("COOPSYNC_CHAN")
     if not chan or chan == "" then
@@ -1239,6 +1243,8 @@ function M.debug(action)
     return L("sess.unknown_action", tostring(action))
 end
 function M.state() return S end
+-- tests (journey-test): the session's own modules, so a test's bots and probes work on the running session
+function M.testMods() return { Sync = Sync, Run = Run, State = State, Players = Players, Weather = Weather, Map = Map, Marks = Marks } end
 function M.channel() return chan end
 -- the mod's folder (Mods/CoopSync/), for its tools (report script)
 function M.modDir() return (Sync.DIR:gsub("\\", "/"):gsub("Scripts/?$", "")) end

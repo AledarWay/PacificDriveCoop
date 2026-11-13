@@ -7,7 +7,7 @@ $luac = "C:\PacificDriveCoop\tools\lua\luac54.exe"
 $std = 'coroutine assert collectgarbage debug dofile error getmetatable io ipairs load loadfile math next os package pairs pcall print rawequal rawget rawlen rawset require select setmetatable string table tonumber tostring type utf8 xpcall _G _VERSION'
 $ue4ss = 'FindAllOf FindFirstOf FindObject FindObjects StaticFindObject StaticConstructObject LoadAsset FName FText FString UEHelpers EInternalObjectFlags EObjectFlags LoopAsync LoopInGameThreadWithDelay LoopInGameThreadAfterFrames CancelDelayedAction IsDelayedActionActive IsValidDelayedActionHandle ExecuteInGameThread ExecuteAsync ExecuteWithDelay RegisterHook UnregisterHook RegisterKeyBind Key ModifierKey RegisterConsoleCommandHandler NotifyOnNewObject IterateGameDirectories ModRef'
 # our cross-module / cross-mod globals (CoopSync*, Dev of CoopDev, UPPER_CASE parameters a test sets before a cmds/*.lua run, like BOT_SKIP)
-$ours = '^(CoopSync\w*|CoopDev\w*|Dev|[A-Z][A-Z0-9]*_[A-Z0-9_]+)$'
+$ours = '^(CoopSync\w*|CoopDev\w*|CoopPlayers|Dev|[A-Z][A-Z0-9]*_[A-Z0-9_]+)$'
 $allowed = @{}; foreach ($n in ($std + ' ' + $ue4ss) -split ' ') { $allowed[$n] = 1 }
 $bad = 0; $files = 0
 foreach ($f in Get-ChildItem $Paths -Filter *.lua) {

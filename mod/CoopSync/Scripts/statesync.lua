@@ -1582,7 +1582,24 @@ end
 CoopSyncStray = { at = -1e9, seen = {} }
 local STRAY = CoopSyncStray
 STRAY.EVERY_S = 3
+-- (2026-11-13, journey-test: over the host's zone save the guest's game built a site of its own later - a trailer's
+-- converter spawner, its lockers, crates, chemicals cabinets and 15 resources next to the host's copies of the same:
+-- loot twice, a pick-up of the guest's own copy never reached the host. The same sweep for those bases: whatever
+-- the host has comes mapped (the import, S), the rest is the guest's own roll)
+-- { base class, counter, grace s, world item? }
+STRAY.BASES = {
+    { "BP_Base_Hazard_C", "stray_hazard", 6 },
+    { "BP_Lootable_Base_C", "stray_lootable", 10 },
+    { "BP_Base_StorageCabinet_C", "stray_cabinet", 10 },
+    { "BP_Spawn_ResourceBase_C", "stray_resource", 10 },
+    { "BP_Spawn_Resource_ConverterBase_C", "stray_converter", 10 },
+    -- (grab resources - the gravity clusters an anomaly grows, anchors: 8 clusters of the guest's own roll at two
+    -- spots in zone B, journey-test 2026-11-13; the host's come mapped)
+    { "BP_Spawn_Resource_GrabBase_C", "stray_grab", 10 },
+    { "BP_WorldItem_C", "stray_item", 10, true },
+}
 STRAY.GRACE_S = 6
+STRAY.NEAR_CM = 600 -- (a world item this close to the player: maybe its own throw, its DROP's S on the way)
 function STRAY.tick()
     if role == "host" then return end
     local now = os.clock()
@@ -1591,22 +1608,49 @@ function STRAY.tick()
     local seen, mapped = {}, {}
     -- (every copy of a host actor, whoever mapped it: the import, its repair after the cleanup, S, a respawn)
     for _, p in pairs(CoopSyncMap or {}) do mapped[p] = true end
-    -- (the hazards' base class: ~2 ms; the guest keeps no root scan of its own and a full one is ~16 ms)
-    for _, a in ipairs(FindAllOf("BP_Base_Hazard_C") or {}) do
-        local p = CoopSyncUsable(a) and Sync.ref(a)
-        if p and p:find(":PersistentLevel.", 1, true) and not mapped[p] and not reverse[p] and not Sync.inPool(a)
-            and not (CoopSyncKeep or {})[a:GetFullName()] and Sync.isRoot(a) then
-            local ok, c = pcall(function() return a:GetClass():GetFName():ToString() end)
-            if ok and Sync.matches(c) then
-                seen[p] = STRAY.seen[p] or now
-                if now - seen[p] >= STRAY.GRACE_S then
-                    seen[p] = nil
-                    if pcall(function() a:K2_DestroyActor() end) then count("stray_hazard") end
+    local me
+    pcall(function() me = FindFirstOf("PlayerController").Pawn:K2_GetActorLocation() end)
+    local gone = {}
+    -- (the bases' instances only: ~2 ms each; the guest keeps no root scan of its own and a full one is ~11-16 ms)
+    for _, base in ipairs(STRAY.BASES) do
+        for _, a in ipairs(FindAllOf(base[1]) or {}) do
+            local p = CoopSyncUsable(a) and Sync.ref(a)
+            if p and not seen[p] and p:find(":PersistentLevel.", 1, true) and not mapped[p] and not reverse[p] and not Sync.inPool(a)
+                and not (CoopSyncKeep or {})[a:GetFullName()] and Sync.isRoot(a) then
+                local ok, c = pcall(function() return a:GetClass():GetFName():ToString() end)
+                local skip = not (ok and Sync.matches(c))
+                if not skip and base[4] then
+                    -- (the car's parts and attachments: the guest's own car's, fallen off - never the host's to send)
+                    local arch = ""
+                    pcall(function() arch = a.Instance.Archetype:GetFullName() end)
+                    if arch == "" or arch:find("/Items/Car/", 1, true) then skip = true end
+                    if me and not skip then
+                        local l = a:K2_GetActorLocation()
+                        if (l.X - me.X) ^ 2 + (l.Y - me.Y) ^ 2 + (l.Z - me.Z) ^ 2 < STRAY.NEAR_CM ^ 2 then skip = true end
+                    end
+                end
+                if not skip then
+                    seen[p] = STRAY.seen[p] or now
+                    if now - seen[p] >= base[3] then
+                        seen[p] = nil
+                        if pcall(function() a:K2_DestroyActor() end) then
+                            count(base[2])
+                            gone[#gone + 1] = c
+                        end
+                    end
                 end
             end
         end
     end
     STRAY.seen = seen
+    if #gone > 0 and CoopSyncHitch then
+        local by = {}
+        for _, c in ipairs(gone) do by[c] = (by[c] or 0) + 1 end
+        local t = {}
+        for c, n in pairs(by) do t[#t + 1] = c .. "=" .. n end
+        table.sort(t)
+        CoopSyncHitch.note("strays removed: " .. table.concat(t, " "))
+    end
 end
 
 ---------------------------------------------------------------------------------------------------
@@ -2709,18 +2753,47 @@ end
 -- (an event not applied yet would look like the player's own change).
 local EVENTS_MS = 6
 local evQueue, evHead = {}, 1
+-- A long backlog (journey-test 2026-11-13: 7310 host events at once after the guest's load into the next zone, 4647
+-- still waiting half a minute on - its own pick-ups undetected meanwhile) is mostly poses: M / HM of the same
+-- hazards and items again and again. Only each key's last pose of a kind matters (an S later carries its own place).
+local COALESCE_AT, coalescedAt = 400, -1e9
+local function coalesce()
+    if os.clock() - coalescedAt < 0.5 then return 0 end -- (a scan of the whole queue: twice a second at most)
+    coalescedAt = os.clock()
+    local last, keep, dropped = {}, {}, 0
+    for i = #evQueue, evHead, -1 do
+        local line = evQueue[i]
+        local op, key = line:match("^(%u+)\t([^\t]*)")
+        if (op == "M" or op == "HM") and key then
+            local k = op .. "|" .. key
+            if last[k] then evQueue[i] = false dropped = dropped + 1 else last[k] = true end
+        end
+    end
+    if dropped == 0 then return 0 end
+    for i = evHead, #evQueue do if evQueue[i] then keep[#keep + 1] = evQueue[i] end end
+    evQueue, evHead = keep, 1
+    count("ev_coalesced", dropped)
+    return dropped
+end
 local function clientFrame(deadline)
     local t0 = pstart()
     local got = receive("host.events")
+    local tR = (os.clock() - t0) * 1000
+    if tR > 30 and CoopSyncHitch then CoopSyncHitch.op("state ev receive", tR) end
     for _, line in ipairs(got) do evQueue[#evQueue + 1] = line end
-    if #got > 200 and CoopSyncHitch then CoopSyncHitch.note("host events: " .. #got .. " at once, " .. (#evQueue - evHead + 1) .. " waiting") end
+    local dropped = (#got > 0 and #evQueue - evHead + 1 > COALESCE_AT) and coalesce() or 0
+    if #got > 200 and CoopSyncHitch then CoopSyncHitch.note("host events: " .. #got .. " at once, " .. (#evQueue - evHead + 1) .. " waiting, " .. dropped .. " old poses dropped") end
     local evEnd = os.clock() + EVENTS_MS / 1000
     while evHead <= #evQueue do
         local line = evQueue[evHead]
         evQueue[evHead] = nil
         evHead = evHead + 1
+        local tE = os.clock()
         local ok, e = pcall(clientApply, split(line))
         if not ok then err("apply " .. line:sub(1, 80) .. ": " .. tostring(e)) end
+        -- (one event's cost: journey-test saw client_events at 100-700 ms a frame for minutes, 2026-11-13)
+        tE = (os.clock() - tE) * 1000
+        if tE > 30 and CoopSyncHitch then CoopSyncHitch.op("state ev " .. (line:match("^[^\t]*") or "?"), tE) end
         if os.clock() > evEnd then break end
     end
     local waiting = evHead <= #evQueue
