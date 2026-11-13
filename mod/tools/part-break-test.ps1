@@ -44,8 +44,11 @@ $script:at = Send $hd "local l = FindFirstOf('PlayerController').Pawn:K2_GetActo
 "  wreck: " + ((Wp $hd "") -split ' \|\| ')[0]
 $canBreak = "local HC = StaticFindObject('/Game/Gameplay/Inventory/GenericItemProperties/Components/BP_HealthComponent.BP_HealthComponent_C') local n, all = 0, 0 for _, p in ipairs(FindAllOf('LootableTemplatePart') or {}) do if p:IsValid() then local hc = p:GetComponentByClass(HC) if hc and hc:IsValid() then all = all + 1 if hc.CanBeBreaking then n = n + 1 end end end end return n .. '/' .. all"
 
+# (the host's first full list 3 s in, by design - WRK.allAt in statesync.lua; 4 s left only ~1 s of margin, tight
+# enough that one part's line still in flight at the check moment made this FAIL once in three live runs even
+# though the sync itself was fine a moment later, 2026-11-13)
 "=== 1. the guest's wreck parts can break, their health is the host's (the host's full list 3 s in)"
-Start-Sleep 4
+Start-Sleep 8
 $cb = Send $cd $canBreak
 $cbn, $cba = $cb -split '/'
 Check "guest: every wreck part can break (CanBeBreaking, as on the host)" ($cba -gt 0 -and $cbn -eq $cba) "guest $cb, host $(Send $hd $canBreak)"

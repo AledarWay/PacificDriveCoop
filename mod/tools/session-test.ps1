@@ -51,8 +51,10 @@ if ($CoopNet) {
 }
 
 "=== 1. host into its zone, guest into its garage (each game gets its channel directory)"
-$env:COOPSYNC_CHAN = $hchan.Replace('\', '/'); if ($CoopNet) { $env:COOPSYNC_NET = NetSpec Host }; & "$t\start-zone.ps1" -Tag host -Seed 12345 | Select-Object -Last 1
-$env:COOPSYNC_CHAN = $cchan.Replace('\', '/'); if ($CoopNet) { $env:COOPSYNC_NET = NetSpec Guest }; & "$t\start-zone.ps1" -Tag client -Seed 777 -StopInGarage | Select-Object -Last 1
+. "$t\boot-lib.ps1" # (the two games boot side by side)
+$env:COOPSYNC_CHAN = $hchan.Replace('\', '/'); if ($CoopNet) { $env:COOPSYNC_NET = NetSpec Host }; $boot0 = BootBg start-zone.ps1 "-Tag host -Seed 12345"
+$env:COOPSYNC_CHAN = $cchan.Replace('\', '/'); if ($CoopNet) { $env:COOPSYNC_NET = NetSpec Guest }; $boot1 = BootBg start-zone.ps1 "-Tag client -Seed 777 -StopInGarage"
+BootWait $boot0 | Select-Object -Last 1; BootWait $boot1 | Select-Object -Last 1
 Remove-Item Env:COOPSYNC_CHAN, Env:COOPSYNC_NET -ErrorAction SilentlyContinue
 Start-Sleep 3
 $h = Status $hchan; $c = Status $cchan

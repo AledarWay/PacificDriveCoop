@@ -663,7 +663,9 @@ end
 local function puppet(a)
     pcall(function()
         local rc = a.RootComponent
-        if rc and rc:IsValid() and rc:IsSimulatingPhysics() then
+        -- (IsSimulatingPhysics takes a bone name: called bare it threw every time - 523 a session - and no puppet
+        -- ever had its physics off, 2026-11-13)
+        if rc and rc:IsValid() and rc:IsSimulatingPhysics(FName("None")) then
             rc:SetSimulatePhysics(false)
             HZ.physOff[a:GetAddress()] = true -- (a hazard this side runs later gets its physics back)
         end
@@ -762,19 +764,37 @@ local function giveBackItem(spec, n)
 end
 
 -- a predicted local world item of the same item near the host's new one is adopted instead of spawning
+-- (the unmapped item actors with their loot, once per frame of events: every W| S walked all roots and serialized
+-- each item - 50-110 ms an event, 107 of them after a load, journey-test 2026-11-13)
+local predCache = { frame = -1 }
+local evFrame = 0
 local function adoptPredicted(e)
     if e.loot:sub(1, 2) ~= "W|" then return nil end
-    local best, bestD
-    Loot.beginPass()
-    for _, a in ipairs(Sync.collect()) do
-        if not reverse[Sync.ref(a)] and Loot.isItemActor(a) and (Loot.serialize(a) or "") == e.loot then
+    if predCache.frame ~= evFrame then
+        predCache = { frame = evFrame, list = {} }
+        Loot.beginPass()
+        for _, a in ipairs(Sync.collect()) do
+            if not reverse[Sync.ref(a)] and Loot.isItemActor(a) then
+                local s = Loot.serialize(a) or ""
+                predCache.list[s] = predCache.list[s] or {}
+                table.insert(predCache.list[s], a)
+            end
+        end
+        Loot.endPass()
+    end
+    local best, bestD, bestI
+    local cands = predCache.list[e.loot] or {}
+    for i, a in ipairs(cands) do
+        if CoopSyncUsable(a) and not reverse[Sync.ref(a)] then
             local l = a:K2_GetActorLocation()
             local d = math.sqrt((l.X - e.loc.X) ^ 2 + (l.Y - e.loc.Y) ^ 2 + (l.Z - e.loc.Z) ^ 2)
-            if d < ADOPT_DIST and (not bestD or d < bestD) then best, bestD = a, d end
+            if d < ADOPT_DIST and (not bestD or d < bestD) then best, bestD, bestI = a, d, i end
         end
     end
-    Loot.endPass()
-    if best then pcall(function() best:K2_SetActorLocationAndRotation(e.loc, e.rot, false, {}, true) end) end
+    if best then
+        table.remove(cands, bestI)
+        pcall(function() best:K2_SetActorLocationAndRotation(e.loc, e.rot, false, {}, true) end)
+    end
     return best
 end
 
@@ -915,11 +935,25 @@ local function clientApply(t)
         state.pending[key] = nil
     elseif op == "S" then
         local e = parseRow(t, 1)
-        local a = adoptPredicted(e)
-        if a then count("ap_S_adopted") else
+        local tA = os.clock()
+        -- (an actor this side has under that key already - the import's, a repeat: no second copy, its loot only)
+        local known = resolve(e.key)
+        if known and not CoopSyncUsable(known) then known = nil end
+        local a = known or adoptPredicted(e)
+        local tS = os.clock()
+        if known then
+            count("ap_S_known")
+            if e.loot ~= "" and e.loot:sub(1, 2) ~= "W|" and not Loot.same(known, e.loot) then applyLoot(known, e.loot) end
+        elseif a then count("ap_S_adopted") else
             local err2
             a, err2 = Sync.spawnEntry(e)
+            tS = os.clock()
             if a then count("ap_S_spawned") applyLoot(a, e.loot) else count("ap_S_failed") err("spawn " .. tostring(err2)) end
+        end
+        -- (where an S's time goes: the adopt scan, the spawn, the loot; over 30 ms)
+        local tE = os.clock()
+        if tE - tA > 0.03 and CoopSyncHitch then
+            CoopSyncHitch.op(string.format("state S %s adopt %.0f spawn+loot %.0f", (e.cls or ""):match("[^%.]+$") or "?", (tS - tA) * 1000, (tE - tS) * 1000), (tE - tA) * 1000)
         end
         if a then
             mapActor(e.key, a)
@@ -2667,6 +2701,7 @@ local function detectDrops()
     local carKinds = {}
     pcall(function()
         local c = FindFirstOf("BP_InventoryManager_C").Inventory_CarEquipped
+        if not (c and c:IsValid()) then return end -- (none in a garage between cars: an error each pass)
         for i = 1, c.Slots:GetArrayNum() do
             local s = c.Slots[i]
             for j = 1, s.Items:GetArrayNum() do
@@ -2777,6 +2812,7 @@ local function coalesce()
 end
 local function clientFrame(deadline)
     local t0 = pstart()
+    evFrame = evFrame + 1
     local got = receive("host.events")
     local tR = (os.clock() - t0) * 1000
     if tR > 30 and CoopSyncHitch then CoopSyncHitch.op("state ev receive", tR) end

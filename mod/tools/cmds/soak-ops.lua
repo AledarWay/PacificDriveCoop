@@ -39,8 +39,11 @@ if op == "where" then
     -- (the character's own health component class is not known: any component with Health in its class name)
     pcall(function()
         local comps = pawn:K2_GetComponentsByClass(StaticFindObject("/Script/Engine.ActorComponent"))
-        comps:ForEach(function(_, e)
-            local c = e:get()
+        -- (a plain Lua table here: comps:ForEach threw every probe, hp stayed "-")
+        local list = {}
+        if type(comps) == "table" then for _, e in ipairs(comps) do list[#list + 1] = e end
+        else comps:ForEach(function(_, e) list[#list + 1] = e:get() end) end
+        for _, c in ipairs(list) do
             local n = c:GetClass():GetFName():ToString()
             if hp == "-" and n:find("Health") then
                 for _, f in ipairs({ "HC_GetHealth", "GetHealth", "GetCurrentHealth" }) do
@@ -49,7 +52,7 @@ if op == "where" then
                 end
                 if hp == "-" then hp = "?" .. n end
             end
-        end)
+        end
     end)
     return string.format("where=%s seat=%s cars=%.0f to_twin=%.0f world=%s hp=%s", w, seat, d, pd, world, hp)
 elseif op == "regroup" then

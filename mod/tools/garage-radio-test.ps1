@@ -33,8 +33,10 @@ function Drift($dir) { $g = Ghost $dir; if ($g.track_drift -match '^-?\d+$') { [
 Get-Process PenDriverPro-Win64-Shipping -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2
 & "$t\deploy.ps1"
 "=== 0. both in their garages (sound on), the relays, the lobby's player sync"
-& "$t\start-zone.ps1" -Tag host -Seed 12345 -StopInGarage | Select-Object -Last 1
-& "$t\start-zone.ps1" -Tag client -Seed 777 -StopInGarage | Select-Object -Last 1
+. "$t\boot-lib.ps1" # (the two games boot side by side)
+$boot0 = BootBg start-zone.ps1 "-Tag host -Seed 12345 -StopInGarage"
+$boot1 = BootBg start-zone.ps1 "-Tag client -Seed 777 -StopInGarage"
+BootWait $boot0 | Select-Object -Last 1; BootWait $boot1 | Select-Object -Last 1
 $runId = Get-Date -f HHmmss
 $hchan = "$inst\host\chan-g$runId"; $cchan = "$inst\client\chan-g$runId"
 New-Item -ItemType Directory -Force $hchan, $cchan | Out-Null

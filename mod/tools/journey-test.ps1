@@ -125,9 +125,14 @@ if ($Fps) { $env:COOPTEST_FPS = "$Fps" }
 Log "=== journey: seed $Seed, network $Lag (delay ms, jitter ms, loss %), fps $Fps, $PlayRounds rounds a zone; log $out"
 
 Log "=== 0. both from the advanced save, home to their garages"
-foreach ($x in @(@{ tag = 'host'; chan = $hchan; dir = $hd; port = $Port; name = 'Host' }, @{ tag = 'client'; chan = $cchan; dir = $cd; port = $gPort; name = 'Guest' })) {
+. "$t\boot-lib.ps1" # (the two games boot side by side)
+$pair = @(@{ tag = 'host'; chan = $hchan; dir = $hd; port = $Port; name = 'Host' }, @{ tag = 'client'; chan = $cchan; dir = $cd; port = $gPort; name = 'Guest' })
+foreach ($x in $pair) {
     $env:COOPSYNC_CHAN = P $x.chan; $env:COOPSYNC_NET = "tcp:$($x.port):$($x.name)"
-    & "$t\start-save.ps1" -Tag $x.tag -Save $Save -Slot 9 | Select-Object -Last 1 | ForEach-Object { Log "  $($x.tag): $_" }
+    $x.boot = BootBg start-save.ps1 "-Tag $($x.tag) -Save `"$Save`" -Slot 9"
+}
+foreach ($x in $pair) {
+    BootWait $x.boot | Select-Object -Last 1 | ForEach-Object { Log "  $($x.tag): $_" }
     Log "  $($x.tag): $(Send $x.dir "$run return Run.goHome(false, 0)" -Dev)"
     & "$t\wait-state.ps1" -State 4 -Dir $x.dir -TimeoutSec 240 | Select-Object -Last 1 | ForEach-Object { Log "  $($x.tag): $_" }
 }
@@ -168,8 +173,12 @@ if (-not $script:dead) {
     ToOwnCars
     $gate = Send $hd "for _, e in ipairs(FindAllOf('BP_LevelTransition_EnterExit_C') or {}) do if e:IsValid() and e.ExitActive and not e.IsGarageExit then return e:GetFName():ToString() end end return 'none'"
     Log "  host's exit gate: $gate"
-    Log "  guest: $(DriveInto $cd $gate)"
-    $c = WaitFor $cchan { param($s) $s.state -eq 'zone:_at_the_exit' } 30
+    # (the car put on the gate before the player sat in it went through unnoticed once: up to 3 tries)
+    for ($try = 1; $try -le 3; $try++) {
+        Log "  guest: $(DriveInto $cd $gate) (try $try)"
+        $c = WaitFor $cchan { param($s) $s.state -eq 'zone:_at_the_exit' } 12
+        if ($c.state -eq 'zone:_at_the_exit') { break }
+    }
     Check "zone A's exit: the guest waits for the host there" ($c.state -eq 'zone:_at_the_exit' -and $c.world -eq $worldA) $c.raw
     Log "  host: $(DriveInto $hd $gate)"
     Start-Sleep 6

@@ -42,6 +42,21 @@ function StartInst($tag, $seed, [switch]$Garage) {
     $out | Where-Object { $_ -notmatch '^PID' }
     [int](($out | Where-Object { $_ -match '^PID' }) -replace 'PID ', '')
 }
+# The guest's game boots (menu, new game, garage / its own zone) while the host's starts and settles: nothing of it
+# waits for the host (~45-65 s of every test before, the two one after the other). start-zone in a process of its own.
+$script:guestBoot = $null
+function StartInstBg($tag, $seed, [switch]$Garage) {
+    $o = "$inst\$tag-boot.txt"; Remove-Item $o -ErrorAction SilentlyContinue
+    $a = "-NoProfile -ExecutionPolicy Bypass -File `"$t\start-zone.ps1`" -Tag $tag -Seed $seed" + $(if ($Garage) { " -StopInGarage" } else { "" })
+    $script:guestBoot = @{ p = (Start-Process powershell -ArgumentList $a -WindowStyle Hidden -PassThru -RedirectStandardOutput $o); o = $o }
+}
+function WaitInstBg() {
+    $b = $script:guestBoot; $script:guestBoot = $null
+    $b.p.WaitForExit()
+    $out = @(Get-Content $b.o -ErrorAction SilentlyContinue)
+    $out | Where-Object { $_ -notmatch '^PID' }
+    [int](($out | Where-Object { $_ -match '^PID' }) -replace 'PID ', '')
+}
 
 if ($Net) {
     $runId = Get-Date -Format "yyyyMMdd-HHmmss"
@@ -57,6 +72,7 @@ if ($Net) {
 $hostPid = 0
 if (-not $ReuseHost) {
     Get-Process PenDriverPro-Win64-Shipping -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 3
+    if ($GuestJoin) { StartInstBg client $GuestSeed -Garage } else { StartInstBg client 999 }
     if ($HostSave) {
         $out = & "$t\start-save.ps1" -Tag host -Save $HostSave -Slot $HostSlot
         $out | Where-Object { $_ -notmatch '^PID' }
@@ -65,6 +81,7 @@ if (-not $ReuseHost) {
         $r = StartInst host 12345; $r | Select-Object -SkipLast 1; $hostPid = $r[-1]
     }
 }
+$hostZoneAt = Get-Date
 "host: " + (WaitStable $hd)
 "host export: " + (Send $hd "$lib return CoopSync.export('$($hd.Replace('\','/'))/spawnlist.tsv')")
 "host snapshot: " + (Snap $hd "snapshot.txt")
@@ -86,7 +103,7 @@ if ($GuestJoin) {
     } else {
         "host run descriptor: " + (Send $hd "$run return Run.publish('$($hd.Replace('\','/'))/host-run.txt')")
     }
-    $r = StartInst client $GuestSeed -Garage; $r | Select-Object -SkipLast 1; $clientPid = $r[-1]
+    $r = if ($script:guestBoot) { @(WaitInstBg) } else { @(StartInst client $GuestSeed -Garage) }; $r | Select-Object -SkipLast 1; $clientPid = $r[-1]
     "guest in its garage: " + (Send $cd "$run return Run.where() .. ' carries ' .. Run.inventory()")
     "guest car before the run: " + (Send $cd "$run return Run.carState('$($cd.Replace('\','/'))/car-before.txt')")
     $desc = if ($Net) { "$cchan\inbox\host-run.txt" } else { Copy-Item "$hd\host-run.txt" "$cd\host-run.txt" -Force; "$cd\host-run.txt" }
@@ -126,9 +143,11 @@ if ($GuestJoin) {
         }
     }
 } else {
-    $r = StartInst client 999; $r | Select-Object -SkipLast 1; $clientPid = $r[-1]
+    $r = if ($script:guestBoot) { @(WaitInstBg) } else { @(StartInst client 999) }; $r | Select-Object -SkipLast 1; $clientPid = $r[-1]
+    # (booted beside the host: in its zone since the host's own arrival - its settling counted from there)
+    if ($hostZoneAt) { $script:clientMinSec = [math]::Max(0, 30 - [int]((Get-Date) - $hostZoneAt).TotalSeconds) }
 }
-"client: " + (WaitStable $cd)
+"client: " + (WaitStable $cd $(if ($null -ne $script:clientMinSec) { $script:clientMinSec } else { 30 }))
 if ($Net) {
     $inboxList = "$cchan\inbox\host-spawnlist.tsv"
     $t0 = Get-Date; while (-not (Test-Path $inboxList) -and ((Get-Date) - $t0).TotalSeconds -lt 60) { Start-Sleep 1 }

@@ -96,7 +96,16 @@ local function text(tree, s, font, color)
     local t = new("TextBlock", tree)
     t:SetText(FText(s))
     if font then pcall(function() t:SetFont(font) end) end
-    if color then pcall(function() t:SetColorAndOpacity(color) end) end
+    -- (the game's widget's FSlateColor as a plain table: passed as is, UE4SS threw "Can't copy struct of type
+    -- LinearColor into SlateColor" - 20-48 times a session under pcall, 2026-11-13)
+    if color then
+        local plain
+        pcall(function()
+            local c = color.SpecifiedColor or color
+            plain = { SpecifiedColor = { R = c.R, G = c.G, B = c.B, A = c.A }, ColorUseRule = 0 }
+        end)
+        if plain and plain.SpecifiedColor.R then pcall(function() t:SetColorAndOpacity(plain) end) end
+    end
     return t
 end
 

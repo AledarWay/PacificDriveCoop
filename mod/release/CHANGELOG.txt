@@ -42,6 +42,11 @@ Things picked up and dropped:
   guest has less time to pick up the same thing again.
 - What the host drops shows for the guest sooner (0.7 s instead of 1.4 s). While a thrown item is moving, its
   position goes to the guest 10 times a second instead of once a second.
+- A dropped or thrown item (or a hazard) the local player is not holding settles and stops moving on its own once it
+  follows the other side's position, instead of jittering with its own physics forever. A check in that switch
+  always failed, so it never actually ran.
+- During a long session, fewer duplicate imports when re-entering a zone the guest already has from the host: an
+  actor that already holds the host's contents is reused instead of spawned again.
 Abandoned cars' parts:
 - The guest can saw and break an abandoned car's parts. Before, the guest's saw took the white bar and the red one
   never came, so the part never broke off: the guest's copies of the host's parts were never set up to break.
@@ -161,8 +166,15 @@ is set up again); the car storage test opens the other's trunk box the game's wa
 door on both sides, the driver's door with the other at the wheel, the doorway of a taken-off door, the door shutting
 once); a new trunk test (the other's lid opened and shut four times, the owner having been at the other's car); the
 garage-seat test checks which door opens and where the player stands; the radio test has a radio in each car;
-the car controls test has each player in the other's car.
+the car controls test has each player in the other's car; a new car-switch test has both players cycle their own
+car, the other's, their own again and the other's again, comparing every part's health, fuel, battery, lights and
+doors each time.
 Known issues:
+- Getting into the other player's car a second time can fail to seat the player (the game's own exit fires right
+  after the entry, as if getting out again) - found by a new test that switches cars back and forth; not yet fixed.
+- An abandoned car's parts can still show different health between host and guest for a while after loading a zone
+  (the host's resync, due 3 s in, does not always catch every part in time); saws itself through correctly once it
+  has.
 - The anchor in both players' hands is still not reproduced in the tests (a stable anchor on a pedestal, the
   game's own long grab on the other side gives nobody an item). Please send a report right after it happens.
 - The ARC map's north: both games have the same north in the tests, yet the owner saw the ARC maps turned 90 degrees

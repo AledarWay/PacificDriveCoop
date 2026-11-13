@@ -5,6 +5,34 @@
 -- menu (pause menu item) and the F7 panel (lobby + debug actions, a fallback when the pause-menu UI breaks).
 -- Tests still start the sync modules by commands (CoopDev).
 CoopSyncTraceTag = "sync"
+-- (test games only: every failed pcall counted by its message into <COOPDEV_DIR>/pcall-errors.txt - a UE4SS call that
+-- throws, repeated, degrades the Lua state even caught; a guest crashed once on a freed object, 2026-11-13)
+do
+    local dir = os.getenv("COOPDEV_DIR")
+    if dir and dir ~= "" and not CoopSyncPcallCounts then
+        local raw, counts, last = pcall, {}, os.clock()
+        CoopSyncPcallCounts = counts
+        local function note(ok, ...)
+            if not ok then
+                local m = tostring((...)):gsub("0x%x+", "0x"):gsub("_%d%d%d%d+", "_N"):sub(1, 160)
+                counts[m] = (counts[m] or 0) + 1
+                if os.clock() - last > 15 then
+                    last = os.clock()
+                    local f = io.open(dir .. "/pcall-errors.txt", "wb")
+                    if f then
+                        local rows = {}
+                        for k, n in pairs(counts) do rows[#rows + 1] = { k, n } end
+                        table.sort(rows, function(a, b) return a[2] > b[2] end)
+                        for _, r in ipairs(rows) do f:write(r[2], "\t", r[1], "\n") end
+                        f:close()
+                    end
+                end
+            end
+            return ok, ...
+        end
+        pcall = function(f, ...) return note(raw(f, ...)) end
+    end
+end
 require("trace") -- (first: it wraps the game-thread loops for a crash trace a test can switch on)
 CoopSync = require("spawnsync")
 CoopSyncRunMod = require("runsync")

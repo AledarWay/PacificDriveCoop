@@ -87,10 +87,7 @@ elseif op == "twinmove" or op == "twinputat" then
     if #list == 0 then return "none" end
     local it = list[1]:get()
     local w, h = 0, 0
-    local size = {}
-    pcall(function() lay:GetSize(size) end)
-    w, h = size.Width or 0, size.Height or 0
-    if w == 0 then pcall(function() w, h = lay:GetSize() end) end
+    -- (the layout's GetSize threw either way it was called - 2 / 0 of its 2 out parameters: the 12 x 12 walk below)
     from:RemoveItem(it)
     for y = ((h or 0) > 0 and h or 12) - 1, 0, -1 do
         for x = ((w or 0) > 0 and w or 12) - 1, 0, -1 do

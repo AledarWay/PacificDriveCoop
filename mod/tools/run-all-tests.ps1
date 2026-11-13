@@ -77,6 +77,7 @@ $tests = @(
     @{ name = 'esc';           quick = $true;  cmd = { & "$t\esc-test.ps1" } },
     @{ name = 'contact';       quick = $true;  cmd = { & "$t\contact-test.ps1" } },
     @{ name = 'cars';          quick = $true;  cmd = { & "$t\cars-test.ps1" } },
+    @{ name = 'carswitch';     quick = $false; cmd = { & "$t\carswitch-test.ps1" } },
     @{ name = 'f7';            quick = $true;  cmd = { & "$t\f7-test.ps1" } },
     @{ name = 'revisit';       quick = $true;  cmd = { & "$t\revisit-test.ps1" } },
     @{ name = 'journey';       quick = $false; cmd = { & "$t\journey-test.ps1" } },

@@ -777,7 +777,7 @@ function M.same(a, loot)
     local ok, s = pcall(M.serialize, a)
     if not ok or s ~= loot then return false end
     if loot:sub(1, 2) == "C|" then pcall(function() a.RolledOnOpenItems = true end) end
-    stats.same = (stats.same or 0) + 1
+    if stats then stats.same = (stats.same or 0) + 1 end
     return true
 end
 function M.resetStats()

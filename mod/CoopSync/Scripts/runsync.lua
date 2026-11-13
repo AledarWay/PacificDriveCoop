@@ -669,6 +669,7 @@ function M.insureCar(path)
         local counts = {}
         pcall(function()
             local c = im[field]
+            if not (c and c:IsValid()) then return end -- (a null container: UE4SS threw on its Slots)
             for i = 1, c.Slots:GetArrayNum() do
                 local s = c.Slots[i]
                 for j = 1, s.Items:GetArrayNum() do local p = objPath(s.Items[j].Archetype) counts[p] = (counts[p] or 0) + 1 end
@@ -726,6 +727,7 @@ function M.restoreCar(path)
         local have = {}
         pcall(function()
             local c = im[field]
+            if not (c and c:IsValid()) then return end -- (a null container: UE4SS threw on its Slots)
             for i = 1, c.Slots:GetArrayNum() do
                 local s = c.Slots[i]
                 for j = 1, s.Items:GetArrayNum() do local p = objPath(s.Items[j].Archetype) have[p] = (have[p] or 0) + 1 end
@@ -830,6 +832,7 @@ function M.inventory()
     for _, field in ipairs({ "Inventory_Player", "Inventory_PlayerHand" }) do
         pcall(function()
             local c = im[field]
+            if not (c and c:IsValid()) then return end -- (a null container: UE4SS threw on its Slots)
             for i = 1, c.Slots:GetArrayNum() do
                 local slot = c.Slots[i]
                 for j = 1, slot.Items:GetArrayNum() do
