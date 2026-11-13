@@ -2233,8 +2233,9 @@ function WRK.tick()
             for _, x in ipairs(list) do
                 local k, e = x[1], x[2]
                 local okA, r = pcall(WRK.apply, e.t)
-                WRK.missed[k] = (okA and r == "nopart" and now - e.at < 60) and e or nil
-                if okA and r ~= "nopart" then WRK.lateApplied = (WRK.lateApplied or 0) + 1 end
+                local stillMissing = r == "nopart" or r == "unmapped"
+                WRK.missed[k] = (okA and stillMissing and now - e.at < 60) and e or nil
+                if okA and not stillMissing then WRK.lateApplied = (WRK.lateApplied or 0) + 1 end
             end
         end
         -- the guest's parts are the host's attached by lootsync (AttachTemplatePart), never set up to break by the
@@ -2261,7 +2262,18 @@ end
 -- the other side's values onto this side's copy of the part (key: the host's wreck key)
 function WRK.apply(t)
     local w = role == "host" and Sync.deref(t[2]) or resolve(t[2])
-    if not w then return "unmapped" end
+    if not w then
+        -- (the wreck itself not synced here yet, not just one of its parts: the host's full list sweeps every
+        -- LootableTemplatePart in the WORLD, not only the one nearby, so most of a sweep can name wrecks this side
+        -- has not imported. Unlike "nopart" this never retried on its own, so such a wreck's health stayed wrong
+        -- until the next 30 s broadcast - and could miss that one too; part-break-test 2026-11-13)
+        if role ~= "host" then
+            local k2 = "U:" .. t[2] .. "\t" .. t[3]
+            local old = WRK.missed[k2]
+            WRK.missed[k2] = { t = t, at = old and old.at or os.clock() }
+        end
+        return "unmapped"
+    end
     local h, b = tonumber(t[4]), tonumber(t[5])
     if not (h and b) then return "bad" end
     -- (parts by wreck address and socket, built at most every 5 s or when one is missing: the host's full list is

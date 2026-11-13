@@ -55,9 +55,17 @@ Check "guest: every wreck part can break (CanBeBreaking, as on the host)" ($cba 
 $hp = Parts $hd; $gp = Parts $cd
 $same = $hp.Count -gt 0 -and @($hp.Keys | Where-Object { -not $gp.ContainsKey($_) -or [math]::Abs($gp[$_].h - $hp[$_].h) -gt 0.2 }).Count -eq 0
 Check "guest: the wreck's parts have the host's health" $same "host $(Fmt $hp) | guest $(Fmt $gp)"
+if (-not $same) {
+    $diag = "local W = CoopSyncWreck local out = {} out[#out+1] = string.format('sent=%s applied=%s lateApplied=%s breakable=%s', tostring(W.sent), tostring(W.applied), tostring(W.lateApplied), tostring(W.breakable)) local n = 0 for k, e in pairs(W.missed or {}) do n = n + 1 if n <= 10 then out[#out+1] = 'missed:' .. k .. '@' .. tostring(os.clock() - e.at) end end out[#out+1] = 'missed_total=' .. n local idxN = 0 for k in pairs(W.index or {}) do idxN = idxN + 1 end out[#out+1] = 'index_size=' .. idxN return table.concat(out, ' | ')"
+    "  DIAG host: " + (Send $hd $diag)
+    "  DIAG guest: " + (Send $cd $diag)
+}
 
-# the two parts with the least health (doors, panels: a few hits)
-$order = @($hp.Keys | Where-Object { $hp[$_].h -gt 0 } | Sort-Object { $hp[$_].h })
+# the two parts with the least health, doors / panels / the trunk only (a few hits of WP_DMG=5 breaks them off at a
+# predictable pace); a wheel's own random roll can start as low as ~13, and 1-2 hits straight through it before the
+# loop below ever checks - the "red bar filling" moment this step means to catch never happens (2026-11-13)
+$order = @($hp.Keys | Where-Object { $hp[$_].h -gt 0 -and $_ -match '^(Door|Panel|Trunk)' } | Sort-Object { $hp[$_].h })
+if ($order.Count -lt 2) { $order = @($hp.Keys | Where-Object { $hp[$_].h -gt 0 } | Sort-Object { $hp[$_].h }) } # this wreck has too few (wheels back in, as before)
 $p1, $p2 = $order[0], $order[1]
 "  parts: $p1 (guest saws it off), $p2 (host saws it)"
 

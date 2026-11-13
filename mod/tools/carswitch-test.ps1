@@ -44,22 +44,28 @@ function Moved($a, $b) { $p = $a -split ','; $q = $b -split ','; [math]::Round([
 function E($dir, [string]$pre) { Send $dir "$pre $(Get-Content "$t\cmds\car-e.lua" -Raw)" }
 # look at the other's twin driver door until the game highlights it, then E (cars-test's Tap, trimmed to door 1 only)
 $look = Get-Content "$t\cmds\twin-parts-look.lua" -Raw
-function TapDriver($dir) {
+# -OnlyIfLit: no blind E when the aim missed (cars-test's own safeguard - an E on something else got the host into
+# the car and the next spot's try started seated, 2026-11-10); returns whether it actually found and tapped the door
+function TapDriver($dir, [switch]$OnlyIfLit) {
     $h = ''
     foreach ($dz in 0, 20, -20, 40, -40) {
-        Send $dir "LOOK_OWN = false LOOK_DZ = $dz LOOK_SLOT = 'DoorsFL' $look" | Out-Null
-        Start-Sleep -Milliseconds 700
         Send $dir "LOOK_OWN = false LOOK_DZ = $dz LOOK_SLOT = 'DoorsFL' $look" | Out-Null
         Start-Sleep -Milliseconds 500
         $h = Send $dir "local g, n = CoopPlayers.twinModule().highlightedDoor() return tostring(n)"
         if ($h -match "^(OK )?1\s*$") { break }
     }
+    if ($OnlyIfLit -and $h -notmatch "^(OK )?1\s*$") { return @{ ok = $false; msg = "no E (highlighted: $($h.Trim()))" } }
     Send $dir "local p = FindFirstOf('PlayerController').Pawn p['Command Interact'](p, true) Dev.after(100, function() local q = FindFirstOf('PlayerController').Pawn q['Command Interact'](q, false) end) return 'E'" | Out-Null
-    "tap driver door (highlighted: $($h.Trim()))"
+    @{ ok = $true; msg = "tap driver door (highlighted: $($h.Trim()))" }
 }
-# walk up to the other's twin's driver door first (the game's highlight needs to be in range)
-function WalkToTwinDoor($dir) {
-    Send $dir "$(Twin) local KML = StaticFindObject('/Script/Engine.Default__KismetMathLibrary') local w = KML:TransformLocation(tw:GetTransform(), { X = 100, Y = -230, Z = 0 }) local p = FindFirstOf('PlayerController').Pawn p:K2_SetActorLocation({ X = w.X, Y = w.Y, Z = w.Z + 100 }, false, {}, true) return 'there'"
+# walk up to the other's car's driver door, from its known parked (home) transform - not the twin's live transform:
+# that depends on this side's twin catching up to a teleport that may have just happened, and twin doors get muted/
+# rebuilt now and then, which can shift what tw:GetTransform() answers at the exact moment asked. $home is the car's
+# own "X,Y,Z,Yaw" (CarHome); a second, different local spot as a fallback (cars-test 8b: the first aim misses now
+# and then, a slope or just camera jitter)
+function WalkToTwinDoor($dir, [string]$home, [double]$lx = 100, [double]$ly = -230) {
+    $p = $home -split ','
+    Send $dir "local X, Y, Z, Yaw = $($p[0]), $($p[1]), $($p[2]), $($p[3]) local yaw = math.rad(Yaw) local lx, ly = $lx, $ly local wx = X + lx * math.cos(yaw) - ly * math.sin(yaw) local wy = Y + lx * math.sin(yaw) + ly * math.cos(yaw) local p = FindFirstOf('PlayerController').Pawn p:K2_SetActorLocation({ X = wx, Y = wy, Z = Z + 100 }, false, {}, true) return 'there'"
 }
 function StepAwayFromOwn($dir) {
     Send $dir "local p = FindFirstOf('PlayerController').Pawn local car = CoopPlayers.twinModule().ownCar() local l, r = car:K2_GetActorLocation(), car:GetActorRightVector() p:K2_SetActorLocation({ X = l.X - r.X * 500, Y = l.Y - r.Y * 500, Z = l.Z + 80 }, false, {}, true) return 'away'"
@@ -105,12 +111,29 @@ function CompareSync($label, $ownRaw, $twinRaw) {
 function EnterOwn($dir, $who) {
     if ((InCar $dir) -ne 'true') { "  $who in (own): " + (Send $dir "return CoopPlayers.botEnterCar()"); Start-Sleep 3 }
 }
-function ExitOwn($dir, $who) { "  $who out (own): " + (E $dir "CE_CAR = 'own' CE_HL = 'ExitDoor'"); Start-Sleep 4 }
-function EnterOther($dir, $who) {
-    WalkToTwinDoor $dir | Out-Null; Start-Sleep 1
-    "  $who -> other: " + (TapDriver $dir); Start-Sleep 5
+# the native ExitDoor E sometimes opens the door but does not let go (still attached a moment later - caught once
+# live: the guest stayed in its own car, which then blocked both sides' phase-4 entries since the game correctly
+# saw that seat as taken); press again until InCar is actually false
+function ExitCar($dir, [string]$kind, $who) {
+    for ($i = 0; $i -lt 3; $i++) {
+        E $dir "CE_CAR = '$kind' CE_HL = 'ExitDoor'" | Out-Null
+        Start-Sleep 4
+        if ((InCar $dir) -eq 'false') { return "  $who out ($kind), try $($i + 1)" }
+    }
+    "  $who STILL IN after 3 exit tries ($kind)"
 }
-function ExitOther($dir, $who) { "  $who out (other): " + (E $dir "CE_CAR = 'twin' CE_HL = 'ExitDoor'"); Start-Sleep 4 }
+function ExitOwn($dir, $who) { ExitCar $dir 'own' $who }
+function EnterOther($dir, $who, [string]$otherHome) {
+    $r = $null
+    foreach ($spot in @(100, -230), @(60, -190)) {
+        WalkToTwinDoor $dir $otherHome $spot[0] $spot[1] | Out-Null; Start-Sleep 1
+        $r = TapDriver $dir -OnlyIfLit
+        if ($r.ok) { break }
+    }
+    if (-not $r.ok) { $r = TapDriver $dir } # both spots missed: tap anyway so the check below reports it plainly
+    "  $who -> other: $($r.msg)"; Start-Sleep 5
+}
+function ExitOther($dir, $who) { ExitCar $dir 'twin' $who }
 function ToggleLights($dir) { Send $dir "local m = FindFirstOf('BP_CarManager_C') m.NewCarActor:ToggleHeadlights() return 'toggled'" | Out-Null }
 function ShiftAndDrive($dir, $seconds) {
     Send $dir "local m = FindFirstOf('BP_CarManager_C') m.CarIgnitionState = 2 m.MyCarGearBox = 0 return 'drive'" | Out-Null
@@ -125,11 +148,29 @@ function ShiftAndDrive($dir, $seconds) {
 # the car, like cars-test's) always finds it on the same flat ground, never wherever it got driven to or rolled on
 # a slope - the one thing that made the entries flaky on the first try (carswitch-test 2026-11-13)
 function CarHome($dir) { Send $dir "local c = CoopPlayers.twinModule().ownCar() local l, r = c:K2_GetActorLocation(), c:K2_GetActorRotation() return string.format('%.1f,%.1f,%.1f,%.2f', l.X, l.Y, l.Z, r.Yaw)" }
+# physics off for the teleport itself (the setup's own placement trick): landing with it on could bump something at
+# the destination and knock a door off (CoopPlayers.ghostInfo's bumps=1, seen live - a car's driver's door turned
+# into an EmptyDoor between phase 2 and phase 4, 2026-11-13)
 function ParkHome($dir, [string]$home) {
     $p = $home -split ','
-    Send $dir "local c = CoopPlayers.twinModule().ownCar() c:K2_SetActorLocationAndRotation({ X = $($p[0]), Y = $($p[1]), Z = $([double]$p[2] + 30) }, { Pitch = 0, Yaw = $($p[3]), Roll = 0 }, false, {}, true) pcall(function() c.RootComponent:SetPhysicsLinearVelocity({ X = 0, Y = 0, Z = 0 }, false, FName('None')) end) return 'parked'" | Out-Null
+    Send $dir "local c = CoopPlayers.twinModule().ownCar() c.RootComponent:SetSimulatePhysics(false) c:K2_SetActorLocationAndRotation({ X = $($p[0]), Y = $($p[1]), Z = $([double]$p[2] + 30) }, { Pitch = 0, Yaw = $($p[3]), Roll = 0 }, false, {}, true) pcall(function() c.RootComponent:SetPhysicsLinearVelocity({ X = 0, Y = 0, Z = 0 }, false, FName('None')) end) c.RootComponent:SetSimulatePhysics(true) return 'parked'" | Out-Null
 }
 $hHome = CarHome $hd; $cHome = CarHome $cd
+# a car's driver's door can come up as an EmptyDoor slot - no door, no highlight, no way in there: its random spawn,
+# or knocked off along the way (cars-test's own long-known case: "the guest's car may have no driver's door"; here,
+# confirmed knocked off BETWEEN phase 2 and phase 4 by a physics bump - CoopPlayers.ghostInfo's bumps=1 - most likely
+# ParkHome's teleport landing the car on something). Checked fresh before EACH phase, not once: a door that was
+# there in phase 2 is not guaranteed to still be there in phase 4 (carswitch-test 2026-11-13: chased a phantom
+# "can't re-enter" failure here before finding this - skip that side's "other car" steps this phase instead of
+# reporting a false switching bug).
+function HasDriverDoor($dir) {
+    $c = Send $dir "local T = CoopPlayers.twinModule() local d = T.door(T.ownCar(), 1) return d and d:GetClass():GetFName():ToString() or '-'"
+    $c -match 'Door_Base'
+}
+$hostCanEnterGuest = HasDriverDoor $cd
+$guestCanEnterHost = HasDriverDoor $hd
+if (-not $hostCanEnterGuest) { "  NOTE: the guest's car has no driver's door this run - skipping the host's entry into it" }
+if (-not $guestCanEnterHost) { "  NOTE: the host's car has no driver's door this run - skipping the guest's entry into it" }
 
 "=== phase 1: each side in its OWN car - baseline metrics, both ways"
 EnterOwn $hd 'host'; EnterOwn $cd 'guest'
@@ -142,24 +183,23 @@ CompareSync "phase 1, guest's car" $c1 $h1w
 ExitOwn $hd 'host'; ExitOwn $cd 'guest'
 
 "=== phase 2: each side in the OTHER's car for the first time"
-EnterOther $hd 'host'; EnterOther $cd 'guest'
-$gh = Ghost $hd; $gc = Ghost $cd
-Check "the host sits at the guest car's wheel" ($gh.in_ghost -eq 'G' -and $gh.seat -eq '1') $gh.raw
-Check "the guest sits at the host car's wheel" ($gc.in_ghost -eq 'H' -and $gc.seat -eq '1') $gc.raw
+if ($hostCanEnterGuest) { EnterOther $hd 'host' $cHome }
+if ($guestCanEnterHost) { EnterOther $cd 'guest' $hHome }
+if ($hostCanEnterGuest) { $gh = Ghost $hd; Check "the host sits at the guest car's wheel" ($gh.in_ghost -eq 'G' -and $gh.seat -eq '1') $gh.raw }
+if ($guestCanEnterHost) { $gc = Ghost $cd; Check "the guest sits at the host car's wheel" ($gc.in_ghost -eq 'H' -and $gc.seat -eq '1') $gc.raw }
 # the own car's lights must not follow the driver into the other's car (cars-test item 3, from the driver's seat)
-$hOwnLit0 = (MetricLine (Metrics $hd 'own')).lit; $cOwnLit0 = (MetricLine (Metrics $cd 'own')).lit
-ToggleLights $hd; ToggleLights $cd # toggles the OTHER's lights now (the car under the seat)
+if ($hostCanEnterGuest) { $hOwnLit0 = (MetricLine (Metrics $hd 'own')).lit; ToggleLights $hd } # toggles the OTHER's lights (the car under the seat)
+if ($guestCanEnterHost) { $cOwnLit0 = (MetricLine (Metrics $cd 'own')).lit; ToggleLights $cd }
 Start-Sleep 3
-$hOwnLit1 = (MetricLine (Metrics $hd 'own')).lit; $cOwnLit1 = (MetricLine (Metrics $cd 'own')).lit
-Check "toggling the other's lights from its wheel leaves the host's own car's lights alone" ($hOwnLit0 -eq $hOwnLit1) "own lit $hOwnLit0 -> $hOwnLit1"
-Check "toggling the other's lights from its wheel leaves the guest's own car's lights alone" ($cOwnLit0 -eq $cOwnLit1) "own lit $cOwnLit0 -> $cOwnLit1"
-ShiftAndDrive $hd 4; ShiftAndDrive $cd 4
-Start-Sleep 2
-$h2 = Metrics $hd 'own'; $c2 = Metrics $cd 'own'
-$h2w = Metrics $hd 'twin'; $c2w = Metrics $cd 'twin'
-CompareSync "phase 2, host's car (guest driving it)" $h2 $c2w
-CompareSync "phase 2, guest's car (host driving it)" $c2 $h2w
-ExitOther $hd 'host'; ExitOther $cd 'guest'
+if ($hostCanEnterGuest) { $hOwnLit1 = (MetricLine (Metrics $hd 'own')).lit; Check "toggling the other's lights from its wheel leaves the host's own car's lights alone" ($hOwnLit0 -eq $hOwnLit1) "own lit $hOwnLit0 -> $hOwnLit1" }
+if ($guestCanEnterHost) { $cOwnLit1 = (MetricLine (Metrics $cd 'own')).lit; Check "toggling the other's lights from its wheel leaves the guest's own car's lights alone" ($cOwnLit0 -eq $cOwnLit1) "own lit $cOwnLit0 -> $cOwnLit1" }
+if ($hostCanEnterGuest) { ShiftAndDrive $hd 4 }
+if ($guestCanEnterHost) { ShiftAndDrive $cd 4 }
+Start-Sleep 4 # let the state sync (checked every 1 s) catch up with the wear from driving before comparing
+if ($guestCanEnterHost) { $h2 = Metrics $hd 'own'; $c2w = Metrics $cd 'twin'; CompareSync "phase 2, host's car (guest driving it)" $h2 $c2w }
+if ($hostCanEnterGuest) { $c2 = Metrics $cd 'own'; $h2w = Metrics $hd 'twin'; CompareSync "phase 2, guest's car (host driving it)" $c2 $h2w }
+if ($hostCanEnterGuest) { ExitOther $hd 'host' }
+if ($guestCanEnterHost) { ExitOther $cd 'guest' }
 # each side parks its OWN car back home (the other side just drove it off): phase 4's walk-up-and-tap needs it
 # where it started, not wherever it rolled to or stopped askew
 ParkHome $hd $hHome; ParkHome $cd $cHome
@@ -188,20 +228,24 @@ CompareSync "phase 3, guest's car (re-entered)" $c3 $h3w
 ExitOwn $hd 'host'; ExitOwn $cd 'guest'
 
 "=== phase 4: each side in the OTHER's car a second time - no leftover twin / ghost state from phase 2"
-EnterOther $hd 'host'; EnterOther $cd 'guest'
-$gh = Ghost $hd; $gc = Ghost $cd
-Check "the host sits at the guest car's wheel again (not stuck in a phase-2 ghost state)" ($gh.in_ghost -eq 'G' -and $gh.seat -eq '1') $gh.raw
-Check "the guest sits at the host car's wheel again" ($gc.in_ghost -eq 'H' -and $gc.seat -eq '1') $gc.raw
-ShiftAndDrive $hd 4; ShiftAndDrive $cd 4
-Start-Sleep 2
-$h4 = Metrics $hd 'own'; $c4 = Metrics $cd 'own'
-$h4w = Metrics $hd 'twin'; $c4w = Metrics $cd 'twin'
-CompareSync "phase 4, host's car (guest driving it again)" $h4 $c4w
-CompareSync "phase 4, guest's car (host driving it again)" $c4 $h4w
+$hostCanEnterGuest = HasDriverDoor $cd
+$guestCanEnterHost = HasDriverDoor $hd
+if (-not $hostCanEnterGuest) { "  NOTE: the guest's car has no driver's door by now - skipping the host's entry into it" }
+if (-not $guestCanEnterHost) { "  NOTE: the host's car has no driver's door by now - skipping the guest's entry into it" }
+if ($hostCanEnterGuest) { EnterOther $hd 'host' $cHome }
+if ($guestCanEnterHost) { EnterOther $cd 'guest' $hHome }
+if ($hostCanEnterGuest) { $gh = Ghost $hd; Check "the host sits at the guest car's wheel again (not stuck in a phase-2 ghost state)" ($gh.in_ghost -eq 'G' -and $gh.seat -eq '1') $gh.raw }
+if ($guestCanEnterHost) { $gc = Ghost $cd; Check "the guest sits at the host car's wheel again" ($gc.in_ghost -eq 'H' -and $gc.seat -eq '1') $gc.raw }
+if ($hostCanEnterGuest) { ShiftAndDrive $hd 4 }
+if ($guestCanEnterHost) { ShiftAndDrive $cd 4 }
+Start-Sleep 4 # let the state sync (checked every 1 s) catch up with the wear from driving before comparing
+if ($guestCanEnterHost) { $h4 = Metrics $hd 'own'; $c4w = Metrics $cd 'twin'; CompareSync "phase 4, host's car (guest driving it again)" $h4 $c4w }
+if ($hostCanEnterGuest) { $c4 = Metrics $cd 'own'; $h4w = Metrics $hd 'twin'; CompareSync "phase 4, guest's car (host driving it again)" $c4 $h4w }
 # exactly two cars should still exist on each side - no leaked duplicate twin from four switches
 $cars = (Send $hd "local n = 0 for _, c in ipairs(FindAllOf('BP_PlayerCarNew_C') or {}) do if c:IsValid() and c.RootComponent and c.RootComponent:IsValid() then n = n + 1 end end return n") + '/' + (Send $cd "local n = 0 for _, c in ipairs(FindAllOf('BP_PlayerCarNew_C') or {}) do if c:IsValid() and c.RootComponent and c.RootComponent:IsValid() then n = n + 1 end end return n")
 Check "still exactly two cars on each side after four switches (no leaked duplicate)" ($cars -eq '2/2') "cars host/guest: $cars"
-ExitOther $hd 'host'; ExitOther $cd 'guest'
+if ($hostCanEnterGuest) { ExitOther $hd 'host' }
+if ($guestCanEnterHost) { ExitOther $cd 'guest' }
 
 $hr = Send $hd "return CoopPlayers.report()"; $cr = Send $cd "return CoopPlayers.report()"
 Check "no errors on either side after the whole cycle" ($hr -notmatch 'ERRORS' -and $cr -notmatch 'ERRORS') "host: $hr | guest: $cr"
