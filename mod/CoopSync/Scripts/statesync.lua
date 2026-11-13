@@ -2173,7 +2173,14 @@ WRK.HC = "/Game/Gameplay/Inventory/GenericItemProperties/Components/BP_HealthCom
 function WRK.hook()
     WRK.notify = function(comp)
         local p = comp:GetOwner()
-        if p and p:IsValid() and p:IsA(WRK.partCls) then WRK.dirty[p:GetAddress()] = { p = p, at = os.clock() } end
+        if p and p:IsValid() and p:IsA(WRK.partCls) then
+            local w = p:GetAttachParentActor()
+            WRK.dirty[p:GetAddress()] = {
+                p = p, at = os.clock(),
+                wkey = (w and w:IsValid()) and tostring(w:GetAddress()) or nil,
+                sock = p.MySocket:ToString(),
+            }
+        end
     end
     if WRK.hooked then return end
     if not isFunction(WRK.HC .. ":Process Damage Message") then error("no Process Damage Message") end
@@ -2216,12 +2223,21 @@ function WRK.tick()
     local now = os.clock()
     -- (the hit's effect shows on the next frames: a hit part is read for WATCH_S after its last hit)
     for addr, e in pairs(WRK.dirty) do
-        if not e.p:IsValid() or now - e.at > WRK.WATCH_S then WRK.dirty[addr] = nil
+        if not e.p:IsValid() then
+            -- it broke off from this side's own hits (never from WRK.apply's SetHealth/SetBreakHealth, which
+            -- doesn't fire Process Damage Message): lootsync must not reattach it from a stale host spec
+            -- before the host's own break - still pending the WPH round trip - catches up (part-break-test
+            -- "the part broke off" failing with a fresh random health instead of staying gone, 2026-11-14)
+            if e.wkey and e.sock then WRK.brokenHere[e.wkey .. "\t" .. e.sock] = now end
+            WRK.dirty[addr] = nil
+        elseif now - e.at > WRK.WATCH_S then
+            WRK.dirty[addr] = nil
         else
             WRK.mine[addr] = now
             pcall(WRK.sendPart, e.p, false)
         end
     end
+    for k, at in pairs(WRK.brokenHere) do if now - at > 20 then WRK.brokenHere[k] = nil end end
     if role ~= "host" then
         -- (lines whose part was not there yet - lootsync attaches the host's parts over a few frames; part-break-test
         -- 2026-11-09: two parts kept the guest's own health until the host's next full list 30 s later): once a
@@ -2303,6 +2319,13 @@ function WRK.apply(t)
     end
     if role ~= "host" then local old = WRK.missed[k] WRK.missed[k] = { t = t, at = old and old.at or os.clock() } end
     return "nopart"
+end
+-- lootsync: is `socket` on wreck `a` one this side just broke off itself, within the last 20 s (still
+-- waiting on the host's own break to catch up)? Keyed by the wreck's own address, so it needs no host/guest
+-- key translation.
+function WRK.brokenLocally(a, socket)
+    if not (a and a:IsValid()) then return false end
+    return WRK.brokenHere[tostring(a:GetAddress()) .. "\t" .. socket] ~= nil
 end
 end
 
@@ -2987,6 +3010,7 @@ function M.start(syncModule, r, channelDir, hostListPath)
     -- (the host's first full list 3 s in: the guest imported the host's parts before this start, with its own health)
     W.dirty, W.mine, W.last, W.index, W.allAt, W.sent, W.applied = {}, {}, {}, nil, os.clock() - W.ALL_S + 3, 0, 0
     W.sweepAt, W.breakable, W.missed, W.missedAt, W.lateApplied = -1e9, 0, {}, nil, 0
+    W.brokenHere = {}
     local okK, eK = pcall(hookKnocks)
     if not okK then err("knock hooks: " .. tostring(eK)) end
     if not okX then err("exit hook: " .. tostring(eX)) end

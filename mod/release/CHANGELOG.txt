@@ -56,6 +56,10 @@ Abandoned cars' parts:
   every wreck's parts in the zone, not just the nearby one, and a part belonging to a wreck the guest had not
   loaded yet was silently dropped instead of tried again. It is tried again now, like a part on an already-known
   wreck always was.
+- Sawing a part all the way off no longer brings it back with a fresh random health a moment later on the side
+  that sawed it. That side's own break could run ahead of the host's (health and the wreck's part list sync on
+  separate, differently-timed channels), and a part this side just broke off itself is no longer reattached
+  from the host's still-stale list until the host's own break catches up.
 - The abandoned cars' doors, panels, hood and trunk have the host's paint on the guest. Before, they all stood in
   the same orange-blue on the guest (only the body had the host's paint): the guest's copies of the parts were
   never painted.
@@ -174,10 +178,6 @@ the car controls test has each player in the other's car; a new car-switch test 
 car, the other's, their own again and the other's again, comparing every part's health, fuel, battery, lights and
 doors each time.
 Known issues:
-- Sawing an abandoned car's part all the way off can bring it back with a fresh random health a moment later on the
-  side that sawed it: that side's own break can run ahead of the host's, so the part's old slot still looks
-  occupied to a separate, older part of the mod that reattaches a wreck's parts. Rare; the other side still sees it
-  gone for good.
 - The anchor in both players' hands is still not reproduced in the tests (a stable anchor on a pedestal, the
   game's own long grab on the other side gives nobody an item). Please send a report right after it happens.
 - The ARC map's north: both games have the same north in the tests, yet the owner saw the ARC maps turned 90 degrees

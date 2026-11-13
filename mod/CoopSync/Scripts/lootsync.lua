@@ -665,8 +665,17 @@ function M.applyDiff(a, loot)
             end
         end
     end
+    -- a socket this side just broke off itself stays empty even though the host's spec still has it: the
+    -- host hasn't broken its own copy yet (WRK's health sync is a separate, usually-faster channel than this
+    -- one), and reattaching it here would hand it a fresh random health a moment before the host catches up
+    -- and the two specs agree again (part-break-test "the part broke off", 2026-11-14)
+    local WRK = CoopSyncWreck
     local missingSpec = {}
-    for socket, ps in pairs(want) do if not have[socket] then missingSpec[#missingSpec + 1] = ps end end
+    for socket, ps in pairs(want) do
+        if not have[socket] and not (WRK and WRK.brokenLocally and WRK.brokenLocally(a, socket)) then
+            missingSpec[#missingSpec + 1] = ps
+        end
+    end
     if #missingSpec > 0 then
         -- attach only the missing parts: reuse applyTemplate's attach loop on a reduced spec
         local keep = templateParts
