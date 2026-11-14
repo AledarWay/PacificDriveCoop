@@ -40,6 +40,16 @@ function M.op(label, ms)
     M.stats.ops = M.stats.ops + 1
     write(string.format("O\t%s\t%s\t%.0f", stamp(), label, ms))
 end
+-- Crumbs (a guest's game crashed 2-3 s after a join's sync started, twice, 2026-11-14 - in a game function called from
+-- the mod's Lua, no Lua stack in the dump): while armed (M.crumbsFor), each step's name is written to <chan>/crumb.txt
+-- before it runs - the file holds the step the game died in. Only for a few seconds: a file write per step.
+local crumbUntil, crumbPath = -1, nil
+function M.crumbsFor(s) crumbUntil = os.clock() + s end
+function M.crumb(label)
+    if os.clock() > crumbUntil or not crumbPath then return end
+    local f = io.open(crumbPath, "wb")
+    if f then f:write(os.date("%H:%M:%S"), string.format(".%03d ", math.floor((os.clock() % 1) * 1000)), label, "\n") f:close() end
+end
 -- a line of its own (a job's summary): N <time> <text>
 function M.note(text) write(string.format("N\t%s\t%s", stamp(), text)) end
 -- time f as an operation: returns f's results (pcall-style: ok, ...)
@@ -93,6 +103,7 @@ end
 
 function M.start(chan)
     path = chan .. "/hitches.log"
+    crumbPath = chan .. "/crumb.txt"
     os.remove(path .. ".2") os.rename(path .. ".1", path .. ".2") os.rename(path, path .. ".1") -- (the two before: main.lua)
     local f = io.open(path, "wb")
     if f then f:write("# CoopSync hitch log, game start ", os.date("%Y-%m-%d %H:%M:%S"), "\n") f:close() end

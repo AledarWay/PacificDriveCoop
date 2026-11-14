@@ -1063,7 +1063,7 @@ function M.spawn(loc, rot, equip)
     if not im then return nil, "no inventory manager" end
     local xf = KML:MakeTransform(loc, rot, { X = 1, Y = 1, Z = 1 })
     local t0 = os.clock()
-    local function op(name) if CoopSyncHitch then CoopSyncHitch.op(name, (os.clock() - t0) * 1000) end t0 = os.clock() end
+    local function op(name) if CoopSyncHitch then CoopSyncHitch.op(name, (os.clock() - t0) * 1000) CoopSyncHitch.crumb("after " .. name) end t0 = os.clock() end
     local okC, cont = pcall(newContainer, equip or {})
     op("twin container")
     if not (okC and cont) then return nil, "no container: " .. tostring(cont) end
@@ -2575,6 +2575,7 @@ end
 for _, name in ipairs({ "fixMirror", "light", "mirrorDoors", "mirrorHidden" }) do
     local impl = M["_" .. name]
     M[name] = function(...)
+        if CoopSyncHitch then CoopSyncHitch.crumb("twin " .. name) end
         local t0 = os.clock()
         local r = table.pack(impl(...))
         if CoopSyncHitch then CoopSyncHitch.op("twin " .. name, (os.clock() - t0) * 1000) end

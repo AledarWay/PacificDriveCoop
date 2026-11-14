@@ -484,13 +484,20 @@ local function nearPoints()
     return table.concat(t, "\n")
 end
 
+-- (the roots without the derived ones, per root scan: filtered again every pass it was part of the pass's 15 ms)
+local beginPaths = { gen = nil, list = nil }
 local function hostBegin()
     local t0 = pstart()
     if not Sync.rootPaths() then Sync.roots() end -- first pass: synchronous scan once
-    local paths = {}
-    for _, p in ipairs(Sync.rootPaths()) do
-        if not Sync.isDerivedPath(p) then paths[#paths + 1] = p end
+    local paths = beginPaths.list
+    if not paths or beginPaths.gen ~= Sync.scanGeneration then
+        paths = {}
+        for _, p in ipairs(Sync.rootPaths()) do
+            if not Sync.isDerivedPath(p) then paths[#paths + 1] = p end
+        end
+        beginPaths.gen, beginPaths.list = Sync.scanGeneration, paths
     end
+    pend("pb_paths", t0)
     -- the loot pre-pass maps hold object paths; rebuild them only after a full root scan
     if Sync.scanGeneration ~= lootGen then Loot.beginPass() lootGen = Sync.scanGeneration end
     pass = { paths = paths, i = 1, snap = {} }
@@ -506,6 +513,7 @@ local function hostBegin()
                 if (state.stats.passes or 0) > 0 then HZ.moved(k) end -- (the first pass: everything's baseline)
             end
         end
+        pend("pb_track", t0)
         local now = os.clock()
         if prev and now - lastFull < FULL_PASS_S then
             -- the loot near the players; the rest keeps its last state until the next full pass
@@ -606,7 +614,7 @@ local function hostLive(deadline)
             local okP, eP = pcall(hostLivePick)
             if not okP then err("live pick: " .. tostring(eP)) end
             Sync.rescanNow()
-            invScan = { gen = Sync.scanGeneration, left = 2 }
+            invScan = { gen = Sync.scanGeneration, left = 3 } -- (a third scan 0.8 s on: the host's drop reached the guest 1.4-1.8 s late in 2 of 3 runs, 2026-11-14)
             count("inv_player")
         end
     end
@@ -2715,6 +2723,12 @@ end
 -- Detection pass over all mapped actors, spread over frames (at most one pass per TICK_MS).
 local dpass
 local lastDetectStart = -1e9
+-- (the next pass TICK_MS after the last one ended: from its start, a pass longer than TICK_MS - 1100 actors at 2 ms
+-- a frame, ~2.5 s at 25 fps - ran back to back for good, 2.8 ms every frame on the guest; revisit 2026-11-14)
+local nextPassAt = -1e9
+-- the drop checks after a change of the player's inventory (a drop found at once, not at the end of a pass - the
+-- host saw the guest's drop 1.2-4.5 s late, loot-live): os.clock times
+local dropChecks = {}
 
 -- Dropped items: the player's inventory lost items of an archetype and an unmapped world item of that
 -- archetype lies near the player -> it was dropped (or thrown) here; ask the host to put it into the world
@@ -2860,6 +2874,7 @@ local function clientFrame(deadline)
         evQueue[evHead] = nil
         evHead = evHead + 1
         local tE = os.clock()
+        if CoopSyncHitch then CoopSyncHitch.crumb("state ev " .. line:sub(1, 60)) end
         local ok, e = pcall(clientApply, split(line))
         if not ok then err("apply " .. line:sub(1, 80) .. ": " .. tostring(e)) end
         -- (one event's cost: journey-test saw client_events at 100-700 ms a frame for minutes, 2026-11-13)
@@ -2875,7 +2890,9 @@ local function clientFrame(deadline)
     -- the containers the slot hooks marked: looked at now (TAKE / PUT), not with the next detection pass
     if LH.inv then
         LH.inv = false
-        lastDetectStart = -1e9 -- (a pick-up / drop: a detection pass now)
+        lastDetectStart, nextPassAt = -1e9, -1e9 -- (a pick-up / drop: a detection pass now)
+        local tn = os.clock()
+        dropChecks = { tn, tn + 0.3, tn + 1 }
         -- a picked world item: its PICK at once, not when the pass reaches it (15 fps: a pass took ~2.5 s, the
         -- host saw the pick-up after 4.4 s); only the gone ones (cheap: no serializing)
         for key, applied in pairs(state.applied) do
@@ -2887,6 +2904,11 @@ local function clientFrame(deadline)
                 end
             end
         end
+    end
+    if dropChecks[1] and os.clock() >= dropChecks[1] then
+        table.remove(dropChecks, 1)
+        local okD, eD = pcall(detectDrops)
+        if not okD then err("drops: " .. tostring(eD)) end
     end
     if next(LH.dirty) then
         t0 = pstart()
@@ -2904,7 +2926,7 @@ local function clientFrame(deadline)
         pend("client_live", t0)
     end
     if not dpass then
-        if os.clock() * 1000 - lastDetectStart < TICK_MS then return end
+        if os.clock() * 1000 < nextPassAt then return end
         lastDetectStart = os.clock() * 1000
         local keys = {}
         for k in pairs(CoopSyncMap) do keys[#keys + 1] = k end
@@ -2924,6 +2946,8 @@ local function clientFrame(deadline)
     if dpass.i > #dpass.keys then
         Loot.endPass()
         dpass = nil
+        nextPassAt = os.clock() * 1000 + TICK_MS
+        state.passMs = math.floor(os.clock() * 1000 - lastDetectStart)
         count("passes")
         local okD, eD = pcall(detectDrops)
         if not okD then err("drops: " .. tostring(eD)) end
@@ -3017,6 +3041,13 @@ function M.start(syncModule, r, channelDir, hostListPath)
     if not okG then err("gobbler hook: " .. tostring(eG)) end
     local okC, eC = pcall(hookContainers)
     if not okC then err("container hooks: " .. tostring(eC)) end
+    -- (each of the frame's smaller ticks timed for M.profile: t_*)
+    local function sub(name, f)
+        local t1 = os.clock()
+        local ok, e = pcall(f)
+        pend(name, t1)
+        return ok, e
+    end
     loop(1, function()
         if M.stopped then return true end
         state.ticks = (state.ticks or 0) + 1
@@ -3029,30 +3060,33 @@ function M.start(syncModule, r, channelDir, hostListPath)
         end
         local t0 = os.clock()
         local deadline = t0 + (role == "host" and FRAME_BUDGET_MS or CLIENT_BUDGET_MS) / 1000
+        if CoopSyncHitch then CoopSyncHitch.crumb("state frame") end
+        local tF = os.clock()
         local ok, e = pcall(role == "host" and hostFrame or clientFrame, deadline)
-        if role ~= "host" then pcall(respawnDue, startWorld) end
+        pend("t_frame", tF)
+        if role ~= "host" then sub("t_respawn", function() respawnDue(startWorld) end) end
         if not ok then err("tick: " .. tostring(e)) end
-        local okD, eD = pcall(DOORS.tick)
-        local okP, eP = pcall(CoopSyncPaint.tick)
+        local okD, eD = sub("t_doors", DOORS.tick)
+        local okP, eP = sub("t_paint", CoopSyncPaint.tick)
         if not okP then err("paint: " .. tostring(eP)) end
-        local okG, eG = pcall(CoopSyncEvent.tick)
+        local okG, eG = sub("t_event", CoopSyncEvent.tick)
         if not okG then err("events: " .. tostring(eG)) end
-        local okK, eK = pcall(KNOCK.tick)
-        local okS, eS = pcall(STRAY.tick)
+        local okK, eK = sub("t_knock", KNOCK.tick)
+        local okS, eS = sub("t_stray", STRAY.tick)
         if not okS then err("stray: " .. tostring(eS)) end
-        local okF, eF = pcall(FUEL.tick)
-        local okSt, eSt = pcall(STORM.tick)
+        local okF, eF = sub("t_fuel", FUEL.tick)
+        local okSt, eSt = sub("t_storm", STORM.tick)
         if not okSt then err("storm: " .. tostring(eSt)) end
-        local okWp, eWp = pcall(CoopSyncWreck.tick)
+        local okWp, eWp = sub("t_wreck", CoopSyncWreck.tick)
         if not okWp then err("wreck parts: " .. tostring(eWp)) end
-        local okR, eR = pcall(RANGE.tick)
+        local okR, eR = sub("t_range", RANGE.tick)
         if not okR then err("range: " .. tostring(eR)) end
-        local okT, eT = pcall(TOUR.tick)
+        local okT, eT = sub("t_tour", TOUR.tick)
         if not okT then err("tourists: " .. tostring(eT)) end
         if not okF then err("fuel: " .. tostring(eF)) end
         if not okK then err("knocks: " .. tostring(eK)) end
         if not okD then err("doors: " .. tostring(eD)) end
-        local okZ, eZ = pcall(HZ.frame)
+        local okZ, eZ = sub("t_hz", HZ.frame)
         if not okZ then err("hazards: " .. tostring(eZ)) end
         state.lastMs = math.floor((os.clock() - t0) * 1000)
         state.maxMs = math.max(state.maxMs or 0, state.lastMs)

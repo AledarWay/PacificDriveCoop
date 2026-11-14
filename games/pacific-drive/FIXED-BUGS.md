@@ -17,6 +17,20 @@ Commit:    hash    Test: which test covers it now
 
 ---
 
+## 2026-11-14 - the guest's detection pass ran back to back; its drops reached the host late
+Symptom:   revisit: the mod's state sync took 4.5-26 ms a frame on the guest; loot-live: the guest's dropped item
+           reached the host 1.2-4.5 s late (limit 1 s), the step flaky for weeks.
+Cause:     the guest's detection pass (every mapped actor, 2 ms a frame) started TICK_MS after the last one STARTED;
+           ~1100 actors took ~2.5 s at 25 fps, so a new pass began the moment one ended - for good - and drops
+           were only looked for at a pass's end.
+Found by:  timing every sub-tick of the state loop (M.profile t_*), in the real session's Lua state (send -Session).
+Fix:       the next pass TICK_MS after the last one ENDED; a change of the player's inventory looks for drops at
+           once and 0.3 / 1 s on (not at the pass's end). Host: the roots' filtered list cached per root scan
+           (rebuilt every pass, part of its 15 ms), a third root scan 0.8 s after its own drop. Guest state
+           3.1-3.3 ms a frame now; the guest's drop on the host 375-747 ms. Still flaky: the host's drop on the
+           guest, 391-1240 ms (1 of 3 runs over).
+Commit:    pending    Test: loot-live-test.ps1, revisit-test.ps1
+
 ## 2026-11-14 - zone to zone: the guest generated the next zone, then loaded the host's over it
 Symptom:   nextzone / staybehind: from the guest's zone exit to playing in the next zone 57-62 s - the game's travel
            generated the zone (~20 s), then the host's zone save was loaded over it.

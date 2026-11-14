@@ -76,6 +76,7 @@ local function err(m) if #st.errors < 10 then st.errors[#st.errors + 1] = m end 
 -- per-loop cost (ms per call, max) for M.profile()
 local prof = {}
 local function timed(name, f)
+    if CoopSyncHitch then CoopSyncHitch.crumb("players " .. name) end
     local t0 = os.clock()
     local ok, e = pcall(f)
     local dt = (os.clock() - t0) * 1000
@@ -3767,7 +3768,7 @@ local function section(name, t0)
     prof[name] = p
     p.ms, p.n = p.ms + dt, p.n + 1
     if dt > p.mx then p.mx = dt end
-    if CoopSyncHitch then CoopSyncHitch.op("players " .. name, dt) end
+    if CoopSyncHitch then CoopSyncHitch.op("players " .. name, dt) CoopSyncHitch.crumb("players after " .. name) end
     return os.clock()
 end
 local function applyTick()
@@ -4594,6 +4595,7 @@ end
 
 -- opts.ownCar (client): own-car mode - the client keeps driving its own car, the host's car is a copy.
 function M.start(syncModule, r, channelDir, opts)
+    if CoopSyncHitch then CoopSyncHitch.crumbsFor(30) end
     Sync, role, chan = syncModule, r, channelDir
     ownCar = (opts and opts.ownCar) == true
     garage = (opts and opts.garage) == true
