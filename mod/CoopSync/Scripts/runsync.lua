@@ -506,20 +506,27 @@ end
 function M.prepareDirect(descPath)
     local s = readText(descPath)
     if not s then return nil, "no descriptor at " .. descPath end
-    local d = parse(s:match("^[^\r\n]*") or "")
+    local ins = M.insureCar(M.insuranceFile())
+    local r, e = M.prepareLeg(s:match("^[^\r\n]*") or "")
+    if not r then return nil, e end
+    return r .. "; " .. ins
+end
+-- The host's junction made the route's current leg (its MapLocation the host's): the next save is a departure there.
+-- (Also from a zone, the one load to the host's next zone: no car insurance there - that is the garage departure's)
+function M.prepareLeg(desc)
+    local d = parse(desc or "")
     if not d then return nil, "bad descriptor" end
     local ml = loadObj(d.map)
     if not ml then return nil, "map location not found: " .. tostring(d.map) end
     local rs, leg, how = M.pickLeg(d)
     if not rs then return nil, "no leg to travel to" end
-    local ins = M.insureCar(M.insuranceFile())
     local same = false
     pcall(function() same = leg.MapLocation and leg.MapLocation:IsValid() and leg.MapLocation:GetFullName() == ml:GetFullName() end)
     if not same then leg:OverrideMapLocation(ml) end
     local okL, eL = pcall(function() rs:SetCurrentLegState(leg, 0) end)
     if not okL then return nil, "SetCurrentLegState: " .. tostring(eL) end
     M.stats.direct = (M.stats.direct or 0) + 1
-    return string.format("%s%s -> %s; %s", how, same and "" or " (map set)", d.map:match("[^/]+$") or d.map, ins)
+    return string.format("%s%s -> %s", how, same and "" or " (map set)", d.map:match("[^/]+$") or d.map)
 end
 
 -- Guest, in a zone: follow the host to the zone of a new descriptor (the host's junction; a new game's first zone

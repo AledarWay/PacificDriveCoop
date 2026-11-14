@@ -220,9 +220,11 @@ function M.apply(t)
     if rnd and math.abs((before - tonumber(yaw) + 180) % 360 - 180) > 0.5 then
         m.DataBlock_IsUsingRandomNorth = rnd == "1"
         m.DataBlock_PickedRandomNorth = { Pitch = 0, Yaw = tonumber(pick), Roll = 0 }
-        if rnd == "1" then
-            m:RandomizeNorth(true)
-        else
+        if rnd == "1" then m:RandomizeNorth(true) end
+        -- (the host's pick through RandomizeNorth gave the guest 180 off after the one load from the garage - its zone from
+        -- the host's save, nextzone 2026-11-14: "north 140: 180.0 -> host 0.0 (random 1, pick 180.0), now 180.0", the
+        -- host's random pick and yaw on every try): still off - the host's north set as it is)
+        if rnd ~= "1" or math.abs((m["Current North As Rotator"].Yaw - tonumber(yaw) + 180) % 360 - 180) > 0.5 then
             local y = math.rad(tonumber(yaw))
             m:SetTrueNorth({ X = math.cos(y), Y = math.sin(y), Z = 0 }, { Pitch = 0, Yaw = tonumber(yaw), Roll = 0 })
             if sim and sim:IsValid() then sim:K2_SetActorRotation({ Pitch = 0, Yaw = tonumber(yaw), Roll = 0 }, false) end

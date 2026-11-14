@@ -140,6 +140,11 @@ Cars:
 - The pedals the mod holds or drives (off for a player on a back seat of its own car, the other player's at the
   wheel in the tests' old mode) now go through the game's own pedal handling too. That handling rewrote them every
   frame, so the mod's value never reached the car.
+- The guest's join is about twice as fast when it drives out before the host's zone is ready (56 s -> 29 s from
+  the host's arrival in the test). Before, the guest's game generated the whole zone on its own and then loaded the
+  host's zone over it; now it waits for the host's zone and loads it once.
+- Following the host to its next zone is about 20 s faster too: the guest loads the host's zone once (before, its
+  game generated the zone and then loaded the host's over it).
 - A guest who drives out of its garage at the wheel arrives in the host's zone at the wheel. Before, it now and then
   arrived standing beside its car.
 - While the guest drives the host's car, its parts' damage is the driver's. Before, the host's game also applied

@@ -17,6 +17,33 @@ Commit:    hash    Test: which test covers it now
 
 ---
 
+## 2026-11-14 - zone to zone: the guest generated the next zone, then loaded the host's over it
+Symptom:   nextzone / staybehind: from the guest's zone exit to playing in the next zone 57-62 s - the game's travel
+           generated the zone (~20 s), then the host's zone save was loaded over it.
+Cause:     the one load (own save + the host's Map spliced in) was only done from the garage; a zone exit followed
+           the host by the game's travel (Run.follow).
+Found by:  the guest's timelines in nextzone / staybehind after the garage join was made one load.
+Fix:       session.lua zoneExitTick: at the exit the guest waits for the host's zone save and its file, then
+           Run.prepareLeg (the leg only, no car insurance mid-run) + ZoneSave.directStart(path, "zone"); the arrival
+           is the garage's one-load arrival. Fallback: the old follow if the load fails or comes back to this zone.
+           40-42 s now. Also weathersync: after the one load the host's random north pick gave the guest 180 off -
+           the host's north is set as it is when RandomizeNorth leaves it off.
+Commit:    pending    Test: nextzone-test.ps1, staybehind-test.ps1
+
+## 2026-11-14 - slow guest join: two loads when the guest drove out early
+Symptom:   owner's two-games test: the guest's load was slow. The game logs: the guest drove out 0.4 s before the
+           host's zone save, travelled (4.3 s), generated the zone itself (~14 s), then loaded the host's save
+           (9.5 s) - in startflow 56 s from the host's arrival to the guest playing, "LOAD V4 Map 2, FAILED 1".
+Cause:     session.lua took the one load from the garage only when the host's session line already named its zone
+           save AND its file had arrived; otherwise it fell back to the old travel at once. The host publishes the
+           line with list=- on arrival (from before zone saves: the guest generated meanwhile), and the save's file
+           comes a moment after the line.
+Found by:  the report's game logs (LoadMap / SAVE V4 times on both sides), then startflow's "one load not started:
+           no host zone save yet".
+Fix:       the drive-out waits (under the cover, SAVE_WAIT_S 90 s at most) for the host's save and its file
+           (ZoneSave.hostSaveReady), then the one load; the old travel stays the fallback. startflow: 29 s, one load.
+Commit:    pending    Test: startflow-test.ps1
+
 ## 2026-11-14 - the guest arrived in the host's zone standing beside its car
 Symptom:   startflow-test (2 of 2 runs): the guest drove out of its garage seated, joined, and stood by its car.
 Cause:     the zone save load re-seats the player only if it sat at the wheel when the load began; on arrival the

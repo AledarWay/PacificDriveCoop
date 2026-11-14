@@ -1,4 +1,4 @@
-# The start of a co-op game as the owner set it (2026-10-24), two headless instances with the in-game network's
+﻿# The start of a co-op game as the owner set it (2026-10-24), two headless instances with the in-game network's
 # local test link (-NetExe: CoopNet.exe):
 #   1. both in their own garages, the lobby forms (create / join): each sees the other's puppet in its garage;
 #   2. the guest's garage exit stays shut while the host is home (driving into it does nothing); the host leaves its
@@ -73,7 +73,7 @@ function TravelCheck($when, [int]$n) {
     $conc = @($lines | Where-Object { $_ -match 'concurrent save/load' }).Count
     $cs = Status $cchan
     # (a drive-out is a travel or the one load straight into the host's zone - config direct_load: no travel then)
-    $dl = @(Get-Content (Get-ChildItem $cchan -Recurse -Filter hitches.log | Select-Object -First 1).FullName -ErrorAction SilentlyContinue | Where-Object { $_ -match 'one load from the garage' }).Count
+    $dl = @(Get-Content (Get-ChildItem $cchan -Recurse -Filter hitches.log | Select-Object -First 1).FullName -ErrorAction SilentlyContinue | Where-Object { $_ -match 'one load from the (garage|zone)' }).Count
     Check "${when}: the guest travelled (or loaded) once per drive-out, to the host's junction" ($trav + $dl -eq $n -and $conc -eq 0 -and [int]$cs.travels + $dl -eq $n) "game log travels=$trav concurrent=$conc one loads=$dl | mod travels=$($cs.travels) | $($cs.note)"
     $menu = Send $cd "local v = 0 for _, w in ipairs(FindAllOf('UMG_PlayerMenu_Main_C') or {}) do pcall(function() if w:IsInViewport() and w:IsVisible() then v = v + 1 end end) end return 'menus=' .. v"
     Check "${when}: no junction map open on the guest" ($menu -match 'menus=0') "$menu exitmap=$($cs.exitmap)"

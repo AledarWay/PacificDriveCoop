@@ -226,7 +226,16 @@ end
 -- LoadGame(0, LOAD_CAR_TRANSFORM | LOAD_PLAYER_TRANSFORM, STORY, 0) - not into the current world (the garage): the
 -- level the META names. No car comes with it: M.afterLoad builds it (BP_CarSpawnpoint) and seats the player.
 -- Steps over ticks (M.tick): "direct saving" -> load. A failure: state "direct failed" (session.lua travels then).
-function M.directStart(docPath)
+-- the host's zone save is here (fetched into the save folder: the network sends it a while after the host's session
+-- line names it - startflow 2026-11-14, "no host zone save yet" a moment after the line)
+function M.hostSaveReady(docPath)
+    local dir = M.saveDir()
+    if not dir then return false end
+    local hostFile = dir .. "coop-host-zone.sav"
+    if docPath:sub(1, 4) == "doc:" then return (CoopNative_DocGetFile and CoopNative_DocGetFile(docPath:sub(5), hostFile)) and true or false end
+    return fileSize(docPath) and true or false
+end
+function M.directStart(docPath, from)
     local m = sm()
     if not (m and m:IsValid()) then return nil, "no save manager" end
     if M.s.state == "direct saving" or M.s.state == "guest loading" then return nil, "busy: " .. M.s.state end
@@ -249,7 +258,7 @@ function M.directStart(docPath)
     local before = fileSize(path)
     local ok, e = pcall(function() m:SaveGame(own, "", 1) end)
     if not ok then return nil, "SaveGame failed: " .. tostring(e) end
-    M.s = { state = "direct saving", own = own, path = path, hostFile = hostFile, doc = docPath, t0 = t0, size = -1, stable = 0, wasSeated = seated, mtime0 = before }
+    M.s = { state = "direct saving", own = own, path = path, hostFile = hostFile, doc = docPath, t0 = t0, size = -1, stable = 0, wasSeated = seated, mtime0 = before, from = from or "garage" }
     return "one load: saving the departure into slot " .. own
 end
 local function directTick()
@@ -289,7 +298,7 @@ local function directTick()
     local spliceMs = (now() - t0) * 1000
     copyFile(out, dir .. "coop-last-splice.sav")
     pcall(function() m:InvalidateMetadataCacheSlot(M.SCRATCH) end)
-    if CoopSyncHitch then pcall(CoopSyncHitch.note, string.format("zone save: one load from the garage (saved in %.1f s, %s, %s)", now() - s.t0, r, mr)) end
+    if CoopSyncHitch then pcall(CoopSyncHitch.note, string.format("zone save: one load from the %s (saved in %.1f s, %s, %s)", s.from or "garage", now() - s.t0, r, mr)) end
     M.selfLoad = true
     local ok, e = pcall(function() m:LoadGame(M.SCRATCH, 6, 1, 0) end)
     M.selfLoad = false

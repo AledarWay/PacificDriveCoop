@@ -269,6 +269,7 @@ local function hostTick(gstate, world)
     S.note = string.format("published %d actors; zone save: %s", n or 0, tostring(S.zsaveNote or (zoneSaveOn() and "?" or "off")))
 end
 
+local SAVE_WAIT_S = 90 -- the drive-out's wait for the host's zone save at most (the zone generating on the host)
 local function clientTick(gstate, world)
     local session = kv(readFile(Link.docPath(chan, "inbox", "host-session.txt")))
     S.lastSession = session
@@ -321,6 +322,21 @@ local function clientTick(gstate, world)
         if S.gameTravelAt and S.gameTravelSeen and S.gameTravelSeen > S.gameTravelAt - 1 and nowS() - S.gameTravelAt < 15 then why("the game's own travel") return end
         -- (the drive-through volume saw the car first: the game's own exit gets a moment to fire)
         if S.exitSeenAt and nowS() - S.exitSeenAt < 1.2 then why("the exit's own event") return end
+        -- (the host still generating its zone, its save not out yet: the one load waits for it. Travelling at once
+        -- generated the guest's own zone - ~18 s - only to load the host's save over it after, ~10 s more: the
+        -- owner's two-games test 2026-11-14, the guest out 0.4 s before the host's save. Not longer than
+        -- SAVE_WAIT_S: a host whose save does not come - the usual travel)
+        -- (and its file here: the network brings it a moment after the session line names it)
+        if zoneSaveOn() and Config.get("direct_load") == 1 then
+            local waitFor
+            if session.list == "-" then waitFor = "the host's zone save"
+            elseif session.zsave and not ZoneSave.hostSaveReady(Link.docPath(chan, "inbox", session.zsave)) then waitFor = "the host's zone save file" end
+            if waitFor then
+                S.saveWaitAt = S.saveWaitAt or nowS()
+                if nowS() - S.saveWaitAt < SAVE_WAIT_S then why(waitFor) return end
+            end
+        end
+        S.saveWaitAt = nil
         S.garageWhy = nil
         pcall(Hitch.note, "timeline drive-out: our join")
         S.gameTravelAt, S.exitSeenAt, S.gameTravelSeen = nil, nil, nil
@@ -391,6 +407,19 @@ local function clientTick(gstate, world)
         pcall(Marks.start, Players, "client")
         S.note = "the host is back in this zone: sync again"
     end
+    -- (the one load from this zone failed - or brought this zone back: still here 45 s on - the game's travel after
+    -- the host instead)
+    if S.directFollow and S.zoneWorld == world and (ZoneSave.s.state == "direct failed"
+        or (ZoneSave.s.state == "guest loading" and nowS() - (S.joinAt or nowS()) > 45)) then
+        local desc, why = S.directFollow, ZoneSave.s.why or "the load came back to this zone"
+        S.direct, S.directFollow, S.zoneLoadedSeq = nil, nil, nil
+        ZoneSave.s = { state = "idle" }
+        local ok, r = pcall(Run.follow, desc)
+        S.note = "one load failed (" .. tostring(why) .. "): " .. (ok and tostring(r) or ("follow failed: " .. tostring(r)))
+        pcall(Hitch.note, "timeline " .. S.note)
+        S.state, S.joinAt = ok and "joining" or "playing", nowS()
+        return
+    end
     -- at a zone's exit gate: after the host to its next zone (onGuestExit, zoneExitTick)
     M.zoneExitTick(world, session)
     if S.state == "zone: at the exit" then return end
@@ -414,7 +443,7 @@ local function clientTick(gstate, world)
         S.fromSave, S.justLoaded = S.justLoaded, nil -- (a new world of a later leg: generated again)
         -- (arrived by the one load from the garage: the car and the slots as after any zone-save load)
         if S.direct and ZoneSave.s.state == "guest loading" and ZoneSave.s.direct then
-            S.direct, S.fromSave = nil, true
+            S.direct, S.directFollow, S.fromSave = nil, nil, true
             -- (this zone's save is in: no second load below - the garage's ticks had cleared the drive-out's mark)
             S.zoneLoadedSeq = tonumber(session.seq)
             ZoneSave.s.state = "guest loaded"
@@ -730,8 +759,37 @@ local FOLLOW_MAX_S = 300
 local function zoneExitTick(world, session)
     if not S.followPending then return end
     local desc = (readFile(Link.docPath(chan, "inbox", "host-run.txt")) or ""):match("^[^\r\n]*")
-    if desc and desc ~= "" and desc ~= S.followFrom and session.world and session.world ~= world and session.world ~= "-" then
-        S.followPending = false
+    local toGo = desc and desc ~= "" and desc ~= S.followFrom and session.world and session.world ~= world and session.world ~= "-"
+    -- the one load into the host's next zone (zonesave.directStart from this zone, config direct_load): its save and
+    -- the file waited for (the host publishes it once that zone has settled). The old way - the game's travel, a zone
+    -- of its own generated, the host's save loaded over it - took ~30 s more; it stays the fallback
+    local waitSave = false
+    if toGo and zoneSaveOn() and Config.get("direct_load") == 1 then
+        local path = session.zsave and Link.docPath(chan, "inbox", session.zsave)
+        local ready = session.list ~= "-" and path and ZoneSave.hostSaveReady(path)
+        S.followSaveAt = S.followSaveAt or nowS()
+        if ready then
+            local okP, p, pe = pcall(Run.prepareLeg, desc)
+            local okD, dn, de
+            if okP and p then okD, dn, de = pcall(ZoneSave.directStart, path, "zone") end
+            if okD and dn then
+                S.followPending, S.followSaveAt, S.followOutAt = false, nil, nil
+                S.zoneLoadedSeq, S.direct, S.directFollow = tonumber(session.seq), true, desc
+                S.note = dn .. "; " .. tostring(p)
+                S.state, S.joinAt = "joining", nowS()
+                M.follows = (M.follows or 0) + 1
+                pcall(Hitch.note, "timeline zone exit: one load (" .. S.note .. ")")
+                return
+            end
+            S.note = "one load not started: " .. tostring(okP and (p and (okD and de or dn) or pe) or p)
+            pcall(Hitch.note, "timeline zone exit: " .. S.note)
+        elseif nowS() - S.followSaveAt < SAVE_WAIT_S then
+            waitSave = true
+            if S.followWhy ~= "save" then S.followWhy = "save" pcall(Hitch.note, "timeline zone exit waits: the host's zone save" .. (session.list ~= "-" and " file" or "")) end
+        end
+    end
+    if toGo and not waitSave then
+        S.followPending, S.followSaveAt, S.followWhy = false, nil, nil
         local ok, r = pcall(Run.follow, desc)
         S.note = ok and tostring(r) or ("follow failed: " .. tostring(r))
         M.follows = (M.follows or 0) + 1
@@ -743,7 +801,7 @@ local function zoneExitTick(world, session)
     if inside then S.followOutAt = nil else S.followOutAt = S.followOutAt or nowS() end
     if (S.followOutAt and nowS() - S.followOutAt > 4) or nowS() - (S.followAt or nowS()) > FOLLOW_MAX_S then
         local why = S.followOutAt and "car out of the gate" or "waited too long"
-        S.followPending, S.followOutAt = false, nil
+        S.followPending, S.followOutAt, S.followSaveAt, S.followWhy = false, nil, nil, nil
         if S.state == "zone: at the exit" then S.state = "playing" end
         S.note = "left the zone's exit: playing on"
         -- (into the report: a later note - the host gone on - hides this one in the status line)

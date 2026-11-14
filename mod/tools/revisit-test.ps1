@@ -73,6 +73,9 @@ $world1 = $script:world
 
 "=== 2. both home, the host leaves again, the guest after it"
 "  host: " + (Send $hd "$run return Run.goHome(false, 0)")
+# (the guest too: nothing sends it home with the host - left in the zone it never went home, the whole case untested
+# since the reference saves at least: "guest: TIMEOUT", the drive-out found no garage exit, 2026-11-14)
+"  guest: " + (Send $cd "$run return Run.goHome(false, 0)")
 & "$t\wait-state.ps1" -State 4 -Dir $hd -TimeoutSec 240 | Select-Object -Last 1 | ForEach-Object { "  host: $_" }
 & "$t\wait-state.ps1" -State 4 -Dir $cd -TimeoutSec 240 | Select-Object -Last 1 | ForEach-Object { "  guest: $_" }
 Start-Sleep 20

@@ -50,7 +50,7 @@ function NorthSame([string]$where) {
 function GuestTravels() {
     $lines = @(Get-Content "$inst\client\userdir\Saved\Logs\PenDriverPro.log" -ErrorAction SilentlyContinue)
     # (the one load straight from the garage into the host's zone - config direct_load - counts as a travel: no travel then)
-    $dl = @(Get-Content (Get-ChildItem $cchan -Recurse -Filter hitches.log | Select-Object -First 1).FullName -ErrorAction SilentlyContinue | Where-Object { $_ -match 'one load from the garage' }).Count
+    $dl = @(Get-Content (Get-ChildItem $cchan -Recurse -Filter hitches.log | Select-Object -First 1).FullName -ErrorAction SilentlyContinue | Where-Object { $_ -match 'one load from the (garage|zone)' }).Count
     @{ dl = $dl; travels = $dl + @($lines | Where-Object { $_ -match 'Traveling to level' }).Count; concurrent = @($lines | Where-Object { $_ -match 'concurrent save/load' }).Count }
 }
 # a side's car into the drive-through volume of an exit (the garage's, or the zone's exit gate named $gate), seated
