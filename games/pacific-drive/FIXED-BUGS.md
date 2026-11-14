@@ -29,7 +29,7 @@ Fix:       the next pass TICK_MS after the last one ENDED; a change of the playe
            (rebuilt every pass, part of its 15 ms), a third root scan 0.8 s after its own drop. Guest state
            3.1-3.3 ms a frame now; the guest's drop on the host 375-747 ms. Still flaky: the host's drop on the
            guest, 391-1240 ms (1 of 3 runs over).
-Commit:    pending    Test: loot-live-test.ps1, revisit-test.ps1
+Commit:    a66c4b9    Test: loot-live-test.ps1, revisit-test.ps1
 
 ## 2026-11-14 - zone to zone: the guest generated the next zone, then loaded the host's over it
 Symptom:   nextzone / staybehind: from the guest's zone exit to playing in the next zone 57-62 s - the game's travel
