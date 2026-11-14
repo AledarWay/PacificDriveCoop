@@ -24,7 +24,7 @@ Cause:     the zone save load re-seats the player only if it sat at the wheel wh
 Found by:  startflow's "seated=false" with "car moved 2058 m to the host's entrance" just before "zone save load".
 Fix:       session.lua records at the garage exit whether the guest sat at the wheel (ZoneSave.droveOutSeated);
            zonesave.lua re-seats after the load if it sat then or sits now (M.seatedNow).
-Commit:    pending    Test: startflow-test.ps1
+Commit:    f6975c7    Test: startflow-test.ps1
 
 ## 2026-11-14 - throttle written by the mod never reached the car (the pedals' own stage overwrote it)
 Symptom:   with the reference saves every driving check moved 0: the other player's throttle arrived (in_applied
@@ -38,7 +38,7 @@ Found by:  throttle-probe.lua: User* written 1 -> controller 0, moved 0; the gam
            User + Raw + Target + Current written -> controller 1.0, moved 2664 in 3 s.
 Fix:       playersync.lua writeInput also writes RawThrottle / ThrottleTarget / ThrottleCurrent and BrakeTarget /
            BrakeCurrent; the tests' own throttle loops (cars, carswitch, owncar) the same.
-Commit:    pending    Test: drive-test.ps1, wheel-test.ps1, cars-test.ps1
+Commit:    f6975c7    Test: drive-test.ps1, wheel-test.ps1, cars-test.ps1
 
 ## 2026-11-14 - back seat: the exit lit only when looking straight at the side
 Symptom:   owner's two-games test: on a back seat the door highlight came up only looking right at the door.
@@ -49,7 +49,7 @@ Found by:  live probes of the boxes' places / extents on a reference car (the do
 Fix:       playersync.lua TD.placeExit: for seats 3 / 4 the handles go to the door's middle (40 behind the hinge,
            TD.BACK_DOOR_MID); the exit's points keep the hinge-to-hinge move. Not verified by a look from inside (the
            seated camera does not follow the control rotation in a test) - owner to check.
-Commit:    pending    Test: backseat-test.ps1 (the way out by the back door)
+Commit:    f6975c7    Test: backseat-test.ps1 (the way out by the back door)
 
 ## 2026-11-14 - tests: a zone save starts with the engine off, back doors aimed at their hinge
 Symptom:   (tests only) driving checks with the engine off; the guest's back door never lit in backseat-test, and its
@@ -69,7 +69,7 @@ Fix:       start-zone.ps1 starts the engine; twin-parts-look.lua aims at a back 
            no longer holds the gas 5 s before its launch (the car drove ~1500 past the aim spot, beside the twin, the
            launch missed it); the tests' brakes set BrakeTarget / BrakeCurrent too (owncar's car never braked and was
            still moving at the comparison).
-Commit:    pending    Test: backseat, gascap, knock, loot-live, drive, wheel, twin-ctl, collide, owncar
+Commit:    f6975c7    Test: backseat, gascap, knock, loot-live, drive, wheel, twin-ctl, collide, owncar
 
 ## 2026-11-14 - a reloaded zone's wreck parts all counted as one
 Symptom:   part-break-test on the reference zone save: the wreck's parts listed as one part "None", sawing showed on
@@ -82,7 +82,7 @@ Found by:  the reference saves (the tests used to start in a freshly generated z
            then each part's distance to the wreck mesh's sockets (0.0 for every part).
 Fix:       lootsync.lua M.sockOf: MySocket, or (None) the parent mesh's socket at the part's place, written back to
            MySocket; statesync/lootsync and the test probes read sockets through it.
-Commit:    (pending)    Test: part-break-test.ps1
+Commit:    f6975c7    Test: part-break-test.ps1
 
 ## 2026-11-14 - back seat: the camera looked through the back of the car
 Symptom:   owner's two-games test: on a back seat the player sat too far back, the camera in the rear of the car.
@@ -90,7 +90,7 @@ Cause:     playersync.lua BACK_X = -60 was a guess ("headless: nobody looked at 
 Found by:  the devices the back seats hold, probed in the Quick start car: battery X +12..-64, fuel tank +7..-92 -
            the back rest at about -64; the hips ~20 in front of it.
 Fix:       BACK_X = -45 (tests' seat tables too). Needs the owner's look in a real game.
-Commit:    (pending)    Test: drive-test, seats-test, anim-test (seat places)
+Commit:    f6975c7    Test: drive-test, seats-test, anim-test (seat places)
 
 ## 2026-11-14 - after a first sit on a back seat the driver's door seated the player at the back
 Symptom:   owner: "the host can't get to the wheel, the driver's door sits him at the back, even on a seat with a
@@ -101,7 +101,7 @@ Found by:  live in the owner's session: selfInfo driver_seat_measured=-60.0,-45.
            left first -> -60; driver's door first -> 46.5).
 Fix:       seats are constants (seatRel: 46.2,-45.8,-12.3 mirrored, BACK_X behind), the socket delta from
            TempSocket_Seat's class default 27,-46,-16; the measure stays for diagnostics only.
-Commit:    (pending)    Test: seat-measure-test.ps1 (back seat first, then the driver's door)
+Commit:    f6975c7    Test: seat-measure-test.ps1 (back seat first, then the driver's door)
 
 ## 2026-11-14 - the guest's garage took the host's zone weather
 Symptom:   owner: when the host loaded into the zone before the guest left the garage, the guest's garage got the
@@ -110,7 +110,7 @@ Cause:     weathersync.lua applied every W line whatever the two sides' worlds.
 Found by:  reading weathersync after the owner's report.
 Fix:       weathersync.lua garageApart: this side in a garage, the host's world (W field 19) not one -> skip and drop
            the override once.
-Commit:    (pending)    Test: -
+Commit:    f6975c7    Test: -
 
 ## 2026-11-14 - the guest's car arrived inside the host's car
 Symptom:   owner: loading into the zone, the guest's car spawned exactly inside the host's car, the two flew apart.
@@ -119,7 +119,7 @@ Cause:     not found (the report had no mod log of that start - see the log rota
 Found by:  the owner's report; the root cause still open.
 Fix:       safety net: playersync.lua TD.clearOwnCar (30 s after the twin spawns, the guest's own car within 4.5 m of
            the host's twin is moved beside it: runsync.lua M.clearOfTwin / M.moveCar).
-Commit:    (pending)    Test: -
+Commit:    f6975c7    Test: -
 
 ## 2026-11-14 - the driven car's parts' damage differed after a crash
 Symptom:   owner: driving the host's car as the guest and crashing, a panel was full red on the guest, white on the
@@ -129,13 +129,13 @@ Cause:     the host's game also crashed its copy (the twin there, kinematic) and
 Found by:  reading twincar watchState / applyState after the report.
 Fix:       twincar.lua M.drivenHere: the side whose player drives the twin (it simulates there) sends its state and
            does not take the owner's.
-Commit:    (pending)    Test: carswitch-test.ps1
+Commit:    f6975c7    Test: carswitch-test.ps1
 
 ## 2026-11-14 - the report had no mod log of a crashed game
 Symptom:   the owner's report after a crash and restart: coopsync.log / hitches.log only of the new start.
 Cause:     main.lua and hitch.lua opened their logs with "w" at every start.
 Fix:       the logs rotate (.1, .2) before they are opened; collect-report.ps1 takes them.
-Commit:    (pending)    Test: -
+Commit:    f6975c7    Test: -
 
 ## 2026-11-14 - tests: the player stood beside the car, the guest's zone was another map
 Symptom:   the first suite on the reference saves: drive / wheel / cars failed "own character on seat 1", the
@@ -146,7 +146,7 @@ Fix:       start-zone.ps1 seats the player (CommandEnterCar) after a zone load; 
            zones on the host's map; revisit-test pins the second trip's map; car-store / twin-state start from the
            Quick start car's contents (trunk emptied of the test's kinds, a fuel can fitted, the wheel compared
            with what it was).
-Commit:    (pending)    Test: the suite
+Commit:    f6975c7    Test: the suite
 
 ## 2026-11-14 - test games had no hotbar, no Tab inventory, no scan / take-off prompts
 Symptom:   in a graphics test window the HUD was cut down: only the door prompt, no inventory bar, Tab did nothing,
@@ -159,14 +159,14 @@ Cause:     tools/start-zone.ps1 starts a game with UserNewGame(slot, STORY) and 
 Found by:  live probes on a graphics pair; the owner's own "Quick start" in the same build gave the full HUD.
 Fix:       reference saves made by hand with the game's own Quick start (local/advsave/quickstart-host.sav,
            quickstart-client.sav); start-zone.ps1 loads them (COOPTEST_QUICKSTART=1).
-Commit:    (pending)    Test: every test booted through start-zone.ps1
+Commit:    f6975c7    Test: every test booted through start-zone.ps1
 
 ## 2026-11-14 - garage dialogue never advanced, no subtitles, quest not updated
 Symptom:   in a test game the garage conversation after Quick start never started, the quest did not update.
 Cause:     the test games ran with -nosound; the dialogue waits for its voice line to finish playing.
 Found by:  the owner noticed it in a manual Quick start; same build with sound worked.
 Fix:       tools/game-args.ps1: sound on by default (COOPTEST_SOUND=0 turns it off).
-Commit:    (pending)    Test: -
+Commit:    f6975c7    Test: -
 
 ## 2026-11-14 - a part sawn off came back with a fresh random health on the side that sawed it
 Symptom:   part-break-test step 3 "the part broke off" failed: the part was there again with new health.
