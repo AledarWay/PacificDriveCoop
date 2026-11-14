@@ -12,6 +12,7 @@
 --   give LS_ARCH        one item of that archetype into the inventory
 --   dropfuel LS_ARCH LS_FUEL [LS_DX]  a fuel canister on the ground with that much fuel (a carried one leaves the inventory)
 --   fuelnear / setfuelnear LS_ARCH LS_X LS_Y LS_Z [LS_FUEL]  the fuel of the canister there (set first: setfuelnear)
+local SOCK = (rawget(_G, "CoopSync") and CoopSync.Loot and CoopSync.Loot.sockOf) or function(q) return q.MySocket:ToString() end -- (a reloaded zone's parts: lootsync M.sockOf)
 local Loot = CoopSync.Loot
 local IM = FindFirstOf("BP_InventoryManager_C")
 local function objPath(o) return (o:GetFullName():gsub("^%S+%s+", "")) end
@@ -69,9 +70,20 @@ local function doorNear(key)
 end
 if op == "shutdoor" then
     -- the LS_N-th door that is shut here (state 0): its place
-    local n = 0
-    for _, e in ipairs(doors()) do if e.state == 0 then n = n + 1 if n == (LS_N or 1) then return e.key end end end
-    return "none"
+    -- (nearest the player first: a zone map's doors 40 km off - an underground site - are not even loaded on the
+    -- other side; reference-save loot-live 2026-11-14)
+    local me = FindFirstOf("PlayerController").Pawn:K2_GetActorLocation()
+    local shut = {}
+    for _, e in ipairs(doors()) do
+        if e.state == 0 then
+            local l = e.d:K2_GetActorLocation()
+            e.dist = (l.X - me.X) ^ 2 + (l.Y - me.Y) ^ 2 + (l.Z - me.Z) ^ 2
+            shut[#shut + 1] = e
+        end
+    end
+    table.sort(shut, function(a, b) return a.dist < b.dist end)
+    local e = shut[LS_N or 1]
+    return e and e.key or "none"
 elseif op == "doorstate" then
     local e = doorNear(LS_KEY)
     return e and tostring(e.state) or "-1"
@@ -106,7 +118,7 @@ elseif op == "trunkstate" or op == "opentrunk" then
     if not a then return "gone" end
     if op == "opentrunk" then
         -- (what prying it open ends in: the trunk part's open state)
-        for _, p in ipairs(Loot.templateParts(a)) do if p.MySocket:ToString() == LS_SUB then Loot.openTrunk(p) end end
+        for _, p in ipairs(Loot.templateParts(a)) do if SOCK(p) == LS_SUB then Loot.openTrunk(p) end end
     end
     return tostring(Loot.statesOf(a)[LS_SUB])
 elseif op == "trunkable" then

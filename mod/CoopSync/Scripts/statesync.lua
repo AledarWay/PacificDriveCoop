@@ -402,7 +402,7 @@ local function hostHandle(t)
     elseif op == "DETACH" then
         local done = false
         for _, p in ipairs(Loot.templateParts(a)) do
-            if not done and p.MySocket:ToString() == t[3] then
+            if not done and Loot.sockOf(p) == t[3] then
                 M.detachPart(p)
                 done = true
             end
@@ -2178,7 +2178,7 @@ function WRK.hook()
             WRK.dirty[p:GetAddress()] = {
                 p = p, at = os.clock(),
                 wkey = (w and w:IsValid()) and tostring(w:GetAddress()) or nil,
-                sock = p.MySocket:ToString(),
+                sock = Loot.sockOf(p),
             }
         end
     end
@@ -2201,7 +2201,7 @@ function WRK.keyOf(p)
     if not (w and w:IsValid()) then return nil end
     local ref = Sync.ref(w)
     local key = role == "host" and ref or reverse[ref]
-    return key, p.MySocket:ToString()
+    return key, Loot.sockOf(p)
 end
 function WRK.sendPart(p, force)
     local key, sock = WRK.keyOf(p)
@@ -2300,7 +2300,7 @@ function WRK.apply(t)
         WRK.indexAt, WRK.index = os.clock(), {}
         for _, x in ipairs(FindAllOf("LootableTemplatePart") or {}) do
             local par = x:IsValid() and x:GetAttachParentActor()
-            if par and par:IsValid() then WRK.index[tostring(par:GetAddress()) .. "\t" .. x.MySocket:ToString()] = x end
+            if par and par:IsValid() then WRK.index[tostring(par:GetAddress()) .. "\t" .. Loot.sockOf(x)] = x end
         end
         p = WRK.index[k]
     end

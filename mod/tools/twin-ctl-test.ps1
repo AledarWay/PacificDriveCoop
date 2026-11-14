@@ -1,4 +1,4 @@
-# Automated test of the twins' car body controls (twin rework stage C): the headlights / top light / wipers are one
+﻿# Automated test of the twins' car body controls (twin rework stage C): the headlights / top light / wipers are one
 # state in the game's car manager, and the twin's own lever / switch handlers act on the manager's car. Outside the
 # other's twin they are off (its E there must not touch the own car; EnterDoor is its driver's door); inside it the
 # manager holds the owner's state, the game's own lever works on it and the change reaches the owner's real car (K /
@@ -182,6 +182,10 @@ Check "guest: the twin's wiper blades sweep with the host's wipers, its own car'
 # twin of the guest's car sweeps; the host's wipers off first, so its own car's blades must stand still
 "  host wipers off: " + ((Probe $hd "CTL_DO = 'toggle_wipers'" "ctl-probe.lua") -split "`n" | Select-Object -Index 1)
 $gw = Ctl $cd
+# (the wipers run on the car's power: the guest's car from a zone save stands with the engine off - started first, as
+# a player would)
+"  guest ignition: " + (Send $cd "local m = FindFirstOf('BP_CarManager_C') local own = CoopPlayers.twinModule().ownCar() local was = m.CarIgnitionState if was == 0 and m.NewCarActor:GetAddress() == own:GetAddress() then own:ToggleIgnitionState(2) end return tostring(was) .. ' -> started'")
+Start-Sleep 3
 if ($gw.wipers -ne 'true') { "  guest wipers on: " + ((Probe $cd "CTL_DO = 'toggle_wipers'" "ctl-probe.lua") -split "`n" | Select-Object -Index 1) }
 Start-Sleep 4
 $w1 = KV (Probe $hd "" "wiper-probe.lua"); Start-Sleep -Milliseconds 400; $w2 = KV (Probe $hd "" "wiper-probe.lua"); $hm = Ctl $hd

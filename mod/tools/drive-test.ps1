@@ -1,4 +1,4 @@
-# Automated "client drives the car" test over the network relays (two headless instances on this PC).
+﻿# Automated "client drives the car" test over the network relays (two headless instances on this PC).
 # The host keeps the car physics; the client's driver input (the car BP's raw input fields, as the keys fill
 # them) streams to the host. Phases: host drives (default) -> client takes the wheel (seats swap) -> client
 # drives -> host takes the wheel back (client input ignored) -> host out of the car, client drives alone.
@@ -23,8 +23,8 @@ function Check($name, [bool]$ok, $detail) {
     if ($ok) { $script:pass++ } else { $script:fail++ }
     "  [{0}] {1} -- {2}" -f $(if ($ok) { 'PASS' } else { 'FAIL' }), $name, $detail
 }
-# expected car-local X,Y per seat (1 driver, 4 back right; BACK_X = -60 in playersync.lua)
-$SEAT = @{ 1 = @(46.2, -45.8); 2 = @(46.2, 45.8); 3 = @(-60, -45.8); 4 = @(-60, 45.8) }
+# expected car-local X,Y per seat (1 driver, 4 back right; BACK_X = -45 in playersync.lua)
+$SEAT = @{ 1 = @(46.2, -45.8); 2 = @(46.2, 45.8); 3 = @(-45, -45.8); 4 = @(-45, 45.8) }
 function At($rel, [int]$n) { $v = Vec $rel; [math]::Abs($v.X - $SEAT[$n][0]) -lt 2 -and [math]::Abs($v.Y - $SEAT[$n][1]) -lt 2 }
 function SeatChecks($label, [int]$hostSeat, [int]$clientSeat) {
     $hs = Self $hd; $cs = Self $cd; $hp = Info $cd; $cp = Info $hd
@@ -46,6 +46,9 @@ Start-Sleep 6
 
 "=== 1. start: the host drives; the client frees the back right seat and gets in there"
 "  client: " + (Send $cd "return CoopPlayers.removeSeatDevice(4)"); Start-Sleep 3
+# (a zone save's start seats the client already - the mod puts it on the first free back seat, 3: out first, so the
+# way in is the back right door's)
+if ((Send $cd "local a = FindFirstOf('PlayerController').Pawn:GetAttachParentActor() return tostring(a ~= nil and a:IsValid())") -match 'true') { "  client: " + (Out $cd); Start-Sleep 4 }
 "  client: " + (In $cd 'RR'); Start-Sleep 5
 $hw = Wheel $hd; $cw = Wheel $cd
 Check "both sides: driver = host" ($hw.driver -eq 'host' -and $cw.driver -eq 'host') "host: $($hw.raw) | client: $($cw.raw)"

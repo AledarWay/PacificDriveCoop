@@ -43,8 +43,12 @@ CoopSyncChecklist = require("checklist")
 local s = CoopSyncSession.start(CoopSync, CoopSyncRunMod)
 -- the mod's own log in its channel (<chan>/coopsync.log, a new one per game start): UE4SS.log is one file for every
 -- game started from this folder - the two copies of TwoGamesTest.bat wrote over each other's (owner's alpha 18 test)
+-- (the two before it kept as coopsync.log.1 / .2: the owner's report taken after a restart had only this start's one
+-- line, the session it was about was gone - 2026-11-14)
 do
-    local f = io.open(CoopSyncSession.channel() .. "/coopsync.log", "w")
+    local path = CoopSyncSession.channel() .. "/coopsync.log"
+    os.remove(path .. ".2") os.rename(path .. ".1", path .. ".2") os.rename(path, path .. ".1")
+    local f = io.open(path, "w")
     if f then
         local rawPrint = print
         _G.print = function(...)

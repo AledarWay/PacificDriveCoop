@@ -58,7 +58,7 @@ function TakeGame($saved, $chan, $pre) {
         ForEach-Object { Take $_.FullName "${pre}logs\$($_.Name)" }
     Get-ChildItem "$saved\Crashes" -Directory -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 3 |
         ForEach-Object { $c = $_; Get-ChildItem $c.FullName -File | Where-Object { $_.Length -lt 200MB } | ForEach-Object { Take $_.FullName "${pre}crashes\$($c.Name)\$($_.Name)" } }
-    foreach ($f in 'status.txt', 'net-status.txt', 'menu-status.txt', 'control.txt', 'net-control.txt', 'net.log', 'coopnet.log', 'relay.log', 'hitches.log', 'coopsync.log') { Take "$chan\$f" "${pre}channel\$f" }
+    foreach ($f in 'status.txt', 'net-status.txt', 'menu-status.txt', 'control.txt', 'net-control.txt', 'net.log', 'coopnet.log', 'relay.log', 'hitches.log', 'coopsync.log', 'hitches.log.1', 'coopsync.log.1', 'hitches.log.2', 'coopsync.log.2') { Take "$chan\$f" "${pre}channel\$f" }
     # (the in-game network does not write these: a file of an old file-channel session stayed and passed for this one's
     # - the owner's alpha 21 report had host.fast from October. Older than 12 hours: only noted)
     foreach ($f in 'host.events', 'client.requests', 'host.fast', 'client.fast') {

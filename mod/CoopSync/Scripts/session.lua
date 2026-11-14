@@ -662,6 +662,7 @@ local function onGuestExit(fromGame)
     -- the map the game opens for a pick: not for the guest, the host's map is where it goes
     closeMap("garage exit")
     if S.go or S.joinPending then
+        if not S.joinPending then pcall(function() ZoneSave.droveOutSeated = ZoneSave.seatedNow() end) end
         S.joinPending = true
         M.raiseCover()
         M.exitTaken = M.exitTaken + 1

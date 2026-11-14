@@ -46,6 +46,8 @@ Start-Sleep 6
 
 "=== 1. the client takes the driver seat (host out, client in at the driver door, host in front right)"
 "  host: " + (Send $hd "return CoopPlayers.botExitCar()"); Start-Sleep 3
+# (a zone save's start seats the client already, on the first free back seat: out first)
+if ((Send $cd "local a = FindFirstOf('PlayerController').Pawn:GetAttachParentActor() return tostring(a ~= nil and a:IsValid())") -match 'true') { "  client: " + (Send $cd "return CoopPlayers.botExitCar()"); Start-Sleep 4 }
 "  client: " + (Send $cd "return CoopPlayers.botEnterAt('FL')"); Start-Sleep 4
 "  host: " + (Send $hd "return CoopPlayers.botEnterAt('FR')"); Start-Sleep 4
 $hw = Wheel $hd; $cw = Wheel $cd

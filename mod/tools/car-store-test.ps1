@@ -1,4 +1,4 @@
-# Automated test of the cars' storages (carstore.lua, own-car mode): the other's twin's trunk is the owner's trunk
+﻿# Automated test of the cars' storages (carstore.lua, own-car mode): the other's twin's trunk is the owner's trunk
 # (not the local player's own), what the visitor puts / takes there changes the owner's real trunk, the owner's own
 # changes reach the twin. Two instances over the test relays.
 #   1. the host's trunk gets 3 fabric -> the guest's twin of the host's car shows them; the guest's own trunk untouched
@@ -45,6 +45,8 @@ Start-Sleep 3
 "host: " + (Send $hd "$lib CoopSyncState.start(CoopSync, 'host', '$(P $sess.hchan)') return CoopPlayers.start(CoopSync, 'host', '$(P $sess.hchan)')")
 "client: " + (Send $cd "$lib CoopSyncState.start(CoopSync, 'client', '$(P $sess.cchan)', '$(P "$($sess.cchan)\inbox\host-spawnlist.tsv")') return CoopPlayers.start(CoopSync, 'client', '$(P $sess.cchan)', { ownCar = true })")
 Start-Sleep 15
+# (the Quick start's trunk has resources of its own - 20 fabric: the counts below start from none of the two kinds)
+foreach ($d in @($hd, $cd)) { foreach ($a in @($FAB, $STEEL)) { "  emptied: " + (Op $d 'take' $a 999) } }
 "  guest: " + (Send $cd "return CoopPlayers.botExitCar()")
 Start-Sleep 3
 

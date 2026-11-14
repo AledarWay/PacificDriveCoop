@@ -1,4 +1,4 @@
-# Automated test of the twins' part state (twin rework stage B): health / fuel / battery of the owner's parts reach
+﻿# Automated test of the twins' part state (twin rework stage B): health / fuel / battery of the owner's parts reach
 # its twin on the other side (ES lines); a repair / refuel there reaches the owner's real car (EY lines); damage on
 # the twin is the owner's business (not sent, the owner's value comes back). Two instances over the test network.
 #   1. host damages its own wheel, empties a fuel can by half -> the guest's twin shows it
@@ -48,6 +48,10 @@ Start-Sleep 15
 Start-Sleep 4
 
 $w = 'Car.Equip.Essentials.WheelFL'; $can = 'Car.Equip.Attachments.FuelCan'
+# (the Quick start's car has no fuel can, and the guest's wheels are not new: the host's car gets a can, the guest's
+# own wheel is compared with what it was)
+if ((PartState $hd 'own' $can) -notmatch '^\d') { "  host: fuel can " + (Send $hd "return CoopPlayers.twinModule().ownerEquip('$can', '/Game/Gameplay/Inventory/Items/Tools/FuelCan/IA_Tool_Target_FuelCan.IA_Tool_Target_FuelCan@4')"); Start-Sleep 4 }
+$gw0 = Num (PartState $cd 'own' $w) 0
 "=== 1. the host damages its own wheel, half-empties its fuel can"
 "  host: " + (SetPart $hd 'own' $w 'health = 60')
 "  host: " + (SetPart $hd 'own' $can 'fuel = 5')
@@ -93,7 +97,7 @@ Check "guest: the twin's wheel back to the owner's value" ([math]::Abs((Num $tw 
 
 "=== 5. own cars untouched, no errors"
 $gw = PartState $cd 'own' $w
-Check "guest: its own wheel untouched" ([math]::Abs((Num $gw 0) - 175) -lt 1) "guest own wheel=$gw"
+Check "guest: its own wheel untouched" ([math]::Abs((Num $gw 0) - $gw0) -lt 1) "guest own wheel=$gw (was $gw0)"
 $g = StInfo $cd; $h = StInfo $hd
 Check "no state errors, both sides sent and received" ($g -match 'state_errors=0' -and $h -match 'state_errors=0' -and $g -match 'es_recv=[1-9]' -and $h -match 'es_recv=[1-9]') "guest: $g | host: $h"
 

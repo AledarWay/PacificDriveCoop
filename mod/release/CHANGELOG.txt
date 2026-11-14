@@ -60,6 +60,10 @@ Abandoned cars' parts:
   that sawed it. That side's own break could run ahead of the host's (health and the wreck's part list sync on
   separate, differently-timed channels), and a part this side just broke off itself is no longer reattached
   from the host's still-stale list until the host's own break catches up.
+- In a zone loaded from a save (continuing a run), the abandoned cars' parts sync again. The game loads every part
+  without the name of the place it sits on, and the mod tells the parts apart by that name: all the parts of a car
+  counted as one (sawing one moved another's bars, a part broken off came back). The mod finds the name again from
+  where the part sits.
 - The abandoned cars' doors, panels, hood and trunk have the host's paint on the guest. Before, they all stood in
   the same orange-blue on the guest (only the body had the host's paint): the guest's copies of the parts were
   never painted.
@@ -107,6 +111,12 @@ The zone's entrance:
   blocked one, and a car that stands tilted when it arrives is moved to a flat spot.
 - Now and then (about one zone in four) the two come in by different entrances on purpose and have to find each other;
   the exits are the same for both. Set in the settings file (entrance_split_chance; 0 turns it off).
+The weather:
+- The guest's garage keeps its own weather while the host is already in the next zone. Before, it took the host's
+  zone weather.
+Reports:
+- The report also has the mod's logs of the two previous game starts. After a crash and restart, the report had only
+  the new game's log.
 Settings:
 - A settings file, <Saved>/CoopSync/config.txt (in the game's save folder; an update of the mod keeps it), written with
   the defaults and their explanations the first time. Changes apply within a few seconds.
@@ -120,6 +130,22 @@ Cars:
 - Getting out of a back seat opens that back door, not the driver's, and you stand on that door's side. Before, the
   driver's door swung open, you went out through the shut back door, and out of a right back seat you stood on the
   left. In the garage and in the zone, in your own car and the other's.
+- The driver's door seats you at the wheel again after the session's first sit was on a back seat. Before, that first
+  sit was taken for the driver's seat: from then on the driver's door put you on the back seat, even one holding a
+  fuel tank, in both cars. The seats are now fixed places of the car.
+- On a back seat you sit about 15 cm further forward. Before, you sat in the back rest and the camera looked
+  through the back of the car.
+- On a back seat the door to get out by lights up along the whole back door. Before, its highlight sat at the
+  door's back edge and past it, so it lit only when looking straight to the side.
+- The pedals the mod holds or drives (off for a player on a back seat of its own car, the other player's at the
+  wheel in the tests' old mode) now go through the game's own pedal handling too. That handling rewrote them every
+  frame, so the mod's value never reached the car.
+- A guest who drives out of its garage at the wheel arrives in the host's zone at the wheel. Before, it now and then
+  arrived standing beside its car.
+- While the guest drives the host's car, its parts' damage is the driver's. Before, the host's game also applied
+  the crash to its copy on its own and the two ended up with different bars (a panel red on one side, white on the
+  other).
+- When the guest's car arrives inside the host's car (the two flew apart), it is moved beside it within a second.
 - The driver's door can be opened, shut and taken off while the other player sits behind it. Before, it was not
   highlighted at all.
 - A back seat whose door was taken off can be used: look at the empty doorway and press E (your car or the other's).
@@ -178,6 +204,9 @@ the car controls test has each player in the other's car; a new car-switch test 
 car, the other's, their own again and the other's again, comparing every part's health, fuel, battery, lights and
 doors each time.
 Known issues:
+- While one player sits in the other's car, putting a door on that player's own car jolts the car they sit in (in
+  Drive with the engine running it then creeps away). Most likely the game's "part installed" signal reaches the car
+  the game treats as the current one. Not fixed yet.
 - The anchor in both players' hands is still not reproduced in the tests (a stable anchor on a pedestal, the
   game's own long grab on the other side gives nobody an item). Please send a report right after it happens.
 - The ARC map's north: both games have the same north in the tests, yet the owner saw the ARC maps turned 90 degrees

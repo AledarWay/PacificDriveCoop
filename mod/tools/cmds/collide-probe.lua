@@ -148,11 +148,14 @@ elseif op == "aim" then
     return string.format("own at %.0f,%.0f facing the twin at %.0f,%.0f", at.X, at.Y, tl.X, tl.Y)
 elseif op == "launch" then
     -- the own car where it is, at COL_SPEED cm/s along the twin's forward axis (no teleport: a teleport near the other
-    -- car glides its twin there - the other side read that as a hit and the striker was held to its shared speed)
-    local f = twin:GetActorForwardVector()
-    local sp = COL_SPEED or 1500
-    own.RootComponent:SetPhysicsLinearVelocity({ X = f.X * sp, Y = f.Y * sp, Z = 0 }, false, FName("None"))
+    -- car glides its twin there - the other side read that as a hit and the striker was held to its shared speed).
+    -- Straight at the twin from where the car stands (along the twin's axis it missed by 330: a zone save's car slid
+    -- ~150 sideways off the aim spot before the launch - quick suite 2026-11-14)
     local ol, tl = own:K2_GetActorLocation(), twin:K2_GetActorLocation()
+    local dx, dy = tl.X - ol.X, tl.Y - ol.Y
+    local dl = math.max(1, math.sqrt(dx * dx + dy * dy))
+    local sp = COL_SPEED or 1500
+    own.RootComponent:SetPhysicsLinearVelocity({ X = dx / dl * sp, Y = dy / dl * sp, Z = 0 }, false, FName("None"))
     return string.format("own at %.0f,%.0f launched at %d cm/s toward the twin at %.0f,%.0f", ol.X, ol.Y, sp, tl.X, tl.Y)
 elseif op == "ram" then
     local tl, f = twin:K2_GetActorLocation(), twin:GetActorForwardVector()

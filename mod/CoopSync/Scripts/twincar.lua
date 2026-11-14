@@ -782,6 +782,14 @@ function M.parseState(s)
     return t
 end
 local STATE_EPS = { h = 0.5, f = 0.05, b = 0.05, i = 0.015, r = 0.015, u = 0.015, k = 0.5 }
+-- the twin is the game's car here (the manager on it) and simulates on this side: the local player drives it
+function M.drivenHere(twin)
+    local cm = manager()
+    local onTwin = cm and cm.NewCarActor
+    if not (onTwin and onTwin:IsValid() and onTwin:GetAddress() == twin:GetAddress()) then return false end
+    local ok, sim = pcall(function() return twin.RootComponent:IsSimulatingPhysics(FName("None")) end)
+    return ok and sim == true
+end
 -- The other side: the owner's values onto the twin's parts (a slot the local player just changed waits PENDING_S
 -- for the owner's line to have it)
 function M.applyState(twin, want)
@@ -790,6 +798,9 @@ function M.applyState(twin, want)
     if not cont then return 0 end
     e.state = e.state or {}
     e.statePending = e.statePending or {}
+    -- (driven here: this side's values are the car's - M.watchState sends them; an owner's line from before the hit
+    -- set here first would have wiped the hit before it was seen)
+    if e.state and next(e.state) and M.drivenHere(twin) then M.stateStats.heldDriven = (M.stateStats.heldDriven or 0) + 1 return 0 end
     local now, n = os.clock(), 0
     for slot, cur in pairs(stateOf(cont)) do
         local w = want[slot]
@@ -815,9 +826,8 @@ function M.applyState(twin, want)
     return n
 end
 -- The other side: what the local player changed on the twin's parts since (slot, kind, delta) - for EY lines.
--- Only upwards (repair, refuel, charge): what runs down on a twin - wear, lights, the engine while the local player
--- sits in it (the manager on the twin: the game simulates it, seen: battery and fuel drained, sent as 37 changes) - is
--- the owner's car's own business, and nothing is sent while the local player is in this twin.
+-- Not driven here: only upwards (repair, refuel, charge) - what runs down on a twin is the owner's car's own business.
+-- Driven here (the local player at its wheel, the twin simulating on this side): everything, see `driven` below.
 function M.watchState(twin)
     local e = equipOf[twin:GetAddress()]
     local cont = e and Sync.deref(e.cont)
@@ -826,12 +836,17 @@ function M.watchState(twin)
     local cm = manager()
     local onTwin = cm and cm.NewCarActor
     local inside = (onTwin and onTwin:IsValid() and onTwin:GetAddress() == twin:GetAddress()) and true or false
+    -- Driven here (native cars: the car simulates on the side of the player at its wheel - its hits, its wear, its
+    -- fuel and battery are this side's; the owner's car is a puppet meanwhile): every change goes to the owner, both
+    -- ways (owner's two-games test 2026-11-14: the guest drove the host's car into things - its front right panel full
+    -- red on the guest, still some white on the host).
+    local driven = inside and M.drivenHere(twin)
     for slot, cur in pairs(stateOf(cont)) do
         local was = e.state[slot]
         if was then
             for kind, x in pairs(cur.v) do
                 local d = was[kind] and (x - was[kind]) or 0
-                if inside == false and not OWNER_ONLY[kind] and d > STATE_EPS[kind] then
+                if (driven and math.abs(d) > STATE_EPS[kind]) or (inside == false and not OWNER_ONLY[kind] and d > STATE_EPS[kind]) then
                     out[#out + 1] = { slot = slot, kind = kind, delta = d }
                     e.statePending[slot] = os.clock()
                 end

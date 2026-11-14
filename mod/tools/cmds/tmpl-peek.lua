@@ -1,3 +1,4 @@
+local SOCK = (rawget(_G, "CoopSync") and CoopSync.Loot and CoopSync.Loot.sockOf) or function(q) return q.MySocket:ToString() end -- (a reloaded zone's parts: lootsync M.sockOf)
 local KSL = StaticFindObject("/Script/Engine.Default__KismetSystemLibrary")
 local function arch(i) if not (i and i:IsValid()) then return "-" end local a = i.Archetype return (a and a:IsValid()) and a:GetFName():ToString() or "?" end
 local shown, total, parts = 0, 0, 0
@@ -7,7 +8,7 @@ for _, a in ipairs(FindAllOf("LootableTemplate") or {}) do
     local t = {}
     for _, p in ipairs(FindAllOf("LootableTemplatePart") or {}) do
       if KSL:IsValid(p) and p:GetAttachParentActor() and p:GetAttachParentActor():IsValid() and p:GetAttachParentActor():GetFullName() == a:GetFullName() then
-        t[#t+1] = p.MySocket:ToString() .. "=" .. p:GetClass():GetFName():ToString():gsub("^BP_TemplatePart_", "") .. "/" .. arch(p.ItemInstance)
+        t[#t+1] = SOCK(p) .. "=" .. p:GetClass():GetFName():ToString():gsub("^BP_TemplatePart_", "") .. "/" .. arch(p.ItemInstance)
       end
     end
     parts = parts + #t

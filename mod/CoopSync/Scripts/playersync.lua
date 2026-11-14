@@ -183,6 +183,7 @@ local function spawnCarCopy(sample)
         if CoopSyncHitch then CoopSyncHitch.op("twin spawn", (os.clock() - t0) * 1000) end
         if twin then
             TD.equipSeqApplied = target.equipSeq
+            if role == "client" and ownCar then TD.clearUntil = M.nowMs() + 30000 end -- (TD.clearOwnCar)
             ghostSeq = layoutIn.readySeq
             st.carCopies = (st.carCopies or 0) + 1
             return twin
@@ -327,29 +328,42 @@ end
 -- Seats (car-local, X forward, Y right): 1 driver, 2 front passenger, 3 back left, 4 back right.
 -- The game seats its player as the driver (observed character 46.2,-45.8,-12.3); the front passenger is
 -- that mirrored across the centre line; the back seats sit between the rear doors (X 8) and the rear
--- axle (X -100) вЂ” BACK_X is an estimate (headless: geometry only, nobody looked at it).
+-- axle (X -100). BACK_X from the devices the back seats hold (probed 2026-11-14 on the Quick start car: the battery
+-- on seat 4 spans X +12..-64, the fuel tank on seat 3 +7..-92 - the back rest at about -64), the hips some 20 in front
+-- of it; -60 before (an estimate) sat the player in the back rest: its camera looked through the car's back (owner's
+-- two-games test 2026-11-14).
 -- A seat is taken by a player or by a device: the front passenger seat holds the ARC device (owner;
 -- removable later), the back seats are item slots (frames) that hold the base fuel tank / battery in a
 -- new game. The host decides who sits where; a player who gets in picks the free seat nearest to the
 -- door it got in at, or is put out of the car when none is free. Driving = sitting on seat 1.
-local BACK_X = -60
+local BACK_X = -45
 local SEAT_DOOR = { [1] = { X = 131, Y = -150 }, [2] = { X = 131, Y = 150 }, [3] = { X = 8, Y = -150 }, [4] = { X = 8, Y = 150 } }
 local SEAT_NAME = { "driver", "front passenger", "back left", "back right" }
 local SEAT_FRAME = { [3] = "SLOT_BackSeatLeft", [4] = "SLOT_BackSeatRight" }
+-- The seats are fixed, car-local: every car is one blueprint (BP_PlayerCarNew_C), the twin too. They were measured from
+-- the player once a session instead, which took a back seat for the driver's when the first sit of a session was a
+-- back one: from then on the driver's door seated the player at the back, in both cars (owner's test 2026-11-14,
+-- reproduced with the host: back-left first -> -60,-45.8 measured; driver's door first -> 46.5,-46.0).
+-- TempSocket_Seat as the blueprint builds it: the game puts the seated player at the socket + sockDelta.
+TD.SOCK_HOME = { X = 27, Y = -46, Z = -16 }
 local seats
+local sockDelta -- character relative location minus TempSocket_Seat relative location
 local function seatRel(n)
     if not seats then
         local d = { X = 46.2, Y = -45.8, Z = -12.3 }
         seats = { [1] = d, [2] = { X = d.X, Y = -d.Y, Z = d.Z }, [3] = { X = BACK_X, Y = d.Y, Z = d.Z }, [4] = { X = BACK_X, Y = -d.Y, Z = d.Z } }
+        sockDelta = { X = d.X - TD.SOCK_HOME.X, Y = d.Y - TD.SOCK_HOME.Y, Z = d.Z - TD.SOCK_HOME.Z }
     end
     return seats[n]
 end
-local sockDelta -- character relative location minus TempSocket_Seat relative location (measured once)
-local function measureDriverSeat(rel, sockRel)
-    -- (the game's own entry - native cars - walks the player in already attached to the car: its first frames are at
-    -- the door, outside. Measured there, every seat of the other's puppet was outside by the driver's door - owner's
-    -- alpha 21 test. Taken once the player stays still 1 s within the cabin)
+-- Where the game put the player at the wheel (diagnostics only: selfInfo's driver_seat_measured, seat-measure-test).
+-- (the game's own entry - native cars - walks the player in already attached to the car: its first frames are at the
+-- door, outside - owner's alpha 21 test. Taken once the player stays still 1 s within the cabin)
+local function measureDriverSeat(rel)
     if math.abs(rel.Y) > 80 or math.abs(rel.X) > 250 then TD.seatCand = nil st.seatOutside = (st.seatOutside or 0) + 1 return end
+    -- (the wheel is in the front half: a player the mod seated at the back - in at the start of the old shared-car mode,
+    -- drive-test - is not at it; the back seats' X is BACK_X)
+    if rel.X < 0 then TD.seatCand = nil return end
     local now = M.nowMs()
     if not TD.seatCand or (rel.X - TD.seatCand.X) ^ 2 + (rel.Y - TD.seatCand.Y) ^ 2 + (rel.Z - TD.seatCand.Z) ^ 2 > 4 then
         TD.seatCand = { X = rel.X, Y = rel.Y, Z = rel.Z, at = now }
@@ -357,9 +371,6 @@ local function measureDriverSeat(rel, sockRel)
     end
     if now - TD.seatCand.at < 1000 then return end
     TD.seatCand = nil
-    seats ={ [1] = { X = rel.X, Y = rel.Y, Z = rel.Z }, [2] = { X = rel.X, Y = -rel.Y, Z = rel.Z },
-        [3] = { X = BACK_X, Y = rel.Y, Z = rel.Z }, [4] = { X = BACK_X, Y = -rel.Y, Z = rel.Z } }
-    if sockRel then sockDelta = { X = rel.X - sockRel.X, Y = rel.Y - sockRel.Y, Z = rel.Z - sockRel.Z } end
     st.seatMeasured = string.format("%.1f,%.1f,%.1f", rel.X, rel.Y, rel.Z)
 end
 
@@ -755,16 +766,11 @@ function TD.seatFreeForMe(tag, n)
     if busy and busy:find(tostring(n), 1, true) then return false, "device" end
     return true
 end
--- The twin's seat socket moved to seat n before the entry: the game's entry animation ends at the socket
--- (socket = seat - sockDelta; sockDelta from the twin's own socket the first time, where the game puts it: the driver's).
-TD.twinSockHome = {}
+-- The car's seat socket moved to seat n before the entry: the game's entry animation ends at the socket
+-- (socket = seat - sockDelta; seat 1: the socket at its home)
 function TD.aimSeatSocket(g, n)
     local sock = g.TempSocket_Seat
     if not (sock and sock:IsValid()) then return false end
-    local key = g:GetFullName()
-    if not TD.twinSockHome[key] then local r = sock.RelativeLocation TD.twinSockHome[key] = { X = r.X, Y = r.Y, Z = r.Z } end
-    local home, d = TD.twinSockHome[key], seatRel(1)
-    if not sockDelta then sockDelta = { X = d.X - home.X, Y = d.Y - home.Y, Z = d.Z - home.Z } end
     local want = seatRel(n)
     pcall(function() sock:K2_SetRelativeLocation({ X = want.X - sockDelta.X, Y = want.Y - sockDelta.Y, Z = want.Z - sockDelta.Z }, false, {}, true) end)
     return true
@@ -1078,6 +1084,7 @@ end
 -- opens is the one it got in by (the character's CarEntryTransitionPoint). For a player on seat n they are moved to
 -- that seat's door (mirrored for the right side: ExitCheckPoints turned round) - looking at the own door + E gets out
 -- through it, the game's own animation.
+TD.BACK_DOOR_MID = 40 -- a back door's middle this far behind its hinge (its highlight box: -72..8 for the hinge at 8)
 TD.EXIT_COMPS = { "UICollision_ExitHandle", "UICollision_ExitHandle2", "ExitPoint", "TempExitLocation", "TempExitLocation_StartTrace" }
 TD.exitHome = {} -- car path -> { comp name -> its relative location as built }
 TD.exitSeat = {} -- car path -> the seat its exit is placed for
@@ -1094,10 +1101,17 @@ function TD.placeExit(car, n)
         TD.exitHome[key] = home
     end
     local dx, right = SEAT_DOOR[n].X - SEAT_DOOR[1].X, SEAT_DOOR[n].Y > 0
+    -- (the handles - the highlight's boxes - on the back door's middle: moved hinge to hinge they stood at its back edge,
+    -- X -96..-34 against the door's -72..8, so only a look straight to the side lit it - owner's two-games test
+    -- 2026-11-14, "the back door is lit only looking right at it". The door's own highlight box is centred 40 behind its
+    -- hinge; the exit's points keep the hinge-to-hinge move: the player stands out where the driver would)
+    local hx = home.UICollision_ExitHandle and home.UICollision_ExitHandle.X
+    local hdx = (n >= 3 and hx) and (SEAT_DOOR[n].X - TD.BACK_DOOR_MID - hx) or dx
     for name, r in pairs(home) do
         local c = car[name]
         if c and c:IsValid() then
-            pcall(function() c:K2_SetRelativeLocation({ X = r.X + dx, Y = right and -r.Y or r.Y, Z = r.Z }, false, {}, true) end)
+            local mx = name:find("^UICollision_") and hdx or dx
+            pcall(function() c:K2_SetRelativeLocation({ X = r.X + mx, Y = right and -r.Y or r.Y, Z = r.Z }, false, {}, true) end)
         end
     end
     -- (the spot the player is put at: ExitCheckPoints' TempExitLocation (and its trace start) - moved itself, mirrored
@@ -1769,6 +1783,22 @@ function TD.bump(twin, vel)
         st.bumpSent = (st.bumpSent or 0) + 1
         TD.kickTwin(twin, nx, ny, vc)
     end
+end
+-- The guest, for 30 s after the host's car's twin is here: its own car standing inside that twin (both flew apart -
+-- owner's two-games test 2026-11-14) goes to a free spot beside it (runsync.clearOfTwin), once a second.
+function TD.clearOwnCar(twin)
+    local now = M.nowMs()
+    if not (TD.clearUntil and now < TD.clearUntil) or now - (TD.clearAt or 0) < 1000 then return end
+    TD.clearAt = now
+    local own = Twin.ownCar()
+    if not (own and own:IsValid() and own:GetAddress() ~= twin:GetAddress()) then return end
+    TD.Run = TD.Run or CoopSyncRunMod or dofile(Sync.DIR .. "runsync.lua")
+    local ok, r = pcall(TD.Run.clearOfTwin, own, twin)
+    if ok and r then
+        st.carCleared = (st.carCleared or 0) + 1
+        st.lastCleared = r
+        if CoopSyncHitch then pcall(CoopSyncHitch.note, "own car out of the host's twin: " .. r) end
+    elseif not ok then err("clear own car: " .. tostring(r)) end
 end
 function TD.kickTwin(twin, nx, ny, vc)
     local l = twin:K2_GetActorLocation()
@@ -2965,8 +2995,17 @@ local function readInput(car)
     end
     return v
 end
+-- The pedals' own stage (raw axis -> ThrottleTarget / ThrottleCurrent, BrakeTarget / BrakeCurrent -> the User*
+-- fields) runs where the game takes input (with sound - a real game; reference-save tests 2026-11-14): it rewrote
+-- UserThrottleInput from its own 0 every frame and the written throttle never reached the car (moved 0). Written into
+-- that stage too, it carries the value through; where the stage does not run the User* fields alone drive the car.
 local function writeInput(car, v)
     for i, f in ipairs(INPUT_FIELDS) do car[f] = v[i] or 0 end
+    pcall(function()
+        local t, b = v[1] or 0, v[2] or 0
+        car.RawThrottle, car.ThrottleTarget, car.ThrottleCurrent = t, t, t
+        car.BrakeTarget, car.BrakeCurrent = b, b
+    end)
 end
 local ZERO = { 0, 0, 0, 0 }
 
@@ -3116,9 +3155,7 @@ local function sendTick()
             end
             local inside = par and g and par:GetFullName() == g:GetFullName()
             if inGhost.twin and inside and not st.seatMeasured and not inGhost.seat and not inGhost.aimed then
-                -- the game seats every player as the driver: the seat geometry comes from there (client side)
-                local sock = g.TempSocket_Seat
-                measureDriverSeat(pawn.RootComponent.RelativeLocation, sock and sock:IsValid() and sock.RelativeLocation or nil)
+                measureDriverSeat(pawn.RootComponent.RelativeLocation) -- (diagnostics: where the game seated the player)
             end
             if inGhost.seat and inside then
                 local want, rel = seatRel(inGhost.seat), pawn.RootComponent.RelativeLocation
@@ -3136,10 +3173,7 @@ local function sendTick()
         elseif par and car and par:GetFullName() == car:GetFullName() then
             tag = "H"
             local rel = pawn.RootComponent.RelativeLocation
-            if not st.seatMeasured then
-                local sock = car.TempSocket_Seat
-                measureDriverSeat(rel, sock and sock:IsValid() and sock.RelativeLocation or nil)
-            end
+            if not st.seatMeasured and not TD.ownSeat then measureDriverSeat(rel) end -- (diagnostics, at the wheel only)
             local entry = (lastOutside and M.nowMs() - lastOutside.ms < 5000) and lastOutside or nil
             -- (own-car mode - the guest's G lines come - the host in its own car is its driver, as the game seats it,
             -- unless the guest has the wheel: by the door it came in at it had taken the back seat it got out at,
@@ -4133,6 +4167,7 @@ local function applyTick()
                 TD.equipTick(car) ts = section("car_equip", ts)
                 TD.storeTick(car) ts = section("car_store", ts)
                 TD.bump(car, target.car.vel)
+                TD.clearOwnCar(car)
             end
             trace("carcopy", l)
         end

@@ -24,11 +24,12 @@ function Check($name, [bool]$ok, $detail) {
     "  [{0}] {1} -- {2}" -f $(if ($ok) { 'PASS' } else { 'FAIL' }), $name, $detail
 }
 # drive a car: throttle 4 s, then brake + handbrake, left held (the car must stand still for the comparison;
-# released, it rolled on downhill). Time-based (headless runs
+# released, it rolled on downhill; and parked: a zone start runs the engine, left in drive the car crept away ~50 m
+# after the loop let go - 2026-11-14). Time-based (headless runs
 # at hundreds of fps); the loop cancels its own delayed action: UE4SS ignores the callback's return value, and a
 # loop left running wrote into the car after its map was gone - the game crashed on the next travel.
 function Shift($dir, [string]$carExpr) {
-    Send $dir "local c = $carExpr local t0 = os.clock() local h h = LoopInGameThreadWithDelay(1, function() local dt = os.clock() - t0 if dt > 10 then CancelDelayedAction(h) return end if dt > 4 then c.UserThrottleInput = 0 c.UserBrakeInput = 1 c.UserHandBrakeInput = 1 return end c.UserThrottleInput = 1 c.UserBrakeInput = 0 c.UserHandBrakeInput = 0 end) return 'driving'"
+    Send $dir "local c = $carExpr local m = FindFirstOf('BP_CarManager_C') m.MyCarGearBox = 0 local t0 = os.clock() local h h = LoopInGameThreadWithDelay(1, function() local dt = os.clock() - t0 if dt > 10 then CancelDelayedAction(h) return end if dt > 4 then m.MyCarGearBox = 1 c.UserThrottleInput = 0 c.RawThrottle = 0 c.ThrottleTarget = 0 c.ThrottleCurrent = 0 c.UserBrakeInput = 1 c.BrakeTarget = 1 c.BrakeCurrent = 1 c.UserHandBrakeInput = 1 return end c.UserThrottleInput = 1 c.RawThrottle = 1 c.ThrottleTarget = 1 c.ThrottleCurrent = 1 c.UserBrakeInput = 0 c.BrakeTarget = 0 c.BrakeCurrent = 0 c.UserHandBrakeInput = 0 end) return 'driving'"
 }
 function CopiesMatch($label) {
     $h = Cars $hd; $c = Cars $cd

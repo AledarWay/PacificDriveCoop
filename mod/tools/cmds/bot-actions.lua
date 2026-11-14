@@ -1,6 +1,7 @@
 -- Bot interactions with the same end results as a player's actions. Picks targets deterministically
 -- from a sorted list, skipping the first SKIP of each kind so host and client can act on different ones.
 -- Globals expected: CoopSync (spawnsync), CoopSyncState (statesync). Set BOT_SKIP before running.
+local SOCK = (rawget(_G, "CoopSync") and CoopSync.Loot and CoopSync.Loot.sockOf) or function(q) return q.MySocket:ToString() end -- (a reloaded zone's parts: lootsync M.sockOf)
 local SKIP = BOT_SKIP or 0
 local Loot = CoopSync.Loot
 local IM = FindFirstOf("BP_InventoryManager_C")
@@ -79,10 +80,10 @@ local detached, skipped4 = 0, 0
 for _, t in ipairs(templates) do
     if want("detach") and detached < 2 then
         for _, p in ipairs(Loot.templateParts(t)) do
-            if detached < 2 and p.MySocket:ToString():find("^Wheel") then
+            if detached < 2 and SOCK(p):find("^Wheel") then
                 if skipped4 < SKIP then skipped4 = skipped4 + 1 else
                     note("about to detach " .. p:GetFName():ToString())
-                    note("detach " .. p.MySocket:ToString() .. " from " .. name(t))
+                    note("detach " .. SOCK(p) .. " from " .. name(t))
                     CoopSyncState.detachPart(p)
                     detached = detached + 1
                 end

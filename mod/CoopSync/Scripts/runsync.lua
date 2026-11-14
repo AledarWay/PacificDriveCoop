@@ -300,6 +300,36 @@ function M.freeSpot(car, at, clash)
     return (flat and flat.p) or first or { X = at.X + math.cos(r) * s[2], Y = at.Y + math.sin(r) * s[2], Z = at.Z + 60 },
         "no free spot: " .. table.concat(notes, ",")
 end
+-- the own car to the first free spot by at (M.freeSpot), physics off for the teleport and back on still a moment later
+function M.moveCar(ownCar, at, clash)
+    local to, why = M.freeSpot(ownCar, at, clash)
+    M.lastSpot = why
+    local root = ownCar.RootComponent
+    pcall(function() root:SetSimulatePhysics(false) end)
+    ownCar:K2_SetActorLocationAndRotation(to, { Pitch = 0, Yaw = at.Yaw, Roll = 0 }, false, {}, true)
+    local path = (ownCar:GetFullName():gsub("^%S+ ", ""))
+    After(300, function()
+        local c = SFO(path)
+        if c and c:IsValid() then pcall(function()
+            local r = c.RootComponent
+            r:SetSimulatePhysics(true)
+            r:SetPhysicsLinearVelocity({ X = 0, Y = 0, Z = 0 }, false, FName("None"))
+            r:SetPhysicsAngularVelocityInDegrees({ X = 0, Y = 0, Z = 0 }, false, FName("None"))
+        end) end
+    end)
+    return why
+end
+-- Guest: its own car standing in the twin of the host's car, where the twin actually is here (owner's two-games test
+-- 2026-11-14: the guest's car came into the zone inside the host's and both flew apart - the gates' check goes by the
+-- host's file, not the twin): moved to a free spot beside the twin. nil when they are apart.
+function M.clearOfTwin(ownCar, twin)
+    local l, t = ownCar:K2_GetActorLocation(), twin:K2_GetActorLocation()
+    if (l.X - t.X) ^ 2 + (l.Y - t.Y) ^ 2 >= CLASH_CM ^ 2 or math.abs(l.Z - t.Z) > 300 then return nil end
+    local at = { X = t.X, Y = t.Y, Z = t.Z, Yaw = twin:K2_GetActorRotation().Yaw }
+    local function clash(p) return (p.X - t.X) ^ 2 + (p.Y - t.Y) ^ 2 < CLASH_CM ^ 2 end
+    M.stats.clearedOfTwin = (M.stats.clearedOfTwin or 0) + 1
+    return string.format("%.1f m from the host's car: %s", math.sqrt((l.X - t.X) ^ 2 + (l.Y - t.Y) ^ 2) / 100, M.moveCar(ownCar, at, clash))
+end
 function M.applyGates(path, ownCar, keepCar)
     local data = readText(path)
     if not data then return "no gates file" end
@@ -348,21 +378,7 @@ function M.applyGates(path, ownCar, keepCar)
             tilted = math.abs(r.Roll) > TILT_DEG or math.abs(r.Pitch) > TILT_DEG
         end)
         if d > NEAR_CM or clash(l) or tilted then
-            local to, why = M.freeSpot(ownCar, at, clash)
-            M.lastSpot = why
-            local root = ownCar.RootComponent
-            pcall(function() root:SetSimulatePhysics(false) end)
-            ownCar:K2_SetActorLocationAndRotation(to, { Pitch = 0, Yaw = at.Yaw, Roll = 0 }, false, {}, true)
-            local path = (ownCar:GetFullName():gsub("^%S+ ", ""))
-            After(300, function()
-                local c = SFO(path)
-                if c and c:IsValid() then pcall(function()
-                    local r = c.RootComponent
-                    r:SetSimulatePhysics(true)
-                    r:SetPhysicsLinearVelocity({ X = 0, Y = 0, Z = 0 }, false, FName("None"))
-                    r:SetPhysicsAngularVelocityInDegrees({ X = 0, Y = 0, Z = 0 }, false, FName("None"))
-                end) end
-            end)
+            local why = M.moveCar(ownCar, at, clash)
             moved = string.format("car moved %.0f m to the host's %s%s (%s)", d / 100, arrive and "entrance" or "car", tilted and ", was tilted" or "", why)
             M.stats.carMoved = (M.stats.carMoved or 0) + 1
         end

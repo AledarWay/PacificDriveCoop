@@ -165,11 +165,8 @@ function M.guestLoad(docPath, side)
     -- (the spliced save kept for a look - save-dump.ps1; the scratch slot is deleted after the load)
     copyFile(out, dir .. "coop-last-splice.sav")
     pcall(function() m:InvalidateMetadataCacheSlot(scratch) end)
-    local seated = false
-    pcall(function()
-        local par = FindFirstOf("PlayerController").Pawn:GetAttachParentActor()
-        seated = par ~= nil and par:IsValid() and par:GetFullName() == ownCar():GetFullName()
-    end)
+    local seated = M.seatedNow() or M.droveOutSeated == true
+    M.droveOutSeated = nil
     M.selfLoad = true -- (session.lua's load hook: not a player's load, the lobby stays)
     local ok, e = pcall(function() m:UserLoadGame(scratch, 1, 0) end)
     M.selfLoad = false
@@ -246,11 +243,8 @@ function M.directStart(docPath)
     -- memory on a load - saved into slot 0 and loaded from there, gates-test 2026-11-11 got the garage back, LOAD V4:
     -- Garage, though the file had the host's Map and META)
     local path = M.slotPath(own)
-    local seated = false
-    pcall(function()
-        local par = FindFirstOf("PlayerController").Pawn:GetAttachParentActor()
-        seated = par ~= nil and par:IsValid() and par:GetFullName() == ownCar():GetFullName()
-    end)
+    local seated = M.seatedNow() or M.droveOutSeated == true
+    M.droveOutSeated = nil
     local t0 = now()
     local before = fileSize(path)
     local ok, e = pcall(function() m:SaveGame(own, "", 1) end)
@@ -330,6 +324,17 @@ function M.spawnOwnCar(at)
     if not ok then return "spawn failed: " .. tostring(e) end
     M.stats.carSpawned = (M.stats.carSpawned or 0) + 1
     return string.format("own car spawned at %.0f,%.0f", at.X, at.Y)
+end
+-- the player at the own car's wheel now. (Also the drive-out's: session.lua sets M.droveOutSeated when the guest drove
+-- out of its garage seated - the arrival's gate move, 2 km, then the load came with the player off the seat, startflow
+-- 2026-11-14: the guest joined standing beside its car)
+function M.seatedNow()
+    local seated = false
+    pcall(function()
+        local par = FindFirstOf("PlayerController").Pawn:GetAttachParentActor()
+        seated = par ~= nil and par:IsValid() and par:GetFullName() == ownCar():GetFullName()
+    end)
+    return seated
 end
 -- the player into the own car when it stands beside it (after a load)
 function M.seatNow()

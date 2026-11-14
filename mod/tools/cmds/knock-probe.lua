@@ -25,14 +25,33 @@ if op == "aim" then
     local car = ownCar()
     local cl = car:K2_GetActorLocation()
     local best, bd
-    for _, a in ipairs(FindAllOf("BP_Crash_Complex_Foliage_Base_C") or {}) do
-        if a:IsValid() and not a.IsBroken and a:GetClass():GetFName():ToString():find(KN_LIKE or 'Shrub') then
-            local l = a:K2_GetActorLocation()
-            local d = math.sqrt((l.X - cl.X) ^ 2 + (l.Y - cl.Y) ^ 2)
-            if d >= (KN_MIN or 0) and math.abs(l.Z - cl.Z) < 400 and (not bd or d < bd) then best, bd = a, d end
+    -- (a shrub; where none is swapped in by the car - the reference saves' Forest_15 spot - a young pine or a small oak,
+    -- which a car also breaks; a medium oak stops it)
+    for _, like in ipairs(KN_LIKE and { KN_LIKE } or { "Shrub", "Young", "Small" }) do
+        if best then break end
+        for _, a in ipairs(FindAllOf("BP_Crash_Complex_Foliage_Base_C") or {}) do
+            if a:IsValid() and not a.IsBroken and a:GetClass():GetFName():ToString():find(like) then
+                local l = a:K2_GetActorLocation()
+                local d = math.sqrt((l.X - cl.X) ^ 2 + (l.Y - cl.Y) ^ 2)
+                -- (KN_NEAR = { X, Y }: the nearest to that point instead - the other player's, for a kick its side has swapped in)
+                local rank = KN_NEAR and math.sqrt((l.X - KN_NEAR.X) ^ 2 + (l.Y - KN_NEAR.Y) ^ 2) or d
+                if d >= (KN_MIN or 0) and math.abs(l.Z - cl.Z) < 400 and (not bd or rank < bd) then best, bd = a, rank end
+            end
         end
     end
-    if not best then return "none" end
+    if not best then
+        -- (why: how many swapped-in ones this side has, the nearest of the class at any height)
+        local all, near, nz = 0, nil, nil
+        for _, a in ipairs(FindAllOf("BP_Crash_Complex_Foliage_Base_C") or {}) do
+            if a:IsValid() then
+                all = all + 1
+                local l = a:K2_GetActorLocation()
+                local d = math.sqrt((l.X - cl.X) ^ 2 + (l.Y - cl.Y) ^ 2)
+                if (not near or d < near) then near, nz = d, l.Z - cl.Z end
+            end
+        end
+        return string.format("none (foliage=%d nearest=%s dz=%s car=%.0f,%.0f)", all, tostring(near and math.floor(near)), tostring(nz and math.floor(nz)), cl.X, cl.Y)
+    end
     local l = best:K2_GetActorLocation()
     local dx, dy = l.X - cl.X, l.Y - cl.Y
     local n = math.sqrt(dx * dx + dy * dy)

@@ -45,7 +45,8 @@ $hp0 = Col $hd 'hp'; $gp0 = Col $cd 'hp'
 "  parts' health before: host $hp0 | guest $gp0"
 $g0 = Col $cd 'where'
 "  guest before: $g0"
-"  host: " + (Send $hd "return CoopPlayers.botInput(5, 1.0, 0)")
+# (no gas before the launch spot is used: since the mod's throttle goes through the pedals' own stage (2026-11-14) 5 s of
+# gas drove the car ~1500 past the aim spot, beside the twin - the launch then missed it)
 "  guest: " + (Col $cd 'peak' 'COL_MS = 6000') + " | host: " + (Col $hd 'peak' 'COL_MS = 6000')
 # (the gas again, before the launch: the first 5 s may be over by now - the probes above take a few seconds - and a car with no gas
 # brakes from 15 m/s to a stop in ~1 s, short of the twin: 2026-11-04 runs. And launched where it stands, not teleported again: the twin's glide to the new spot

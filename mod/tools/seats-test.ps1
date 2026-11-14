@@ -22,8 +22,8 @@ function Check($name, [bool]$ok, $detail) {
     if ($ok) { $script:pass++ } else { $script:fail++ }
     "  [{0}] {1} -- {2}" -f $(if ($ok) { 'PASS' } else { 'FAIL' }), $name, $detail
 }
-# expected car-local X,Y of a seated character per seat (BACK_X = -60 in playersync.lua)
-$SEAT = @{ 1 = @(46.2, -45.8); 2 = @(46.2, 45.8); 3 = @(-60, -45.8); 4 = @(-60, 45.8) }
+# expected car-local X,Y of a seated character per seat (BACK_X = -45 in playersync.lua)
+$SEAT = @{ 1 = @(46.2, -45.8); 2 = @(46.2, 45.8); 3 = @(-45, -45.8); 4 = @(-45, 45.8) }
 function At($rel, [int]$n) { $v = Vec $rel; [math]::Abs($v.X - $SEAT[$n][0]) -lt 2 -and [math]::Abs($v.Y - $SEAT[$n][1]) -lt 2 }
 function SeatCheck($label, [int]$hostSeat, [int]$clientSeat) {
     $hs = Self $hd; $cs = Self $cd; $hp = Info $cd; $cp = Info $hd; $tab = Seats $hd

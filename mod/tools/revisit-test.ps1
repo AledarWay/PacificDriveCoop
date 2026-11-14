@@ -76,6 +76,10 @@ $world1 = $script:world
 & "$t\wait-state.ps1" -State 4 -Dir $hd -TimeoutSec 240 | Select-Object -Last 1 | ForEach-Object { "  host: $_" }
 & "$t\wait-state.ps1" -State 4 -Dir $cd -TimeoutSec 240 | Select-Object -Last 1 | ForEach-Object { "  guest: $_" }
 Start-Sleep 20
+# (the Quick start's route: home again, the garage's next departure is the route's next leg - a new map; the case to
+# check is the same zone again, so the leg is pinned to the first trip's map as start-zone pinned the first)
+. "$t\zone-maps.ps1"
+"  host: " + ((Send $hd "ROUTE_TARGET_MAP = '$($ZoneMap.host)' $(Get-Content "$t\cmds\route-override.lua" -Raw)") -replace ';.*$', ' ...')
 Trip "second visit"
 Check "the second trip went to the same zone (the case to check)" ($script:world -eq $world1) "first $world1, second $($script:world)"
 

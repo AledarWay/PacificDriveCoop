@@ -32,7 +32,11 @@ $hr = Send $hd "return CoopSyncState.report()"; $cr = Send $cd "return CoopSyncS
 Check "the host broke it, the guest's copy broke too (KB)" ($oa -and $h -ne 'standing' -and $c -ne 'standing' -and $cr -match 'ap_KB=') "host: $h | guest: $c | host: $hr | guest: $cr"
 
 "=== 2. the host kicks one (the guest still on foot near: its copy swapped in)"
-$k = Kn $hd 'aim' "KN_MIN = 300 KN_SPEED = 0 KN_BACK = 2500 KN_LIKE = 'Oak'"; $ok = Obj $k
+# (the oak nearest the guest's player: the guest swaps in only those near it - one by the host's car 3 km off had no
+# copy there, reference saves 2026-11-14)
+$gp = Send $cd "local l = FindFirstOf('PlayerController').Pawn:K2_GetActorLocation() return string.format('{ X = %.0f, Y = %.0f }', l.X, l.Y)"
+$k = Kn $hd 'aim' "KN_MIN = 300 KN_SPEED = 0 KN_BACK = 2500 KN_LIKE = 'BP_IF_' KN_NEAR = $gp"; $ok = Obj $k
+Send $hd "KN_NEAR = nil return 'ok'" | Out-Null
 "  host kicks: " + (Kn $hd 'kick' $ok) + " ($k)"
 Start-Sleep 3
 $cr = Send $cd "return CoopSyncState.report()"

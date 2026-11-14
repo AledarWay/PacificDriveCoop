@@ -11,8 +11,11 @@ if ($UserDir) {
         Add-Content $ini "`r`n[/Script/MoviePlayer.MoviePlayerSettings]`r`nbWaitForMoviesToComplete=False`r`n!StartupMovies=ClearArray`r`n" -Encoding ascii
     }
 }
-# $env:COOPTEST_SOUND=1 keeps the sound on (the radio's music plays only with sound).
-$snd = if ($env:COOPTEST_SOUND -eq '1') { @() } else { @('-nosound') }
+# Sound on by default (owner, 2026-11-14: a garage dialogue never advanced, no subtitles either, in a manual
+# quick-start test - the dialogue system waits for its line's voice-over to finish playing, which never happens
+# with -nosound). $env:COOPTEST_SOUND=0 goes back to -nosound for a test that doesn't need audio and wants the
+# small startup cost back.
+$snd = if ($env:COOPTEST_SOUND -eq '0') { @('-nosound') } else { @() }
 # $env:COOPTEST_FPS=15 caps the game at that many frames per second (a slow friend's PC): session.lua reads it from
 # the environment and sets t.MaxFPS in every world (-ExecCmds on the command line did not hold).
 if ($env:COOPTEST_GRAPHICS -eq '1') { @('-dx11', '-windowed', '-ResX=960', '-ResY=540') + $snd }

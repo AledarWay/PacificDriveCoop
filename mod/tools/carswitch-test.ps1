@@ -138,7 +138,7 @@ function ToggleLights($dir) { Send $dir "local m = FindFirstOf('BP_CarManager_C'
 function ShiftAndDrive($dir, $seconds) {
     Send $dir "local m = FindFirstOf('BP_CarManager_C') m.CarIgnitionState = 2 m.MyCarGearBox = 0 return 'drive'" | Out-Null
     Start-Sleep 2
-    Send $dir "local ctl = FindFirstOf('BP_Controller_PlayerCar_C') local car = ctl.PlayerCarReference local t0 = os.clock() local h h = LoopInGameThreadWithDelay(1, function() local dt = os.clock() - t0 if dt > $seconds then car.UserThrottleInput = 0 car.UserHandBrakeInput = 0 CancelDelayedAction(h) return end car.UserThrottleInput = 1.0 car.UserBrakeInput = 0 end) return 'driving'" | Out-Null
+    Send $dir "local ctl = FindFirstOf('BP_Controller_PlayerCar_C') local car = ctl.PlayerCarReference local t0 = os.clock() local h h = LoopInGameThreadWithDelay(1, function() local dt = os.clock() - t0 if dt > $seconds then car.UserThrottleInput = 0 car.RawThrottle = 0 car.ThrottleTarget = 0 car.ThrottleCurrent = 0 car.UserHandBrakeInput = 0 CancelDelayedAction(h) return end car.UserThrottleInput = 1.0 car.RawThrottle = 1.0 car.ThrottleTarget = 1.0 car.ThrottleCurrent = 1.0 car.UserBrakeInput = 0 car.BrakeTarget = 0 car.BrakeCurrent = 0 end) return 'driving'" | Out-Null
     Start-Sleep ($seconds + 2)
     Send $dir "local m = FindFirstOf('BP_CarManager_C') m.MyCarGearBox = 1 return 'park'" | Out-Null
     Start-Sleep 2

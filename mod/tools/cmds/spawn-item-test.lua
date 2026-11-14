@@ -1,10 +1,11 @@
+local SOCK = (rawget(_G, "CoopSync") and CoopSync.Loot and CoopSync.Loot.sockOf) or function(q) return q.MySocket:ToString() end -- (a reloaded zone's parts: lootsync M.sockOf)
 local Loot = CoopSync.Loot
 local inv = Loot.inventorySystem()
 Dev.out("InventorySystem", Dev.name(inv))
 local t, part
 for _, a in ipairs(CoopSync.collect()) do
   if not part and a:IsA(StaticFindObject("/Script/PenDriverPro.LootableTemplate")) then
-    for _, p in ipairs(Loot.templateParts(a)) do if not part and p.MySocket:ToString():find("^Wheel") then t, part = a, p end end
+    for _, p in ipairs(Loot.templateParts(a)) do if not part and SOCK(p):find("^Wheel") then t, part = a, p end end
   end
 end
 local arch = part.ItemInstance.Archetype

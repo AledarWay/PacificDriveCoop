@@ -2,6 +2,7 @@
 -- for a long time"): the wreck (BP_Template_BaseVehicle_C) nearest WL_AT (or the player); its palettes, and for its own
 -- mesh components and each attached part's: material 0 (MID = built by SetupMaterials, else the mesh's own) and its
 -- first colour parameter. WL_LOOK: the player is put 6 m from it and turned to it (for a screenshot).
+local SOCK = (rawget(_G, "CoopSync") and CoopSync.Loot and CoopSync.Loot.sockOf) or function(q) return q.MySocket:ToString() end -- (a reloaded zone's parts: lootsync M.sockOf)
 local at = WL_AT or FindFirstOf("PlayerController").Pawn:K2_GetActorLocation()
 local best, bd
 for _, c in ipairs(FindAllOf("BP_Template_BaseVehicle_C") or {}) do
@@ -43,7 +44,7 @@ mats(best, "body")
 for _, p in ipairs(FindAllOf("LootableTemplatePart") or {}) do
     local par = p:IsValid() and p:GetAttachParentActor()
     if par and par:IsValid() and par:GetAddress() == best:GetAddress() then
-        local ok, s = pcall(function() return p.MySocket:ToString() end)
+        local ok, s = pcall(function() return SOCK(p) end)
         mats(p, ok and s or "part")
     end
 end

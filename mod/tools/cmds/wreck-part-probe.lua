@@ -2,6 +2,7 @@
 -- saws off the whole white bar of a part, the red one never starts"). The wreck nearest WP_AT (or the player): its
 -- parts with a health component (socket, class, health, break health); WP_PART (socket name) gets WP_N hits of WP_DMG
 -- by the WP_MSG damage message dispatched to the part actor (the effect shows on the next frame: read again later).
+local SOCK = (rawget(_G, "CoopSync") and CoopSync.Loot and CoopSync.Loot.sockOf) or function(q) return q.MySocket:ToString() end -- (a reloaded zone's parts: lootsync M.sockOf)
 local MSG = WP_MSG or "MSG_Damage_Physical_Piercing_Scrapper"
 local HC = StaticFindObject("/Game/Gameplay/Inventory/GenericItemProperties/Components/BP_HealthComponent.BP_HealthComponent_C")
 local me = WP_AT or FindFirstOf("PlayerController").Pawn:K2_GetActorLocation()
@@ -22,7 +23,7 @@ for _, p in ipairs(FindAllOf("LootableTemplatePart") or {}) do
         if par and par:IsValid() and par:GetAddress() == best:GetAddress() then parts[#parts + 1] = p end
     end
 end
-local function sock(p) local ok, s = pcall(function() return p.MySocket:ToString() end) return ok and s or "?" end
+local function sock(p) local ok, s = pcall(function() return SOCK(p) end) return ok and s or "?" end
 local function info(p)
     local hc = p:GetComponentByClass(HC)
     if not (hc and hc:IsValid()) then return nil end

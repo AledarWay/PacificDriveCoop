@@ -59,7 +59,7 @@ foreach ($side in @(@{ name = 'host'; dir = $hd; n = 3 }, @{ name = 'guest'; dir
     $od = if ($who -eq 'host') { $cd } else { $hd }
     Send $od "TW = { [1] = 0, [$bn] = 0 } local t0 = os.clock() local h h = LoopInGameThreadWithDelay(100, function() if os.clock() - t0 > 7 then CancelDelayedAction(h) return end for _, n in ipairs({ 1, $bn }) do local r = tostring(CoopPlayers.doorInfo(n)):match('twin_rot=(%S+)') or '0/0' local y, p = r:match('(-?[%d.]+)/(-?[%d.]+)') TW[n] = math.max(TW[n], math.abs(tonumber(y) or 0), math.abs(tonumber(p) or 0)) end end) return 'ok'" | Out-Null
     "  watch: " + (Send $d $watch)
-    "  out: " + (E $d "CE_CAR = 'own' CE_HL = 'ExitDoor'")
+    "  out: " + (Out $d)
     Start-Sleep 8
     $w = KV (Send $d "return EW_READ()")
     "  exit: $($w.raw)"

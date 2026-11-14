@@ -21,6 +21,33 @@ local function alive(o)
 end
 local function path(o) return (alive(o) or (o and o:IsValid())) and (o:GetFullName():gsub("^%S+ ", "")) or "" end
 
+-- A wreck part's socket. A zone loaded from a save gives every part MySocket None (probed 2026-11-14: all 674 parts of
+-- a reloaded zone - the game does not save it; part-break-test's saw keyed all of a wreck's parts as one) while the
+-- part still stands exactly on its socket of the wreck's mesh: the socket found there is written back, so every key by
+-- socket (the loot list, WRK health, trunk states, DETACH) is the fresh zone's again, the same on both sides.
+function M.sockOf(p)
+    local s = p.MySocket:ToString()
+    if s ~= "None" then return s end
+    local found
+    pcall(function()
+        local c = p.RootComponent:GetAttachParent()
+        if not (c and c:IsValid()) then return end
+        local l = p:K2_GetActorLocation()
+        local names = c:GetAllSocketNames()
+        local bd
+        for i = 1, #names do
+            local n = names[i]:get()
+            local q = c:GetSocketLocation(n)
+            local d = (q.X - l.X) ^ 2 + (q.Y - l.Y) ^ 2 + (q.Z - l.Z) ^ 2
+            if d < 4 and (not bd or d < bd) then found, bd = n, d end
+        end
+    end)
+    if not found then return s end
+    M.socketsFixed = (M.socketsFixed or 0) + 1
+    pcall(function() p.MySocket = found end)
+    return found:ToString()
+end
+
 -- pending work stores object paths, never UObject references (see spawnsync M.ref / M.deref)
 local function refOf(a) return (a:GetFullName():gsub("^%S+ ", "")) end
 local function derefOf(p)
@@ -236,9 +263,9 @@ function M.serialize(a)
             local mesh = ""
             pcall(function() mesh = path(p.RequestedMesh) end)
             local cls = path(p:GetClass())
-            t[#t + 1] = string.format("%s=%s@%s@%s", p.MySocket:ToString(), cls, serItem(inst), mesh)
+            t[#t + 1] = string.format("%s=%s@%s@%s", M.sockOf(p), cls, serItem(inst), mesh)
             local st = trunkState(p, cls)
-            if st then s[#s + 1] = p.MySocket:ToString() .. "=" .. st end
+            if st then s[#s + 1] = M.sockOf(p) .. "=" .. st end
         end
         table.sort(t)
         table.sort(s)
@@ -285,7 +312,7 @@ function M.statesOf(a)
     local st = {}
     for _, p in ipairs(templateParts(a)) do
         local v = trunkState(p)
-        if v then st[p.MySocket:ToString()] = v end
+        if v then st[M.sockOf(p)] = v end
     end
     return st
 end
@@ -293,7 +320,7 @@ end
 function M.applyStates(a, states)
     local n = 0
     for _, p in ipairs(templateParts(a)) do
-        local want = states[p.MySocket:ToString()]
+        local want = states[M.sockOf(p)]
         -- (only opening: a trunk does not shut or lock again in the game)
         if want == 2 and trunkState(p) ~= 2 and openTrunk(p) then n = n + 1 end
     end
@@ -539,7 +566,7 @@ function M.flushStep(cur, over)
         if actor then
             for _, pp in ipairs(cur.parts[actor:GetFullName()] or {}) do
                 local p = derefOf(pp)
-                if p and p.MySocket:ToString() == e.socket and p.ItemInstance:IsValid() then
+                if p and M.sockOf(p) == e.socket and p.ItemInstance:IsValid() then
                     local owned = cur.by[p.ItemInstance:GetFullName()] or {}
                     for i, cs in ipairs(splitTop(e.subs:sub(2, -2), "^")) do
                         local c = owned[i] and derefOf(owned[i])
@@ -566,7 +593,7 @@ function M.flushPending()
         local actor = derefOf(e.path)
         if actor then
             for _, p in ipairs(templateParts(actor)) do
-                if p.MySocket:ToString() == e.socket and p.ItemInstance:IsValid() then
+                if M.sockOf(p) == e.socket and p.ItemInstance:IsValid() then
                     local owned = by[p.ItemInstance:GetFullName()] or {}
                     for i, cs in ipairs(splitTop(e.subs:sub(2, -2), "^")) do
                         if owned[i] then fillContainer(owned[i], cs, ctx) filled = filled + 1 end
@@ -649,7 +676,7 @@ function M.applyDiff(a, loot)
     if not ownedBy then buildOwners() end
     local have = {}
     for _, p in ipairs(templateParts(a)) do
-        local socket = p.MySocket:ToString()
+        local socket = M.sockOf(p)
         local mesh = ""
         pcall(function() mesh = path(p.RequestedMesh) end)
         local cur = string.format("%s=%s@%s@%s", socket, path(p:GetClass()), serItem(p.ItemInstance), mesh)
@@ -732,7 +759,7 @@ function M.inPass() return partsByParent ~= nil end
 -- A wreck's part's i-th sub-container (its trunk: the order the loot strings write them, serItem / flushStep), or nil.
 function M.subContainer(t, socket, i)
     for _, p in ipairs(templateParts(t)) do
-        if p.MySocket:ToString() == socket then
+        if M.sockOf(p) == socket then
             local inst = p.ItemInstance
             if not (inst and inst:IsValid()) then return nil end
             local k = inst:GetFullName()

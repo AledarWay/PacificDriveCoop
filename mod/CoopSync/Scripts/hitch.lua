@@ -93,6 +93,7 @@ end
 
 function M.start(chan)
     path = chan .. "/hitches.log"
+    os.remove(path .. ".2") os.rename(path .. ".1", path .. ".2") os.rename(path, path .. ".1") -- (the two before: main.lua)
     local f = io.open(path, "wb")
     if f then f:write("# CoopSync hitch log, game start ", os.date("%Y-%m-%d %H:%M:%S"), "\n") f:close() end
     -- every frame (LoopInGameThreadWithDelay(1) runs once per frame); a travel's load is one long gap, logged too

@@ -53,6 +53,14 @@ if not target then return table.concat(o, "\n") .. "\nno part for " .. pick end
 local car = LOOK_OWN and own or twin
 local at = LOOK_AT_SLOT and target.comp:K2_GetComponentLocation() or target.actor:K2_GetActorLocation()
 at.Z = at.Z + (LOOK_DZ or 0)
+-- (a back door's actor stands at its hinge, the front edge; its highlight box is centred 32-40 behind it: aimed at the
+-- hinge the line passed the box's edge and lit the seat slots' boxes inside - LOOK_DX moves the aim along the car)
+local ldx = LOOK_DX or ((pick:find("DoorsRL", 1, true) or pick:find("DoorsRR", 1, true)) and -32 or 0)
+LOOK_DX = nil
+if ldx ~= 0 then
+    local f = car:GetActorForwardVector()
+    at.X, at.Y = at.X + f.X * ldx, at.Y + f.Y * ldx
+end
 -- (beside the part by the car's yaw only, at the part's height: in the car's full transform a car on its side or roof
 -- put the character under the ground - it fell and died, the game took it home; soak test 2026-10-28)
 if car:GetActorUpVector().Z < 0.7 and not LOOK_TILTED then return table.concat(o, "\n") .. "\nthe car is tilted: not going there" end
@@ -71,5 +79,16 @@ pc.Pawn:K2_SetActorLocation(stand, false, {}, true)
 local eye = pc.Pawn:K2_GetActorLocation() eye.Z = eye.Z + 60
 local d = { X = at.X - eye.X, Y = at.Y - eye.Y, Z = at.Z - eye.Z }
 pc:SetControlRotation({ Pitch = math.deg(math.atan(d.Z, math.sqrt(d.X * d.X + d.Y * d.Y))), Yaw = math.deg(math.atan(d.Y, d.X)), Roll = 0 })
+-- (again from the real camera once the character stood on the ground: the eye above the spot it was put at was 60+ too
+-- high - the look went under a back door's box; reference-save backseat test 2026-11-14)
+if Dev and Dev.after then
+    Dev.after(400, function()
+        local q = FindFirstOf("PlayerController")
+        if not (q and q:IsValid()) then return end
+        local e = q.PlayerCameraManager:GetCameraLocation()
+        local v = { X = at.X - e.X, Y = at.Y - e.Y, Z = at.Z - e.Z }
+        q:SetControlRotation({ Pitch = math.deg(math.atan(v.Z, math.sqrt(v.X * v.X + v.Y * v.Y))), Yaw = math.deg(math.atan(v.Y, v.X)), Roll = 0 })
+    end)
+end
 _G.PartLook = { slot = target.name, cls = target.cls }
 return table.concat(o, "\n") .. string.format("\nlooking at %s (%s) of the %s", target.name, target.cls, LOOK_OWN and "own car" or "twin")

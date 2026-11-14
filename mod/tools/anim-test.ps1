@@ -17,8 +17,8 @@ function Check($name, [bool]$ok, $detail) {
     if ($ok) { $script:pass++ } else { $script:fail++ }
     "  [{0}] {1} -- {2}" -f $(if ($ok) { 'PASS' } else { 'FAIL' }), $name, $detail
 }
-# expected car-local X,Y per seat (1 driver, 4 back right; BACK_X = -60 in playersync.lua)
-$SEAT = @{ 1 = @(46.2, -45.8); 2 = @(46.2, 45.8); 3 = @(-60, -45.8); 4 = @(-60, 45.8) }
+# expected car-local X,Y per seat (1 driver, 4 back right; BACK_X = -45 in playersync.lua)
+$SEAT = @{ 1 = @(46.2, -45.8); 2 = @(46.2, 45.8); 3 = @(-45, -45.8); 4 = @(-45, 45.8) }
 function SeatedChecks($who, $info, [int]$n) {
     $rel = Vec $info.rel
     Check "$who puppet sits" ($info.state -eq 'sit' -and $info.poseVisible -eq 'true' -and $info.skVisible -eq 'false') $info.raw

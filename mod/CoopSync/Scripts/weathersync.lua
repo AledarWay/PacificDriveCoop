@@ -153,10 +153,28 @@ local function asset(path)
     return a or nil
 end
 
+-- The guest still in its garage while the host is out in a zone keeps its own garage sky (owner's test 2026-11-14:
+-- the host in its zone first, the guest's garage got the host's run weather). Both in a garage: the host's, as before.
+local function isGarage(w) return w ~= nil and w:find("Garage", 1, true) ~= nil end
+local hostWorld
+local function garageApart()
+    if not (isGarage(worldName()) and hostWorld and hostWorld ~= "-" and not isGarage(hostWorld)) then return false end
+    if not st.apart then
+        st.apart = true
+        pcall(function() manager():RemoveTODWeatherOverride(FName(OVERRIDE_TAG)) end)
+        lastPreset = nil
+    end
+    st.skipped = (st.skipped or 0) + 1
+    return true
+end
+
 -- guest: a line from the host
 function M.apply(t)
     local m = manager()
     if not m then return end
+    if t[1] == "W" then hostWorld = t[19] end
+    if garageApart() then return end
+    st.apart = nil
     if t[1] == "WE" then
         local cls = asset(t[3])
         local d = director()
@@ -233,7 +251,7 @@ end
 function M.start(playersModule, r)
     Players, role = playersModule, r
     st = { sent = 0, applied = 0, events = 0, todSets = 0, errors = {} }
-    lastPreset = nil
+    lastPreset, hostWorld = nil, nil
     local ok, e = pcall(hookEvents)
     if not ok then err("hooks: " .. tostring(e)) end
     if role == "client" then
@@ -276,8 +294,8 @@ end
 
 function M.info()
     local ok, snap = pcall(snapshot)
-    return string.format("role=%s sent=%d applied=%d events=%d tod_sets=%d clouds=%d north=%d errors=%d now=%s %s", tostring(role), st.sent, st.applied,
-        st.events, st.todSets, st.clouds or 0, st.north or 0, #st.errors, ok and tostring(snap):gsub("\t", ",") or "?", table.concat(st.errors, "; "))
+    return string.format("role=%s sent=%d applied=%d events=%d tod_sets=%d clouds=%d north=%d garage_skipped=%d errors=%d now=%s %s", tostring(role), st.sent, st.applied,
+        st.events, st.todSets, st.clouds or 0, st.north or 0, st.skipped or 0, #st.errors, ok and tostring(snap):gsub("\t", ",") or "?", table.concat(st.errors, "; "))
 end
 
 return M

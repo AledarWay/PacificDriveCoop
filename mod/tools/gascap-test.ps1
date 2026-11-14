@@ -20,9 +20,11 @@ function Check($name, [bool]$ok, $detail) {
 }
 $num = { param($s) $x = 0.0; [double]::TryParse("$s", [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$x) | Out-Null; $x }
 $FC = "StaticFindObject('/Game/Gameplay/Inventory/GenericItemProperties/Components/BP_FuelableComponent.BP_FuelableComponent_C')"
-# the own car's back seat tank (the save's one tank with fuel in it)
-function Tank($dir) { Send $dir "local im = FindFirstOf('BP_InventoryManager_C') local sl = im.Inventory_CarEquipped:GetSlot(FName('Car.Equip.Attachments.BackSeatLeft')) local fc = sl.Items[1]:GetActorManifestation():GetComponentByClass($FC) local t = { {}, {}, {}, {}, {}, {}, {} } fc:GetFuelStatus(t[1], t[2], t[3], t[4], t[5], t[6], t[7]) return string.format('%.2f', t[1].Fuel)" }
-function SetTank($dir, $v) { Send $dir "local im = FindFirstOf('BP_InventoryManager_C') local sl = im.Inventory_CarEquipped:GetSlot(FName('Car.Equip.Attachments.BackSeatLeft')) local fc = sl.Items[1]:GetActorManifestation():GetComponentByClass($FC) fc['Set Fuel'](fc, $v) return 'tank $v'" }
+# the own car's fuel tanks (summed; set: all in the first): whatever on the car has a fuel component but the cap and a
+# carried fuel can (a reference save's car: an internal tank, a back seat tank - BP_CarPart_FuelTank_Base_Backseat)
+$TankFc = "local car = CoopPlayers.twinModule().ownCar() local arr = {} car:GetAttachedActors(arr, true) local fcs = {} for i = 1, #arr do local a = arr[i]:get() local cn = a:IsValid() and a:GetClass():GetFName():ToString() or 'GasCap' if not (cn:find('GasCap', 1, true) or cn:find('FuelCan', 1, true)) then local c = a:GetComponentByClass($FC) if c and c:IsValid() then fcs[#fcs + 1] = c end end end if #fcs == 0 then return 'no tank' end"
+function Tank($dir) { Send $dir "$TankFc local sum = 0 for _, fc in ipairs(fcs) do local t = { {}, {}, {}, {}, {}, {}, {} } fc:GetFuelStatus(t[1], t[2], t[3], t[4], t[5], t[6], t[7]) sum = sum + (tonumber(t[1].Fuel) or 0) end return string.format('%.2f', sum)" }
+function SetTank($dir, $v) { Send $dir "$TankFc for i, fc in ipairs(fcs) do fc['Set Fuel'](fc, i == 1 and $v or 0) end return 'tank $v (' .. #fcs .. ' tanks)'" }
 $Cap = "local T = CoopPlayers.twinModule() local tw for _, c in ipairs(FindAllOf('BP_PlayerCarNew_C') or {}) do if c:IsValid() and T.isTwin(c) then tw = c end end local cap for _, g in ipairs(FindAllOf('BP_FuelableComponent_GasCap_C') or {}) do if g.CarActor:IsValid() and g.CarActor:GetAddress() == tw:GetAddress() then cap = g end end"
 # a canister on the ground next to the player with $f in it (its component kept in GC_CAN)
 function Can($dir, $f) { Send $dir "local Loot = CoopSync.Loot local p = FindFirstOf('PlayerController').Pawn local l = p:K2_GetActorLocation() local w = Loot.spawnWorldItem('W|/Game/Gameplay/Inventory/Items/Tools/FuelCan/IA_Tool_Target_FuelCan.IA_Tool_Target_FuelCan', { Translation = { X = l.X + 100, Y = l.Y, Z = l.Z }, Rotation = CoopSync.quat(0, 0, 0), Scale3D = { X = 1, Y = 1, Z = 1 } }) GC_CAN = w.BP_FuelableComponent GC_CAN['Set Fuel'](GC_CAN, $f) return 'canister $f'" }
@@ -65,6 +67,8 @@ $moved = Pour $hd 'can' 2
 Start-Sleep 5
 $g4 = Tank $cd; $h4 = Tank $hd
 "  moved $moved | guest $g0 -> $g4 | host's own $h0 -> $h4"
+# (where fuel sits on the guest's car: every attached actor with a fuel component)
+"  guest's car fuel: " + (Send $cd "local car = CoopPlayers.twinModule().ownCar() local arr = {} car:GetAttachedActors(arr, true) local o = {} for i = 1, #arr do local a = arr[i]:get() if a:IsValid() then local c = a:GetComponentByClass($FC) if c and c:IsValid() then local t = { {}, {}, {}, {}, {}, {}, {} } c:GetFuelStatus(t[1], t[2], t[3], t[4], t[5], t[6], t[7]) local sl = '?' pcall(function() sl = a:GetAttachParentSocketName():ToString() end) o[#o + 1] = a:GetClass():GetFName():ToString():gsub('BP_', '') .. '=' .. string.format('%.2f', tonumber(t[1].Fuel) or -1) end end end return table.concat(o, ' ')")
 Check "the guest's tank +2, the host's own not" ((& $num $moved) -ge 1.9 -and [math]::Abs((& $num $g4) - (& $num $g0) - 2) -lt 0.4 -and [math]::Abs((& $num $h4) - (& $num $h0)) -lt 0.4) "moved $moved | guest $g0 -> $g4 | host's own $h0 -> $h4"
 
 "=== 5. the host's engine running, the guest's car there goes and comes again (a join, a restart)"
