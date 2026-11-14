@@ -28,7 +28,7 @@ Fix:       session.lua zoneExitTick: at the exit the guest waits for the host's 
            is the garage's one-load arrival. Fallback: the old follow if the load fails or comes back to this zone.
            40-42 s now. Also weathersync: after the one load the host's random north pick gave the guest 180 off -
            the host's north is set as it is when RandomizeNorth leaves it off.
-Commit:    pending    Test: nextzone-test.ps1, staybehind-test.ps1
+Commit:    c51a736    Test: nextzone-test.ps1, staybehind-test.ps1
 
 ## 2026-11-14 - slow guest join: two loads when the guest drove out early
 Symptom:   owner's two-games test: the guest's load was slow. The game logs: the guest drove out 0.4 s before the
@@ -42,7 +42,7 @@ Found by:  the report's game logs (LoadMap / SAVE V4 times on both sides), then 
            no host zone save yet".
 Fix:       the drive-out waits (under the cover, SAVE_WAIT_S 90 s at most) for the host's save and its file
            (ZoneSave.hostSaveReady), then the one load; the old travel stays the fallback. startflow: 29 s, one load.
-Commit:    pending    Test: startflow-test.ps1
+Commit:    c51a736    Test: startflow-test.ps1
 
 ## 2026-11-14 - the guest arrived in the host's zone standing beside its car
 Symptom:   startflow-test (2 of 2 runs): the guest drove out of its garage seated, joined, and stood by its car.
