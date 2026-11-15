@@ -173,7 +173,7 @@ function M.guestLoad(docPath, side)
     if not ok then os.remove(out) return nil, "UserLoadGame: " .. tostring(e) end
     M.stats.loaded = M.stats.loaded + 1
     M.stats.last = string.format("guest: %s via slot %d for %d (%s, %.0f ms), loading", docPath, scratch, slot, r, spliceMs)
-    M.s = { state = "guest loading", slot = slot, scratch = scratch, t0 = now(), wasSeated = seated }
+    M.s = { state = "guest loading", slot = slot, scratch = scratch, t0 = now(), wasSeated = seated, wasIgn = M.ignNow() }
     return M.stats.last
 end
 -- One save's META chunk put into another (tools/save-meta-swap.ps1 in Lua): META is the slot's summary - its Level,
@@ -258,7 +258,7 @@ function M.directStart(docPath, from)
     local before = fileSize(path)
     local ok, e = pcall(function() m:SaveGame(own, "", 1) end)
     if not ok then return nil, "SaveGame failed: " .. tostring(e) end
-    M.s = { state = "direct saving", own = own, path = path, hostFile = hostFile, doc = docPath, t0 = t0, size = -1, stable = 0, wasSeated = seated, mtime0 = before, from = from or "garage" }
+    M.s = { state = "direct saving", own = own, path = path, hostFile = hostFile, doc = docPath, t0 = t0, size = -1, stable = 0, wasSeated = seated, wasIgn = M.ignNow(), mtime0 = before, from = from or "garage" }
     return "one load: saving the departure into slot " .. own
 end
 local function directTick()
@@ -308,7 +308,7 @@ local function directTick()
     M.stats.loaded = M.stats.loaded + 1
     M.stats.direct = (M.stats.direct or 0) + 1
     M.stats.last = string.format("guest: one load of %s via slot 0 for %d (%s, %.0f ms)", s.doc, s.own, r, spliceMs)
-    M.s = { state = "guest loading", slot = s.own, scratch = M.SCRATCH, t0 = now(), wasSeated = s.wasSeated, direct = true }
+    M.s = { state = "guest loading", slot = s.own, scratch = M.SCRATCH, t0 = now(), wasSeated = s.wasSeated, wasIgn = s.wasIgn, direct = true }
 end
 
 -- The own car the game did not build after the load (2026-11-11, gates-test -ZoneSave: no BP_PlayerCarNew_C, the
@@ -333,6 +333,27 @@ function M.spawnOwnCar(at)
     if not ok then return "spawn failed: " .. tostring(e) end
     M.stats.carSpawned = (M.stats.carSpawned or 0) + 1
     return string.format("own car spawned at %.0f,%.0f", at.X, at.Y)
+end
+-- the car manager's ignition (0 off, 2 running) now, nil without one
+function M.ignNow()
+    local v
+    pcall(function() v = FindFirstOf("BP_CarManager_C").CarIgnitionState end)
+    return v
+end
+-- the own car's engine started (the game's own call, as the key does) when the load left it off
+function M.engineBack()
+    local r = "no car"
+    pcall(function()
+        local m = FindFirstOf("BP_CarManager_C")
+        local car = ownCar()
+        if not car then return end
+        if m.CarIgnitionState ~= 0 then r = "running already" return end
+        car:ToggleIgnitionState(2)
+        M.stats.engineBack = (M.stats.engineBack or 0) + 1
+        r = "started"
+    end)
+    if CoopSyncHitch then pcall(CoopSyncHitch.note, "zone save: the engine " .. r) end
+    return r
 end
 -- the player at the own car's wheel now. (Also the drive-out's: session.lua sets M.droveOutSeated when the guest drove
 -- out of its garage seated - the arrival's gate move, 2 km, then the load came with the player off the seat, startflow
@@ -401,6 +422,9 @@ function M.afterLoad(spot)
         -- back in the seat it had before the load (startflow 2026-11-11: the game built the car but left the player
         -- standing beside it; the mod's own car likewise): a moment after the car is there
         if s.wasSeated and CoopSyncAfter then CoopSyncAfter(1000, M.seatNow) end
+        -- (and its engine running again as it was: the save loads the car with the ignition off, a departure arrives
+        -- with it running - after the one load the guest's car stood with the engine off, knock-test 2026-11-15)
+        if s.wasIgn == 2 and CoopSyncAfter then local w = s.wasSeated CoopSyncAfter(w and 2000 or 1000, M.engineBack) end
         M.slotsBack()
         pcall(function()
             local p = FindFirstOf("PlayerController").Pawn:K2_GetActorLocation()

@@ -218,6 +218,7 @@ function M.carChannelOf()
 end
 local BUMP_DV = 300   -- cm/s in one frame away from the twin: a hit
 local BUMP_NEAR = 900 -- cm between the cars' centres
+local BUMP_CLOSE = 150 -- cm/s the cars closed in on each other just before it, at least
 local HIT_S = 1.0     -- s after a hit: no new one read, the own car held to the shared speed
 local bump = { t = 0 }
 -- the own car moves at vc along (nx, ny) now and is held to it for HIT_S
@@ -240,6 +241,11 @@ function M.bumpTick(twin, vel)
     local now = os.clock()
     local r = own.RootComponent
     local none = FName("None")
+    -- (the own car kinematic here - the other player drives it, it follows the other's stream by teleports: its jumps
+    -- are no hits; the side simulating it sees them, NOTES 2026-11-14 "bumpTick must not run for an own car this side
+    -- does not simulate")
+    local okS, simHere = pcall(function() return r:IsSimulatingPhysics(none) end)
+    if okS and not simHere then bump.v = nil return end
     local v = r:GetPhysicsLinearVelocity(none)
     local h = bump.hit
     if h then
@@ -274,6 +280,10 @@ function M.bumpTick(twin, vel)
     -- frames are smoothed (a hit read at 1 m/s closing from 14)
     local twinN = vel and (vel.X * nx + vel.Y * ny) or ((tl.X - prevT.X) * nx + (tl.Y - prevT.Y) * ny) / dt
     local ownN = prev.X * nx + prev.Y * ny                               -- the own car's along n (< 0: closing)
+    -- (no hit without the cars closing in on each other before it: the own car thrown 5.6 m/s from a standing twin while
+    -- it moved away from it - a player's entry turned down at its door - was taken for one, and the shared speed went to
+    -- the other side's car, which jumped round; entry-spin-test 2026-11-15, the owner's "the car turns as I get in")
+    if twinN - ownN < BUMP_CLOSE then M.stats.notClosing = (M.stats.notClosing or 0) + 1 return end
     local mo, mt = 1, 1
     pcall(function() mo, mt = r:GetMass(), twin.RootComponent:GetMass() end)
     local vc = (mo * ownN + mt * twinN) / (mo + mt)

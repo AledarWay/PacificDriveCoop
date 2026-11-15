@@ -94,7 +94,9 @@ if ($sp.Count -ge 3) {
     # (not counted: the twin's trunk box has no collision - nothing to light there; what the guest's E reached is printed.
     # The lid checks below hold either way: the owner's E there shut the lid)
     "  INFO the guest's E reached: lit $lit | $menu"
-    Check "the lid stayed open on the host (no shut from the guest's E at the box)" ($w.host -notmatch '-' -and $w.host.Length -gt 100) "host: $($w.host)"
+    # (> 40 samples: the watch ran for seconds - a 50 ms loop gets one a frame at most, 79 in 9 s at ~9 fps with the
+    # game's sound on, quick suite 2026-11-15)
+    Check "the lid stayed open on the host (no shut from the guest's E at the box)" ($w.host -notmatch '-' -and $w.host.Length -gt 40) "host: $($w.host)"
     Check "the guest's twin lid stayed open, no slamming" ((Slams $w.guest) -eq 0) "slams $(Slams $w.guest) | doors sent $sent0 -> $sent1"
     "  guest closes the inventory: " + (Send $cd "local pc = FindFirstOf('PlayerController') local ok = pcall(function() FindFirstOf('PDP_Game_Hud_C'):CloseAllMenus() end) return tostring(ok)")
     Start-Sleep 2

@@ -1451,6 +1451,23 @@ function CoopSyncPaint.handle(t)
     local pal, dec = P.palette(pp), P.palette(dp)
     if not pal then count("ap_VP_no_palette") return end
     local car = best.c
+    -- (already the host's palettes, its dynamic materials built: nothing to set up again. A zone from the host's save
+    -- has every wreck so; SetupMaterials / SetupTintOnVehicleAndParts again made MIDs of its MIDs - the game logged
+    -- "is not a valid parent" - and the guest's game crashed inside it 2-6 s after a join, the crumb "state ev VP",
+    -- 2026-11-15)
+    local same = false
+    pcall(function()
+        local sp, sd = car.SelectedPaintPalette, car.SelectedDecalPalette
+        same = sp and sp:IsValid() and sp:GetAddress() == pal:GetAddress()
+            and (not dec or (sd and sd:IsValid() and sd:GetAddress() == dec:GetAddress()))
+            and #car.DynamicMaterialInstances > 0
+    end)
+    if same then
+        P.applied[key] = { v = pp .. dp, car = car, pal = pal, dec = dec, done = {} }
+        count("ap_VP_same")
+        P.paintParts(P.applied[key])
+        return
+    end
     local ok = pcall(function()
         car.SelectedPaintPalette = pal
         if dec then car.SelectedDecalPalette = dec end

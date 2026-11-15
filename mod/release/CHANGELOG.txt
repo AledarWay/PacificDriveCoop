@@ -145,6 +145,12 @@ Cars:
   host's zone over it; now it waits for the host's zone and loads it once.
 - Following the host to its next zone is about 20 s faster too: the guest loads the host's zone once (before, its
   game generated the zone and then loaded the host's over it).
+- A car no longer turns round, jumps or tips when a player gets into a car. A car parked close beside the other's
+  was taken for one standing inside it and moved and turned; a speed jump with the cars not closing was taken for a
+  hit and passed to the other side; a player turned down at the other's wheel was put inside its own car.
+- The guest's game no longer crashes a few seconds after joining (the abandoned cars' paint was set up again on
+  cars that already had it).
+- After joining from the garage the guest's car keeps its engine running, as it drove out.
 - A guest who drives out of its garage at the wheel arrives in the host's zone at the wheel. Before, it now and then
   arrived standing beside its car.
 - While the guest drives the host's car, its parts' damage is the driver's. Before, the host's game also applied

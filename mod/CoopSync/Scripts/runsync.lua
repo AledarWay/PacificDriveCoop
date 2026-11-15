@@ -322,10 +322,19 @@ end
 -- Guest: its own car standing in the twin of the host's car, where the twin actually is here (owner's two-games test
 -- 2026-11-14: the guest's car came into the zone inside the host's and both flew apart - the gates' check goes by the
 -- host's file, not the twin): moved to a free spot beside the twin. nil when they are apart.
+-- (in it: the centre inside the twin's own footprint, IN_LONG along it and IN_SIDE across - the bodies overlap. By the
+-- centres 4.5 m apart, a car parked beside the host's - 4 m, side by side - was taken for one standing in it: moved
+-- and turned to the host's car's yaw in one frame, "the car turns on the spot" (owner's item j, 2026-11-15). Moved, it
+-- keeps its own yaw.)
+local IN_LONG, IN_SIDE = 460, 200
 function M.clearOfTwin(ownCar, twin)
     local l, t = ownCar:K2_GetActorLocation(), twin:K2_GetActorLocation()
-    if (l.X - t.X) ^ 2 + (l.Y - t.Y) ^ 2 >= CLASH_CM ^ 2 or math.abs(l.Z - t.Z) > 300 then return nil end
-    local at = { X = t.X, Y = t.Y, Z = t.Z, Yaw = twin:K2_GetActorRotation().Yaw }
+    if math.abs(l.Z - t.Z) > 300 then return nil end
+    local ty = math.rad(twin:K2_GetActorRotation().Yaw)
+    local dx, dy = l.X - t.X, l.Y - t.Y
+    local along, across = dx * math.cos(ty) + dy * math.sin(ty), -dx * math.sin(ty) + dy * math.cos(ty)
+    if math.abs(along) >= IN_LONG or math.abs(across) >= IN_SIDE then return nil end
+    local at = { X = t.X, Y = t.Y, Z = t.Z, Yaw = ownCar:K2_GetActorRotation().Yaw }
     local function clash(p) return (p.X - t.X) ^ 2 + (p.Y - t.Y) ^ 2 < CLASH_CM ^ 2 end
     M.stats.clearedOfTwin = (M.stats.clearedOfTwin or 0) + 1
     return string.format("%.1f m from the host's car: %s", math.sqrt((l.X - t.X) ^ 2 + (l.Y - t.Y) ^ 2) / 100, M.moveCar(ownCar, at, clash))

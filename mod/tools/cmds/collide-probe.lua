@@ -53,7 +53,9 @@ if op == "peak" then
             for _, x in ipairs(FindAllOf("BP_PlayerCarNew_C") or {}) do if x:IsValid() and T.isTwin(x) then tw2 = x end end
             if tw2 then
                 local a, b = c:K2_GetActorLocation(), tw2:K2_GetActorLocation()
-                local dd = math.sqrt((a.X - b.X) ^ 2 + (a.Y - b.Y) ^ 2)
+                -- (3D: a striker that rode up onto the other car - 16 m/s, its nose straight at it - stood 70 off in the
+                -- plane, 220 above; quick suite 2026-11-15)
+                local dd = math.sqrt((a.X - b.X) ^ 2 + (a.Y - b.Y) ^ 2 + (a.Z - b.Z) ^ 2)
                 if not CoopDevPeak.minD or dd < CoopDevPeak.minD then CoopDevPeak.minD = dd end
                 smp.d = dd
                 smp.tw = string.format("%.0f,%.0f", b.X, b.Y)
@@ -155,6 +157,10 @@ elseif op == "launch" then
     local dx, dy = tl.X - ol.X, tl.Y - ol.Y
     local dl = math.max(1, math.sqrt(dx * dx + dy * dy))
     local sp = COL_SPEED or 1500
+    -- (and turned to face it: the gas drives along the car's nose - launched at the twin with the nose 10-20 degrees
+    -- off, the car curved past it by 280, quick suite 2026-11-15)
+    local r = own:K2_GetActorRotation()
+    own:K2_SetActorRotation({ Pitch = r.Pitch, Yaw = math.deg(math.atan(dy, dx)), Roll = r.Roll }, true)
     own.RootComponent:SetPhysicsLinearVelocity({ X = dx / dl * sp, Y = dy / dl * sp, Z = 0 }, false, FName("None"))
     return string.format("own at %.0f,%.0f launched at %d cm/s toward the twin at %.0f,%.0f", ol.X, ol.Y, sp, tl.X, tl.Y)
 elseif op == "ram" then

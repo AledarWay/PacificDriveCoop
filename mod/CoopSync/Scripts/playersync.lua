@@ -1155,6 +1155,13 @@ end
 TD.driving = nil  -- tag of the other's car this side drives
 TD.drivenBy = nil -- true: the other player drives this side's own car
 function TD.ownCarActor() return (role == "host" and localCar()) or Twin.ownCar() end
+-- (tests) the native-car module (nativecar.lua: the context car)
+function M.nativeModule() return Native end
+-- (tests) the drive hand-over: "driving=<tag> driven_by=<bool> taken=<n> given=<n> lines=<n>"
+function M.driveInfo()
+    return string.format("driving=%s driven_by=%s taken=%d given=%d lines=%d", tostring(TD.driving), tostring(TD.drivenBy == true),
+        st.driveTaken or 0, st.driveGiven or 0, st.driveLines or 0)
+end
 function TD.startDriving(tag)
     local g = ghostOf(tag)
     if not (g and Twin.isTwin(g)) then return end
@@ -2059,6 +2066,38 @@ ghostLeave = function(pawn, reason)
         end
         pcall(twinControlsRestore)
         if g then pcall(function() g.FirstPersonCamera:K2_SetRelativeRotation({ Pitch = 0, Yaw = 0, Roll = 0 }, false, {}, true) end) end
+        -- the game's exit. Native cars: the other's car stays the context through it (nativeTick lets go after
+        -- NATIVE_LET_GO_MS) - the manager put back on the own car at once, the game's exit went on with the OWN car: the
+        -- player turned down at the other's wheel (no free seat) was put at the own car's exit, in its body, and threw
+        -- it about at up to 28 m/s; its twin on the other side rammed the other's car round. entry-spin-test /
+        -- own-probe 2026-11-15, the owner's "the car turns on the spot as I get in"
+        -- (and the game's exit left to run through on that car: detached and put by its door by the mod at once, the
+        -- game's exit stood half done and finished the moment the own car was the context again - the player put at
+        -- the own car's exit point, 1.5 m from its centre, in one frame. Still attached 2.5 s on: by hand, as before)
+        if TD.native then
+            TD.twinAimMs = M.nowMs()
+            Twin.leave(pawn, false)
+            pcall(TD.restoreDoorStates)
+            local gp = g and Sync.ref(g)
+            if CoopSyncAfter then
+                CoopSyncAfter(2500, function()
+                    local p2 = localPawn()
+                    local par = p2 and Sync.parentOf(p2)
+                    local g2 = gp and Sync.deref(gp)
+                    if inGhost or not (par and g2 and par:GetAddress() == g2:GetAddress()) then return end
+                    pcall(function() p2:K2_DetachFromActor(1, 1, 1) end)
+                    local w = toWorld(g2, { X = door.X, Y = door.Y * 1.5, Z = 0 })
+                    pcall(function() p2:K2_SetActorLocation({ X = w.X, Y = w.Y, Z = w.Z + 120 }, false, {}, true) end)
+                    setWalking(p2, true)
+                    st.ghostLeaveByHand = (st.ghostLeaveByHand or 0) + 1
+                end)
+            end
+            if inGhost.tag == "H" then myAssigned, seatPending = nil, false end
+            inGhost = nil
+            st.ghostLeft = (st.ghostLeft or 0) + 1
+            st.lastGhostLeave = reason
+            return
+        end
         Twin.leave(pawn, true) -- the game's exit, the manager back to the own car
         pcall(TD.restoreDoorStates)
     end
@@ -3726,6 +3765,49 @@ function TD.trunkOpened(part)
     end
 end
 -- every frame: the twins (client: the host's car, host: the guest's)
+-- A car turning on the spot (owner's two-games tests 2026-11-14: "getting in, the car sometimes turns on the spot"; not
+-- seen in entry-spin-test, flat ground, lag 120/50/1 or none): either car standing (moved < MAXV cm/s over the window)
+-- whose yaw changed > DEG within WIN_S is noted in the hitch log (the report) with what it was doing.
+TD.SPIN = { DEG = 20, WIN_S = 0.5, MAXV = 200, COOL_S = 3, hist = {}, at = -1e9 }
+function TD.spinWatch()
+    local S = TD.SPIN
+    local now = os.clock()
+    local own = TD.ownCarActor()
+    local tw = role == "client" and localCar() or Sync.deref(otherCarPath)
+    for k, c in pairs({ own = own, twin = tw }) do
+        if c and c:IsValid() and not (k == "twin" and own and c:GetAddress() == own:GetAddress()) then
+            local l, r = c:K2_GetActorLocation(), c:K2_GetActorRotation()
+            local h = S.hist[k] or {}
+            S.hist[k] = h
+            h[#h + 1] = { t = now, y = r.Yaw, x = l.X, yy = l.Y }
+            while #h > 2 and h[1].t < now - S.WIN_S do table.remove(h, 1) end
+            local a = h[1]
+            local d = math.abs((r.Yaw - a.y + 180) % 360 - 180)
+            local dt = now - a.t
+            if d > S.DEG and dt > 0.05 and now - S.at > S.COOL_S then
+                local sp = math.sqrt((l.X - a.x) ^ 2 + (l.Y - a.yy) ^ 2) / dt
+                if sp < S.MAXV then
+                    S.at = now
+                    st.spins = (st.spins or 0) + 1
+                    local sim = "?"
+                    pcall(function() sim = tostring(c.RootComponent:IsSimulatingPhysics(FName("None"))) end)
+                    local par = "-"
+                    pcall(function()
+                        local pa = localPawn() and localPawn():GetAttachParentActor()
+                        par = (pa and pa:IsValid()) and ((own and pa:GetAddress() == own:GetAddress()) and "own" or "other") or "foot"
+                    end)
+                    local msg = string.format("spin: %s car (%s) yaw %.0f -> %.0f in %.2f s at %.0f cm/s, sim=%s, me=%s seat=%s, driven_by_other=%s, ctx=%s",
+                        k, role, a.y, r.Yaw, dt, sp, sim, par, tostring(inGhost and inGhost.seat), tostring(TD.drivenBy == true),
+                        tostring(Native and Native.ctx and (Native.ctx == Sync.ref(c) and "this" or "other")))
+                    S.last = msg
+                    if CoopSyncHitch then pcall(CoopSyncHitch.note, msg) end
+                end
+            end
+        end
+    end
+end
+-- (tests) the spin watch: "spins=<n> last=<message>"
+function M.spinInfo() return "spins=" .. (st.spins or 0) .. " last=" .. tostring(TD.SPIN.last) end
 function TD.twinFrame()
     if garage or M.stopped then return end
     pcall(TD.storeLook)
@@ -4721,6 +4803,8 @@ function M.start(syncModule, r, channelDir, opts)
         if not okV then err("run over (driver): " .. tostring(eV)) end
         local okL, eL = pcall(TD.LID.check)
         if not okL then err("lid: " .. tostring(eL)) end
+        local okW, eW = pcall(TD.spinWatch)
+        if not okW then err("spin watch: " .. tostring(eW)) end
         local ok, e = timed("wheel", wheelFrame)
         if not ok then err("wheel: " .. tostring(e)) end
     end, "p.frame")

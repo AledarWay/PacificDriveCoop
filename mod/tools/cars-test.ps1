@@ -272,7 +272,7 @@ $creep0 = OwnAt $hd; Start-Sleep 3; $creep = Moved $creep0 (OwnAt $hd)
 $before = OwnAt $hd
 # (native cars: the pedals go to the car the game's car input controller drives - the twin while the guest sits at its
 # wheel; its input fields every frame, as the player's keys make them. This side simulates it, the host's car follows)
-"  guest drives: " + (Send $cd "local ctl = FindFirstOf('BP_Controller_PlayerCar_C') local car = ctl.PlayerCarReference local who = CoopPlayers.twinModule().isTwin(car) and 'twin' or 'own' local t0 = os.clock() local h h = LoopInGameThreadWithDelay(1, function() local dt = os.clock() - t0 if dt > 8 then car.UserThrottleInput = 0 car.RawThrottle = 0 car.ThrottleTarget = 0 car.ThrottleCurrent = 0 car.UserHandBrakeInput = 0 CancelDelayedAction(h) return end if dt > 5 then car.UserThrottleInput = 0 car.RawThrottle = 0 car.ThrottleTarget = 0 car.ThrottleCurrent = 0 car.UserHandBrakeInput = 1 return end car.UserThrottleInput = 1.0 car.RawThrottle = 1.0 car.ThrottleTarget = 1.0 car.ThrottleCurrent = 1.0 car.UserBrakeInput = 0 car.BrakeTarget = 0 car.BrakeCurrent = 0 end) return 'W 5 s on the ' .. who .. ' car'")
+"  guest drives: " + (Send $cd "local ctl = FindFirstOf('BP_Controller_PlayerCar_C') local car = ctl.PlayerCarReference local who = CoopPlayers.twinModule().isTwin(car) and 'twin' or 'own' local t0 = os.clock() local h h = LoopInGameThreadWithDelay(1, function() local dt = os.clock() - t0 if dt > 8 then car.UserThrottleInput = 0 car.RawThrottle = 0 car.ThrottleTarget = 0 car.ThrottleCurrent = 0 car.UserHandBrakeInput = 0 CancelDelayedAction(h) return end if dt > 5 then car.UserThrottleInput = 0 car.RawThrottle = 0 car.ThrottleTarget = 0 car.ThrottleCurrent = 0 car.UserHandBrakeInput = 1 car.UserBrakeInput = 1 car.BrakeTarget = 1 car.BrakeCurrent = 1 return end car.UserThrottleInput = 1.0 car.RawThrottle = 1.0 car.ThrottleTarget = 1.0 car.ThrottleCurrent = 1.0 car.UserBrakeInput = 0 car.BrakeTarget = 0 car.BrakeCurrent = 0 end) return 'W 5 s on the ' .. who .. ' car'")
 Start-Sleep 9
 $moved = Moved $before (OwnAt $hd)
 Check "the host's car drove on the guest's input (>= 300 more than it crept by itself)" ($moved -ge 300 + 2 * $creep) "moved $moved (crept $creep in 3 s before) | host: $(Send $hd 'return CoopPlayers.wheelInfo()')"
@@ -328,14 +328,14 @@ foreach ($want in 0, 1, 0) {
 }
 Check "every lever shift of the host's reaches the guest's car (item 11)" (($gears -join ' ') -eq '0->0 1->1 0->0') ($gears -join ' ')
 $b0 = OwnAt $cd
-"  host drives: " + (Send $hd "local ctl = FindFirstOf('BP_Controller_PlayerCar_C') local car = ctl.PlayerCarReference local who = CoopPlayers.twinModule().isTwin(car) and 'twin' or 'own' local t0 = os.clock() local h h = LoopInGameThreadWithDelay(1, function() local dt = os.clock() - t0 if dt > 8 then car.UserThrottleInput = 0 car.RawThrottle = 0 car.ThrottleTarget = 0 car.ThrottleCurrent = 0 car.UserHandBrakeInput = 0 CancelDelayedAction(h) return end if dt > 5 then car.UserThrottleInput = 0 car.RawThrottle = 0 car.ThrottleTarget = 0 car.ThrottleCurrent = 0 car.UserHandBrakeInput = 1 return end car.UserThrottleInput = 1.0 car.RawThrottle = 1.0 car.ThrottleTarget = 1.0 car.ThrottleCurrent = 1.0 car.UserBrakeInput = 0 car.BrakeTarget = 0 car.BrakeCurrent = 0 end) return 'W 5 s on the ' .. who .. ' car'")
+"  host drives: " + (Send $hd "local ctl = FindFirstOf('BP_Controller_PlayerCar_C') local car = ctl.PlayerCarReference local who = CoopPlayers.twinModule().isTwin(car) and 'twin' or 'own' local t0 = os.clock() local h h = LoopInGameThreadWithDelay(1, function() local dt = os.clock() - t0 if dt > 8 then car.UserThrottleInput = 0 car.RawThrottle = 0 car.ThrottleTarget = 0 car.ThrottleCurrent = 0 car.UserHandBrakeInput = 0 CancelDelayedAction(h) return end if dt > 5 then car.UserThrottleInput = 0 car.RawThrottle = 0 car.ThrottleTarget = 0 car.ThrottleCurrent = 0 car.UserHandBrakeInput = 1 car.UserBrakeInput = 1 car.BrakeTarget = 1 car.BrakeCurrent = 1 return end car.UserThrottleInput = 1.0 car.RawThrottle = 1.0 car.ThrottleTarget = 1.0 car.ThrottleCurrent = 1.0 car.UserBrakeInput = 0 car.BrakeTarget = 0 car.BrakeCurrent = 0 end) return 'W 5 s on the ' .. who .. ' car'")
 Start-Sleep 9
 $moved = Moved $b0 (OwnAt $cd)
 Check "the guest's car drove on the host's input (>= 300)" ($moved -ge 300) "moved $moved"
 "  host: lever " + (Send $hd "FindFirstOf('BP_CarManager_C').MyCarGearBox = 1 return 'park (1)'"); Start-Sleep 3
 # (stopped first: parked at 13 m/s on the slope it slid on for seconds, and the host got out of a moving car -
 # 175 off after, 2026-11-10)
-$stop = OwnAt $cd; for ($i = 0; $i -lt 10; $i++) { Start-Sleep 1; $s2 = OwnAt $cd; if ((Moved $stop $s2) -le 20) { break }; $stop = $s2 }
+$stop = OwnAt $cd; for ($i = 0; $i -lt 20; $i++) { Start-Sleep 1; $s2 = OwnAt $cd; if ((Moved $stop $s2) -le 20) { break }; $stop = $s2 }
 "  host out: " + (E $hd "CE_CAR = 'twin' CE_HL = 'ExitDoor'"); Start-Sleep 5
 # (item 12: getting out put the host - and the car - back where it had got in)
 $after = OwnAt $cd
