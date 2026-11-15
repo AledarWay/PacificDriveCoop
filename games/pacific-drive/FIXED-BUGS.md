@@ -36,7 +36,7 @@ Fix:       runsync.clearOfTwin: inside = the centre within the twin's footprint 
            ghostLeave (native cars): the other's car stays the context through the game's exit, no detach / teleport
            of the mod's unless still attached 2.5 s on. Not fixed: a 23-degree nose dive for a second at a hand-over
            to the driver (1 in 3 in the test), its cause not found.
-Commit:    pending    Test: entry-spin-test.ps1 (5 of 6), cars, collide
+Commit:    9fcaa3f    Test: entry-spin-test.ps1 (5 of 6), cars, collide
 
 ## 2026-11-15 - the guest's game crashed in a wreck's SetupMaterials after a join
 Symptom:   the guest's game died 2-6 s after a join (startflow, nextzone, revisit: 4 of ~12 runs), an access violation
@@ -48,21 +48,21 @@ Found by:  hitch.lua crumbs (the step's name written before it runs, for 30 s af
 Fix:       statesync CoopSyncPaint.handle: the same palettes and the dynamic materials there - nothing set up again
            (ap_VP_same); the parts' paint as before. No crash in the runs since (startflow, nextzone, revisit,
            part-break, paint).
-Commit:    pending    Test: paint-test.ps1, startflow-test.ps1, nextzone-test.ps1
+Commit:    9fcaa3f    Test: paint-test.ps1, startflow-test.ps1, nextzone-test.ps1
 
 ## 2026-11-15 - the guest's car stood with its engine off after the one load
 Symptom:   knock-test: the guest's car did not drive; a player who drove out of its garage arrived with the engine off.
 Cause:     a zone save loads the car with the ignition off; the travel used to bring it running.
 Fix:       zonesave: the ignition at the drive-out kept (wasIgn); running then, the engine started again after the load
            (M.engineBack, the game's ToggleIgnitionState(2)).
-Commit:    pending    Test: knock-test.ps1
+Commit:    9fcaa3f    Test: knock-test.ps1
 
 ## 2026-11-15 - tests: collide's striker curved past, trunk's sample count, cars' brakes
 Symptom:   collide: the striker passed the twin by 280 or rode up on it (centres 70 apart in the plane); trunk: the
            host's lid "not watched long enough" at 9 fps; cars 8b: the car still rolling when the host got out.
 Fix:       collide-probe: the striker turned to face the twin at the launch, the closest approach in 3D; trunk-test:
            > 40 samples; cars-test: the foot brake through the pedal stage too, up to 20 s to stop.
-Commit:    pending    Test: collide, trunk, cars
+Commit:    9fcaa3f    Test: collide, trunk, cars
 
 ## 2026-11-14 - the guest's detection pass ran back to back; its drops reached the host late
 Symptom:   revisit: the mod's state sync took 4.5-26 ms a frame on the guest; loot-live: the guest's dropped item
