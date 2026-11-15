@@ -4164,3 +4164,26 @@ Owner: "more extended, realistic tests - find and fix the problems".
 - soak-test: -Lag with spaces ("80 40 1" from PowerShell) left the relays with no delay - fixed. Its guest join timed
   out once at 25 fps; sync-test -GuestJoin at 25 fps joined fine (not reproduced).
 
+## The nose dive at a hand-over to the driver (2026-11-15, not fixed)
+- entry-spin-test's open check: the guest gets in at the host's wheel, the host's car tips nose down 20-34 deg, the
+  tail up ~1.1 m, back on its wheels within a second (both sides: the host's car follows the guest's twin).
+  mod/tools/dive-probe.ps1 samples the twin per frame (sim, velocity in the car's frame, angular velocity,
+  DV state, attach, PercentInCar, driver's door simulating) and asks ComponentOverlapComponents at the first
+  physics frame.
+- The signature: the frame Twin.setDriven turns physics on the twin is still at rest (v 0, w 0); the next frame it
+  is at vz ~+240 cm/s, ~-43 forward, w ~(-70..-100, -70..-100) - nearly the same every time (a capped push out of
+  something?), more the frame after, then free flight.
+- Ruled out, each with 6-10 entries: the player's capsule (the drive started only once the game had turned its
+  collision off, then only at PercentInCar 1: still 2 in 3); the driver's door (shut at the start); stale velocity
+  (a teleport in place + angular velocity zeroed before the start); the vehicle controller's stale state (ticking
+  150 ms before the body simulates); the host's lever in drive (park: 1 in 4); world-dynamic objects (the twin's
+  chassis ignoring that channel while driven: 2 in 5); the wheels (no collision); the zone exit's ground / barricades
+  and the road under the car (the same on both sides, line traces 5x5).
+- Found: it depends on the place. The cars-test pair parks the host's car ~23 m from a zone exit
+  (BP_LevelTransition_EnterExit, on a road spline's slope, pitch -1): 40-60 % of the entries there; the host's car
+  moved 25 m further from the exit: 0 of 6. The guest's car, parked 7 m aside, never (the host at its wheel).
+  Turning physics off and on again while the guest sits at the wheel: never - only the first start after the twin
+  followed the stream. A plain setDriven by hand outside the drive hand-over proves nothing: the stream still moves
+  the twin every frame (TD.twinFrame skips only the car TD.driving names).
+- Next: what the chassis meets at that place in the first physics step (the car's hit event; the vehicle
+  controller's wheel traces on WheelTraceChannel rather than Visibility).
