@@ -27,7 +27,7 @@ Found by:  the current and previous game logs compared: the working load had "Su
            PlatformIntegrationSteam" and "Entitlement checks out ... PDFeature_Fig"; the failed one had neither.
 Fix:       game-args.ps1 starts Steam when needed and waits for its ActiveProcess pid; start-zone.ps1 checks Steam
            initialization and the PDFeature_Fig entitlement before UserLoadGame and stops at once with a clear error.
-Commit:    -    Test: start-zone.ps1 after steam.exe -shutdown: Steam auto-started, the reference zone loaded
+Commit:    5e20e9e    Test: start-zone.ps1 after steam.exe -shutdown: Steam auto-started, the reference zone loaded
 
 ## 2026-11-15 - the other's car tipped nose down / jolted round at a hand-over to the driver
 Symptom:   the guest takes the host's wheel: the host's car (both sides) thrown tail up ~1 m, nose down 20-34 degrees
@@ -46,7 +46,7 @@ Fix:       twincar.reseatDoors (shut doors' hinges set again where they stand, t
            playersync TD.entrySettled: the drive starts once the player is seated (PercentInCar) and no mod-driven
            door ease is still running (Twin.doorsSettled), 4 s at most; an open door simulating by the game is left
            to the game and does not block the hand-over.
-Commit:    -    Test: dive-probe.ps1 (8 entries, 0.6 deg at most), entry-spin-test.ps1 (5/5, in the quick suite)
+Commit:    5e20e9e    Test: dive-probe.ps1 (8 entries, 0.6 deg at most), entry-spin-test.ps1 (5/5, in the quick suite)
 
 ## 2026-11-15 - "the car turns on the spot as I get in" (owner's item j)
 Symptom:   now and then a car turned round, jumped or tipped as a player got into a car; entry-spin-test (new) saw a

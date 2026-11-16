@@ -4,7 +4,7 @@ Read this first, then `NOTES.md` (same folder: the full engineering log, newest 
 The owner writes in Russian; answers, task lists and summaries in Russian. Code, comments, NOTES in English.
 
 ## Latest (2026-11-17) - nose dive fixed; test launcher checks Steam / DLC
-**Current round**: `twincar.lua` + `playersync.lua` + `game-args.ps1` + `start-zone.ps1` + `entry-spin-test.ps1` +
+**Commit: 5e20e9e**: `twincar.lua` + `playersync.lua` + `game-args.ps1` + `start-zone.ps1` + `entry-spin-test.ps1` +
 `run-all-tests.ps1` + CHANGELOG + FIXED-BUGS. The nose dive is fixed by re-seating the twin's shut door hinges before
 physics starts and leaving a driven twin's doors to the game. `TD.entrySettled` waits only for mod-driven door
 animations. Final entry-spin-test 5/5: all 12 entries succeeded, worst 0.3 deg / 1 cm; it is in the quick suite now.
