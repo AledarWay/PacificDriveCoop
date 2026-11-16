@@ -4187,3 +4187,69 @@ Owner: "more extended, realistic tests - find and fix the problems".
   the twin every frame (TD.twinFrame skips only the car TD.driving names).
 - Next: what the chassis meets at that place in the first physics step (the car's hit event; the vehicle
   controller's wheel traces on WheelTraceChannel rather than Visibility).
+
+## The nose dive fixed: shut doors' hinges pulled the chassis (2026-11-16)
+- Investigation continued after the last session. OnComponentHit never fired at the first physics frame, and
+  BP_LevelTransition_EnterExit has no physics interaction. The door hinge hypothesis was tested next.
+- **Found**: the driver's door is closed, but while the twin was kinematic its door mesh drifted off the frame
+  the PhysicsConstraint was made with (the pose stream moves the mesh directly). The first physics step pulled
+  the chassis onto the door's remembered position - tail up ~1 m, nose down 20-34 deg. With the shut doors'
+  constraints broken beforehand: 0 of 8 entries dive. Setting `SetConstrainedComponents` on a **simulating** chassis
+  threw it 8.6 m up in one frame, so it must only run while the twin is kinematic.
+- **Fix** (2026-11-16): `Twin.reseatDoors(twin)` - before `SetSimulatePhysics(true)` in `setDriven`, re-seats every
+  shut door's hinge to where the mesh stands now (`SetConstrainedComponents(chassis, None, mesh, None)`). Guards:
+  skip if the chassis already simulates (already driven), skip simulating door meshes (open doors, left to the
+  game). `Twin.doorsSettled(twin)` - `TD.entrySettled` now also waits until no mod-driven door animation is in
+  progress (doorGoal empty); open doors (simulating by the game) do not block it. `Twin.simulating` - `doorEase`
+  skips driven twins. The driver's door closing during the drive also threw the car sideways (2.4 m/s, 255 deg/s);
+  with `doorsSettled` the hand-over waits until the mod's door animation is over.
+- entry-spin-test (driver's door, 4 ways in, 3 rounds each): all 5 checks PASS, worst turn 0.6 deg (was 20-34 deg
+  nose-down). cars-test 38/39 (the one remaining FAIL: step 9 "guest's own car drives -- moved 12", a flake
+  present before the fix too: 38/39 in the last session). entry-spin-test's "back left door" scenario removed: a
+  back-door entry does not start physics (no `startDriving`), so it cannot nose-dive, and car-e.lua's SetHighlight
+  path does not reach `TD.doorPress` for native-car back doors (backseat-test covers those).
+- Code: `twincar.lua` M.reseatDoors / doorsSettled / simulating / setDriven; `playersync.lua` TD.entrySettled /
+  TD.startDriving / TD.onDoorCall (skip doorEase on simulating twin).
+
+## Test launchers: Steam and the DLC entitlement (2026-11-16)
+- The first quick-suite rerun after the nose-dive fix was invalid. From 16:18 both test games stayed in RB_MainMenu:
+  `CheckRootBlockDLC: Missing mounted DLC`, then `SAVEFILE CONTAINS MISSING ENTITLEMENTS`; start-zone logged
+  `reference save: TIMEOUT` four minutes later and continued anyway. The run was stopped; none of its mod results count.
+- The PDFeature_Fig pak was still mounted. The actual difference from a working log: `SteamAPI_Init() failed` and
+  `Player does not own Mountable Content DLC 'PDFeature_Fig'`; Steam was not running. A working launch logs
+  `Successfully initialized PlatformIntegrationSteam` and `Entitlement checks out ... PDFeature_Fig` before LOAD V4.
+- `game-args.ps1` (used by every test-game launcher) now finds steam.exe in the Steam registry keys, starts it when
+  absent, and waits up to 120 s for ActiveProcess.pid to name the running Steam process. `start-zone.ps1` checks the
+  game's Steam initialization and, for reference saves, the PDFeature_Fig entitlement before UserLoadGame; a failure
+  stops that game and aborts immediately instead of producing a four-minute timeout and bogus world comparisons.
+- Verified with Steam already running: start-zone reached Wilderness_Forest_15, seated, ignition 2. Then Steam was
+  shut down with `steam.exe -shutdown` and the same command auto-started it, reached the zone, seated, ignition 2.
+  A fresh full quick suite followed; the earlier 16:18-17:50 series is not a regression baseline.
+
+## Validation of the nose-dive / Steam round (2026-11-16)
+- Valid full quick suite (Steam + DLC confirmed on both games): 33/44 passed. Reruns passed knock 3/3, twin-equip
+  13/13, twin-ctl 31/31, instability 8/8, esc 7/7, f7 4/4 and startflow 30/30. The next four-test rerun passed
+  runover 8/8; cars was 38/39, with every door kept and both cross-car drives passing, only step 9 moved 8.
+- A/B: with the two current Lua files temporarily reversed to HEAD (the patch restored automatically afterwards),
+  cars was 36/39. HEAD failed the cross-car host-car drive (moved 9) and the same own-car step 9 (moved 11); the
+  current code drove 6743 / 2227 across and failed only the old own-car step (moved 8). The door loss in two earlier
+  current cars runs did not repeat in the final run; the usual bot / physics flakes remain, not a demonstrated
+  regression of the hinge fix.
+- loot-live still failed only "host's dropped item on the guest's ground": 3184, 1830, then 2121 ms (limit 1000).
+  This exact host-drop flake was already documented on 2026-11-14 before the current changes. It stays open.
+- revisit stayed red only on the < 8 ms mod-cost checks: guest 32.3, then 8.7, then 48.8 ms; host 9.1 in the last
+  run. Functional checks passed. The guest's state pass dominates the bad samples; not the changed door-hand-over
+  path. It remains an open performance / test-load issue, not a clean performance pass.
+- One startflow late join crashed in a game UFunction called from Lua, access violation 0xc0000, stack hash
+  971387F09E1673DE36528E1F74FB68ECEFBFAFB4. crumb.txt ended at `state ev VP`, near the previously fixed wreck-paint
+  path. The isolated rerun passed 30/30. The rare paint crash is not claimed fixed; the dump is the client's
+  UE4CC-Windows-230F938446C8F64C8F40948944247674_0000.
+- The first final entry-spin rerun on the restored current tree was 4/5, not a pass: guest into the host's car had
+  ordinary post-hand-over movement up to 761 with the engine on / in drive, one failed E entry, and a 7.1 deg roll of
+  the OTHER car after the test spot had moved. No 20-34 deg nose dive returned (the twin's turn in its successful
+  entries stayed <= 0.7 deg). The harness had neither parked the cars between rounds nor failed a round with no entry.
+  It now parks both own cars before sampling (the nose dive reproduced in park too) and requires every entry to succeed;
+  thresholds are unchanged. That parked run was 3/5: physics stayed clean (0.5 deg / 5 cm), but car-e.lua's synthetic
+  SetHighlight missed two repeat entries. Cross-car entries now use the real camera highlight (twin-parts-look.lua),
+  as in cars / carswitch; no blind E is accepted. Final full profile (2026-11-17): 5/5, all 12 entries successful,
+  worst 0.3 deg / 1 cm. entry-spin is now in run-all-tests -Quick.

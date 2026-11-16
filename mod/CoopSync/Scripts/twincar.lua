@@ -164,6 +164,7 @@ end
 -- while the other player drives it.
 function M.setDriven(car, on, vel)
     if on and M.isTwin(car) then M.muteDoorBreak(car) end
+    if on and M.isTwin(car) then M.reseatDoors(car) end
     for _, c in ipairs(vcsOf(car)) do
         do
             pcall(function() c:SetComponentTickEnabled(on) end)
@@ -1750,6 +1751,43 @@ function M.rejoinDoors(twin)
         end
     end
 end
+-- The shut doors' hinges set again where the doors are now, before the twin simulates (setDriven). Kinematic, the twin's
+-- doors are put by the owner's pose stream (applyPose) and drift off the frames their constraints were made with; a
+-- door shut is kinematic too, so the first physics step pulled the whole car onto them - the tail thrown up ~1 m, the
+-- nose down 20-34 deg at a hand-over to the driver (entry-spin-test, dive-probe: 1 in 2 at one spot, none with the shut
+-- doors' constraints broken). SetConstrainedComponents takes the frames from where the parts are now.
+-- (only while the twin is kinematic: set on a simulating chassis it threw the car 8.6 m up in a frame, dive-probe)
+function M.reseatDoors(twin)
+    local chassis = twin.Chassis
+    if not (chassis and chassis:IsValid()) then return end
+    local none = FName("None")
+    if twin.RootComponent:IsSimulatingPhysics(none) then return end
+    for n = 1, 6 do
+        local d = M.door(twin, n)
+        if d then
+            pcall(function()
+                local m, pc = d.MainMesh, d.PhysicsConstraint
+                if not (m and m:IsValid() and pc and pc:IsValid()) or m:IsSimulatingPhysics(none) then return end
+                pc:SetConstrainedComponents(chassis, none, m, none)
+                M.stats.doorsReseated = (M.stats.doorsReseated or 0) + 1
+            end)
+        end
+    end
+end
+-- The twin simulating (the local player drives it): its doors are the game's, as on the own car - none moved by the
+-- mod (a kinematic door moved still pulls the chassis by its hinge: the driver's door eased shut at the end of the
+-- game's entry, the car already driven, threw it sideways at 2.4 m/s turning 255 deg/s - dive-probe, the owner's
+-- "the car turns on the spot as I get in").
+-- (playersync TD.entrySettled) no door still being eased shut by the mod (M.doorEase / doorGoal): a door the game
+-- opened is left to the game (the driver's door, open during entry), it does not stall the hand-over.
+function M.doorsSettled(twin)
+    local c = poseCache[twin:GetAddress()]
+    return not (c and c.doorGoal and next(c.doorGoal))
+end
+function M.simulating(twin)
+    local ok, on = pcall(function() return twin.RootComponent:IsSimulatingPhysics(FName("None")) end)
+    return ok and on == true
+end
 function M.applyPose(twin, s)
     M.light(twin)
     local c = poseComps(twin)
@@ -1841,6 +1879,7 @@ end
 function M.doorEase(twin, dt)
     local c = poseCache[twin:GetAddress()]
     if not (c and c.doorGoal and next(c.doorGoal)) then return end
+    if M.simulating(twin) then return end -- (driven here: its doors left to the game, M.simulating)
     local carXf = twin:GetTransform()
     local inv = KML:InvertTransform(carXf)
     local f = 1 - (1 - DOOR_EASE) ^ (math.max(dt, 0.001) / 0.033)

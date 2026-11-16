@@ -1162,6 +1162,19 @@ function M.driveInfo()
     return string.format("driving=%s driven_by=%s taken=%d given=%d lines=%d", tostring(TD.driving), tostring(TD.drivenBy == true),
         st.driveTaken or 0, st.driveGiven or 0, st.driveLines or 0)
 end
+-- The other's car simulates here once the game's entry is over: the player seated and no mod-driven door animation
+-- still running (Twin.doorsSettled). A door's hinge set on the kinematic twin pulls the car when it starts to simulate
+-- unless the door stands where the hinge was set (Twin.reseatDoors, just before); the driver's door still being eased
+-- shut at the start threw the car tail up ~1 m, nose down 20-34 deg (entry-spin-test, dive-probe: 1 in 2 at one spot).
+-- TD.ENTRY_WAIT_MS seated at most (a door held open by the owner).
+TD.ENTRY_WAIT_MS = 4000
+function TD.entrySettled(pawn, ig)
+    if ig.inAt and M.nowMs() - ig.inAt > TD.ENTRY_WAIT_MS then return true end
+    local ok, seated = pcall(function() return (pawn.PercentInCar or 1) >= 0.99 end)
+    local g = ghostOf(ig.tag)
+    if (ok and not seated) or (g and not Twin.doorsSettled(g)) then st.entryWaits = (st.entryWaits or 0) + 1 return false end
+    return true
+end
 function TD.startDriving(tag)
     local g = ghostOf(tag)
     if not (g and Twin.isTwin(g)) then return end
@@ -2507,7 +2520,8 @@ function TD.onDoorCall(door, what)
     -- off its physics at once and eased shut, the owner's late open poses held off meanwhile.)
     if what == "shut" and TD.native and not (M.stopped or TD.doorGuard) and door and door:IsValid() then
         local tw = carOfPart(door)
-        if tw and Twin.isTwin(tw) then
+        -- (a twin driven here simulates: the game's own shut as on the own car, twincar M.simulating)
+        if tw and Twin.isTwin(tw) and not Twin.simulating(tw) then
             for k = 1, 5 do
                 local d = Twin.door(tw, k)
                 if d and d:GetAddress() == door:GetAddress() and Twin.doorOpen(tw, k) then
@@ -3160,7 +3174,7 @@ local function sendTick()
         local inG = g and par and par:GetFullName() == g:GetFullName()
         if inGhost and inGhost.native then
             -- (the game's own entry / exit: out once it was in; an entry that never got in within 4 s is dropped)
-            if inG then inGhost.wasIn = true
+            if inG then inGhost.wasIn = true inGhost.inAt = inGhost.inAt or M.nowMs()
             elseif inGhost.wasIn or M.nowMs() - inGhost.since > 4000 then
                 TD.nativeLeft(pawn)
                 par = Sync.parentOf(pawn)
@@ -3259,7 +3273,7 @@ local function sendTick()
         end
         if TD.native then
             local atWheel = inGhost and inGhost.native and inGhost.wasIn and inGhost.seat == 1
-            if atWheel and not TD.driving then pcall(TD.startDriving, inGhost.tag)
+            if atWheel and not TD.driving and TD.entrySettled(pawn, inGhost) then pcall(TD.startDriving, inGhost.tag)
             elseif not atWheel and TD.driving then pcall(TD.stopDriving) end
             local dg = TD.driving and ghostOf(TD.driving)
             if dg then

@@ -40,7 +40,19 @@ if ($quick) {
 }
 $p = Start-Process "$w\PenDriverPro-Win64-Shipping.exe" -ArgumentList ((& "$PSScriptRoot\game-args.ps1" -UserDir $u) + "-userdir=`"$u`"") -WorkingDirectory $w -PassThru
 Log "pid $($p.Id) dir $dir"
-& "$t\wait-state.ps1" -State 1 -Dir $dir -TimeoutSec 120 | Select-Object -Last 1 | ForEach-Object { Log $_ }
+$menuState = & "$t\wait-state.ps1" -State 1 -Dir $dir -TimeoutSec 120
+$menuStateCode = $LASTEXITCODE
+$menuState | Select-Object -Last 1 | ForEach-Object { Log $_ }
+if ($menuStateCode) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; throw 'the game did not reach its main menu' }
+$gameLog = "$u\Saved\Logs\PenDriverPro.log"
+if (-not (Select-String -Path $gameLog -Pattern 'Successfully initialized PlatformIntegrationSteam' -Quiet -ErrorAction SilentlyContinue)) {
+    Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+    throw 'Steam did not initialize in the game; check the Steam sign-in and rerun the test'
+}
+if ($quick -and -not (Select-String -Path $gameLog -Pattern "Entitlement checks out for Mountable Content DLC 'PDFeature_Fig'" -Quiet -ErrorAction SilentlyContinue)) {
+    Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+    throw 'PDFeature_Fig is not mounted; the reference saves need this DLC and its Steam entitlement'
+}
 if ($quick) {
     Send "FindFirstOf('BP_SaveGameManager_C'):UserLoadGame(9, 1, 0)" | Out-Null
     & "$t\wait-state.ps1" -State $(if ($inGarage) { 4 } else { 5 }) -Dir $dir -TimeoutSec 240 | Select-Object -Last 1 | ForEach-Object { Log "reference save: $_" }

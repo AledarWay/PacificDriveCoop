@@ -1,6 +1,6 @@
 # A car turned on the spot as a player got in, now and then (owner's two-games tests, 2026-11-14 item j: "the twin
-# rotates or gets a push on entry"). Each way in - the own car, the other's car by its driver's door and by a back
-# door - ROUNDS times, the game's own E at the door as a player; both sides sample both cars every frame from just
+# rotates or gets a push on entry"). Each driver's-door way in - the own car and the other's car - ROUNDS times,
+# the game's own E at the door as a player; both sides sample both cars every frame from just
 # before the E until 5 s after: the most any car turned (yaw / pitch / roll) and moved from where it stood, on each side.
 # Uses cars-test's pair (-Reuse: one already set up by cars-test -SetupOnly).
 param([switch]$Keep, [switch]$Reuse, [int]$Rounds = 3, [double]$MaxDeg = 2, [double]$MaxMove = 20, [string]$Only = "")
@@ -17,12 +17,13 @@ function Check($name, [bool]$ok, $detail) {
 }
 if (-not $Reuse) { & "$t\cars-test.ps1" -SetupOnly | Select-Object -Last 2 }
 $ce = Get-Content "$t\cmds\car-e.lua" -Raw
+$look = Get-Content "$t\cmds\twin-parts-look.lua" -Raw
 # the car of a kind on a side: 'own' or 'twin'
 $carOf = "local function carOf(kind) local T = CoopPlayers.twinModule() if kind == 'own' then return T.ownCar() end for _, c in ipairs(FindAllOf('BP_PlayerCarNew_C') or {}) do if c:IsValid() and T.isTwin(c) then return c end end end "
 # both cars sampled every frame for SEC s (SPIN.own / SPIN.twin: t, x, y, z, yaw, pitch, roll)
 function SampleStart($dir) {
     Send $dir ($carOf + "local cars = { own = carOf('own'), twin = carOf('twin') } SPIN = { own = {}, twin = {} } local t0 = os.clock() local h " +
-        "h = LoopInGameThreadWithDelay(1, function() if os.clock() - t0 > 9 then CancelDelayedAction(h) return end " +
+        "h = LoopInGameThreadWithDelay(1, function() if os.clock() - t0 > 20 then CancelDelayedAction(h) return end " +
         "for k, c in pairs(cars) do if c:IsValid() then local l, r = c:K2_GetActorLocation(), c:K2_GetActorRotation() local s = SPIN[k] s[#s + 1] = { os.clock() - t0, l.X, l.Y, l.Z, r.Yaw, r.Pitch, r.Roll } end end end) return 'sampling'") | Out-Null
 }
 # the most a car turned / moved over the samples: "<kind>: turn=<deg> (yaw/pitch/roll) move=<units> at=<s> n=<samples>"
@@ -34,6 +35,20 @@ function InAt($dir, [string]$kind, [int]$n) {
     $p = @{ 1 = '131,-150'; 3 = '8,-150' }[$n] -split ','
     Send $dir ($carOf + "local KML = StaticFindObject('/Script/Engine.Default__KismetMathLibrary') local c = carOf('$kind') local pw = FindFirstOf('PlayerController').Pawn local w = KML:TransformLocation(c:GetTransform(), { X = $($p[0]), Y = $($p[1]), Z = 0 }) w.Z = pw:K2_GetActorLocation().Z + 20 pw:K2_SetActorLocation(w, false, {}, true) return 'at'") | Out-Null
     Start-Sleep 1
+    if ($kind -eq 'twin') {
+        # A real camera highlight, as in cars / carswitch: car-e.lua's SetHighlight alone leaves the mod's aim state
+        # stale after an earlier entry, so its synthetic E can do nothing on a later round.
+        $slot = @{ 1 = 'DoorsFL'; 2 = 'DoorsFR'; 3 = 'DoorsRL'; 4 = 'DoorsRR'; 5 = 'DoorsTrunk' }[$n]
+        $h = ''
+        foreach ($dz in 0, 20, -20, 40, -40) {
+            Send $dir "LOOK_OWN = false LOOK_DZ = $dz LOOK_SLOT = '$slot' $look" | Out-Null
+            Start-Sleep -Milliseconds 700
+            $h = Send $dir "local g, doorNumber = CoopPlayers.twinModule().highlightedDoor() return tostring(doorNumber)"
+            if ($h -match "^(OK )?$n\s*$") { break }
+        }
+        if ($h -notmatch "^(OK )?$n\s*$") { return "no E at door $n (highlighted: $($h.Trim()))" }
+        return Send $dir "local p = FindFirstOf('PlayerController').Pawn p['Command Interact'](p, true) Dev.after(100, function() local q = FindFirstOf('PlayerController').Pawn q['Command Interact'](q, false) end) return 'E at door $n (highlighted: $($h.Trim()))'"
+    }
     Send $dir "CE_CAR = '$kind' CE_HL = 'door$n' $ce"
 }
 function InCar($dir) { Send $dir "local a = FindFirstOf('PlayerController').Pawn:GetAttachParentActor() return tostring(a ~= nil and a:IsValid())" }
@@ -44,12 +59,24 @@ function OutOf($dir, [string]$kind) {
     }
     'still in'
 }
+# Park both sides' own cars before every entry: after a hand-over the owner's car can stay in drive with its engine on,
+# and its ordinary creep would move it out of the test spot and look like an entry jolt. The nose dive also reproduced
+# in park (dive-probe, 2026-11-15), so this keeps the hinge check while removing that unrelated movement.
+function Park($dir) {
+    $s = ''
+    for ($i = 0; $i -lt 3; $i++) {
+        $s = Send $dir "local m = FindFirstOf('BP_CarManager_C') local c = CoopPlayers.twinModule().ownCar() if m.MyCarGearBox == 0 then c:ToggleGearBoxState(0, false) end c.RootComponent:SetPhysicsLinearVelocity({ X = 0, Y = 0, Z = 0 }, false, FName('None')) return 'gear=' .. tostring(m.MyCarGearBox)"
+        if ($s -match 'gear=1') { return $s }
+        Start-Sleep 1
+    }
+    $s
+}
 # a way in: who gets in, into which of its cars (own / twin on its side), by which door; the car on the other side is
-# the opposite kind
+# the opposite kind. Back-door entries (3, 4) are tested in backseat-test: a back-door tap does not start the physics
+# hand-over, so it cannot cause a nose-dive, and car-e.lua's SetHighlight path does not reach TD.doorPress for them.
 $ways = @(
     @{ name = "host into its own car (driver's door)"; dir = $hd; other = $cd; kind = 'own'; door = 1 },
     @{ name = "guest into the host's car (driver's door)"; dir = $cd; other = $hd; kind = 'twin'; door = 1 },
-    @{ name = "guest into the host's car (back left door)"; dir = $cd; other = $hd; kind = 'twin'; door = 3 },
     @{ name = "host into the guest's car (driver's door)"; dir = $hd; other = $cd; kind = 'twin'; door = 1 },
     @{ name = "guest into its own car (driver's door)"; dir = $cd; other = $hd; kind = 'own'; door = 1 }
 )
@@ -66,8 +93,11 @@ $series = "local function wrap(d) return (d + 180) % 360 - 180 end local o = {} 
 foreach ($w in $ways) {
     "=== $($w.name), $Rounds rounds"
     $worst = @{ turn = 0; move = 0; line = '' }
+    $enteredAll = $true
     for ($r = 1; $r -le $Rounds; $r++) {
         "  out: " + (OutOf $w.dir $w.kind)
+        Start-Sleep 2
+        "  park: host $(Park $hd) | guest $(Park $cd)"
         Start-Sleep 2
         SampleStart $w.dir; SampleStart $w.other
         $e = InAt $w.dir $w.kind $w.door
@@ -75,8 +105,10 @@ foreach ($w in $ways) {
         # (the E at the door missed now and then - the player not quite at it: once more)
         if ((InCar $w.dir) -eq 'false') { $e += " | again: " + (InAt $w.dir $w.kind $w.door) }
         Start-Sleep 3
+        $inside = InCar $w.dir
+        if ($inside -ne 'true') { $enteredAll = $false }
         $a = Send $w.dir $read; $b = Send $w.other $read
-        "  round ${r}: E $e | in=$(InCar $w.dir)"
+        "  round ${r}: E $e | in=$inside"
         "    getting in side: $a"
         "    other side:      $b"
         foreach ($x in @(@{ n = 'getting in side'; d = $w.dir; s = $a }, @{ n = 'other side'; d = $w.other; s = $b })) {
@@ -91,7 +123,7 @@ foreach ($w in $ways) {
             }
         }
     }
-    Check "$($w.name): no car turned (<= $MaxDeg deg) or moved (<= $MaxMove) on either side" ($worst.turn -le $MaxDeg -and $worst.move -le $MaxMove) ("worst turn {0:N1} deg, move {1:N0} | {2}" -f $worst.turn, $worst.move, $worst.line)
+    Check "$($w.name): every entry succeeded; no car turned (<= $MaxDeg deg) or moved (<= $MaxMove) on either side" ($enteredAll -and $worst.turn -le $MaxDeg -and $worst.move -le $MaxMove) ("entered every round: {0}; worst turn {1:N1} deg, move {2:N0} | {3}" -f $enteredAll, $worst.turn, $worst.move, $worst.line)
     "  out: " + (OutOf $w.dir $w.kind)
 }
 "=== the mod's own spin watch (playersync TD.spinWatch: a car turning on the spot noted in the hitch log)"

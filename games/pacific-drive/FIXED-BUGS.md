@@ -17,6 +17,37 @@ Commit:    hash    Test: which test covers it now
 
 ---
 
+## 2026-11-16 - the test saves were rejected when Steam was not running
+Symptom:   every reference-save load stopped after "CheckRootBlockDLC: Missing mounted DLC" and "SAVEFILE CONTAINS
+           MISSING ENTITLEMENTS"; start-zone then spent four minutes waiting and continued in RB_MainMenu, making the
+           quick suite's results meaningless.
+Cause:     Steam was not running. The DLC pak was mounted, but PlatformIntegrationSteam failed SteamAPI_Init, so the
+           game reported that the player did not own PDFeature_Fig and refused saves carrying its entitlement.
+Found by:  the current and previous game logs compared: the working load had "Successfully initialized
+           PlatformIntegrationSteam" and "Entitlement checks out ... PDFeature_Fig"; the failed one had neither.
+Fix:       game-args.ps1 starts Steam when needed and waits for its ActiveProcess pid; start-zone.ps1 checks Steam
+           initialization and the PDFeature_Fig entitlement before UserLoadGame and stops at once with a clear error.
+Commit:    -    Test: start-zone.ps1 after steam.exe -shutdown: Steam auto-started, the reference zone loaded
+
+## 2026-11-15 - the other's car tipped nose down / jolted round at a hand-over to the driver
+Symptom:   the guest takes the host's wheel: the host's car (both sides) thrown tail up ~1 m, nose down 20-34 degrees
+           for a second (1 in 2 at one spot); with that held off, a sideways jolt (2.4 m/s, turning 255 deg/s) the
+           moment the driver's door shut at the end of the entry.
+Cause:     the twin's doors' hinges (PhysicsConstraint, door mesh - chassis). Kinematic, the twin's doors are put by
+           the owner's pose stream (doorEase) and the mod's own eased shut (TD.onDoorCall), off the frames the hinges
+           were made with; the first physics step of the chassis (Twin.setDriven) pulled the car onto its doors, and
+           a door the mod still moved on the driven car pulled it every frame. Not a contact: no hit event at all.
+Found by:  mod/tools/dive-probe.ps1 (per-frame physics of the twin, first-frame overlaps, observing hooks on the
+           exit's and the chassis' hit events), after ruling out capsule, stale velocity, controller state, lever,
+           world-dynamic objects, wheels, ground (NOTES 2026-11-15); the shut doors' constraints broken by hand: none.
+           Reseating a hinge while the chassis simulates threw the car 8.6 m up - only on a kinematic one.
+Fix:       twincar.reseatDoors (shut doors' hinges set again where they stand, the twin still kinematic, in
+           setDriven on); doorEase and the eased shut skip a simulating twin (M.simulating: its doors the game's);
+           playersync TD.entrySettled: the drive starts once the player is seated (PercentInCar) and no mod-driven
+           door ease is still running (Twin.doorsSettled), 4 s at most; an open door simulating by the game is left
+           to the game and does not block the hand-over.
+Commit:    -    Test: dive-probe.ps1 (8 entries, 0.6 deg at most), entry-spin-test.ps1 (5/5, in the quick suite)
+
 ## 2026-11-15 - "the car turns on the spot as I get in" (owner's item j)
 Symptom:   now and then a car turned round, jumped or tipped as a player got into a car; entry-spin-test (new) saw a
            car moved 2.75 m and turned 22.5 degrees in one frame, cars thrown at up to 28 m/s, one rolled 131 degrees.
@@ -34,8 +65,7 @@ Found by:  entry-spin-test.ps1 (every way in, both sides, the series around the 
 Fix:       runsync.clearOfTwin: inside = the centre within the twin's footprint (460 along, 200 across), the car keeps
            its own yaw; twincar.bumpTick: the cars closing by >= 150 cm/s, and never for an own car not simulated here;
            ghostLeave (native cars): the other's car stays the context through the game's exit, no detach / teleport
-           of the mod's unless still attached 2.5 s on. Not fixed: a 23-degree nose dive for a second at a hand-over
-           to the driver (1 in 3 in the test), its cause not found.
+           of the mod's unless still attached 2.5 s on. The nose dive at a hand-over: the entry above.
 Commit:    9fcaa3f    Test: entry-spin-test.ps1 (5 of 6), cars, collide
 
 ## 2026-11-15 - the guest's game crashed in a wreck's SetupMaterials after a join

@@ -3,7 +3,25 @@
 Read this first, then `NOTES.md` (same folder: the full engineering log, newest sections at the end).
 The owner writes in Russian; answers, task lists and summaries in Russian. Code, comments, NOTES in English.
 
-## Latest (2026-11-07) - the project is on GitHub: https://github.com/AledarWay/PacificDriveCoop (public)
+## Latest (2026-11-17) - nose dive fixed; test launcher checks Steam / DLC
+**Current round**: `twincar.lua` + `playersync.lua` + `game-args.ps1` + `start-zone.ps1` + `entry-spin-test.ps1` +
+`run-all-tests.ps1` + CHANGELOG + FIXED-BUGS. The nose dive is fixed by re-seating the twin's shut door hinges before
+physics starts and leaving a driven twin's doors to the game. `TD.entrySettled` waits only for mod-driven door
+animations. Final entry-spin-test 5/5: all 12 entries succeeded, worst 0.3 deg / 1 cm; it is in the quick suite now.
+The harness parks between rounds, requires every entry and uses the real camera highlight for another player's door.
+game-args auto-starts Steam; start-zone checks Steam + PDFeature_Fig before loading. Cold-Steam smoke test PASS.
+NOTES "The nose dive fixed" and "Test launchers".
+The valid full quick suite was 33/44. Reruns recovered knock, twin-equip, twin-ctl, instability, esc, f7, runover
+(8/8) and startflow (30/30). Current cars 38/39: only step 9 moved 8; the A/B run on HEAD also failed step 9
+(moved 11), while all doors stayed in the current run. Still open, not regressions of this patch: loot-live's host
+drop took 1.8-3.2 s (known before this patch), and revisit's frame-cost checks vary widely under load. One startflow
+run died in state ev VP after the late join (hash 971387F09E1673DE36528E1F74FB68ECEFBFAFB4); the rerun passed 30/30,
+so the rare paint crash remains open. See NOTES "Validation of the nose-dive / Steam round".
+
+## Before (2026-11-15): nose dive narrowed (not fixed), dive-probe.ps1 added
+See NOTES "The nose dive at a hand-over to the driver (2026-11-15, not fixed)" and the follow-up section.
+
+## Before (2026-11-07) - the project is on GitHub: https://github.com/AledarWay/PacificDriveCoop (public)
 C:\PacificDriveCoop is the git repo (main). Not in it: `local/` (saves, dumps, reports, builds, ue4ss-src) and
 `testgame/`. The native build moved: CMake tree `mod/native/` (build.bat finds MSVC via vswhere), build dir
 `local/native-build` (was local/cppbuild); the UE4SS release files the zip needs are in `mod/vendor/ue4ss`; the UE4SS
