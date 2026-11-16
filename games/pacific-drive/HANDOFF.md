@@ -10,7 +10,7 @@ physics starts and leaving a driven twin's doors to the game. `TD.entrySettled` 
 animations. Final entry-spin-test 5/5: all 12 entries succeeded, worst 0.3 deg / 1 cm; it is in the quick suite now.
 The harness parks between rounds, requires every entry and uses the real camera highlight for another player's door.
 game-args auto-starts Steam; start-zone checks Steam + PDFeature_Fig before loading. Cold-Steam smoke test PASS.
-NOTES "The nose dive fixed" and "Test launchers".
+NOTES "The nose dive fixed" and "Test launchers". Current alpha: 0.1.0-alpha22 (being prepared).
 The valid full quick suite was 33/44. Reruns recovered knock, twin-equip, twin-ctl, instability, esc, f7, runover
 (8/8) and startflow (30/30). Current cars 38/39: only step 9 moved 8; the A/B run on HEAD also failed step 9
 (moved 11), while all doors stayed in the current run. Still open, not regressions of this patch: loot-live's host

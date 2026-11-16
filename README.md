@@ -5,7 +5,7 @@ their own run, and the guest joins it in their own car. Both players get the sam
 The mod is built on [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS) and follows the
 [coop-anything](https://github.com/cranebeaker/coop-anything) playbook.
 
-> **Status: alpha (0.1.0-alpha20).** It is playable, but desyncs and crashes can happen. Please send a report
+> **Status: alpha (0.1.0-alpha21; 0.1.0-alpha22 is being prepared).** It is playable, but desyncs and crashes can happen. Please send a report
 > whenever something breaks (see [Reporting problems](#reporting-problems)).
 > The versions and what changed in each one: [`mod/release/CHANGELOG.txt`](mod/release/CHANGELOG.txt).
 
