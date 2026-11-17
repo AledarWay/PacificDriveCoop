@@ -24,7 +24,7 @@ Cause:     an inventory change forced three root scans and a serialization pass 
 Found by:  loot-live timings plus the hostLive / invScan / scanFrame path in statesync.
 Fix:       statesync hostLiveDrop sends a new nearby world item directly now, +0.3 and +1 s; hostPathAdd puts its key
            into the pass cache so the next pre-scan pass cannot send D. The extra invScan rounds were removed.
-Commit:    -    Test: loot-live 15/15 repeatedly and in the quick suite; host drop 405-427 ms
+Commit:    3d9f570    Test: loot-live 15/15 repeatedly and in the quick suite; host drop 405-427 ms
 
 ## 2026-11-17 - a second visit spawned runtime actors already loaded from the save
 Symptom:   revisit applied bursts of S at 30-600 ms each; duplicate wreck spawns could end in a game crash.
@@ -34,7 +34,7 @@ Found by:  revisit's per-S adopt/spawn+loot hitch records; failed alternatives a
            are documented in NOTES (normal Sync.deref replacement-at-path must be retained).
 Fix:       statesync adoptExisting reuses the nearest unmapped same-class runtime actor within 50 cm, with an
            event-frame-only cache; adoptPredicted checks only actual dropAsked items.
-Commit:    -    Test: revisit functional checks pass and the long duplicate S bursts are gone; its total < 8 ms
+Commit:    3d9f570    Test: revisit functional checks pass and the long duplicate S bursts are gone; its total < 8 ms
            budget remains open (players / session / arrival work included)
 
 ## 2026-11-16 - the test saves were rejected when Steam was not running

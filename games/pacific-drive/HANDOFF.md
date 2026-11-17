@@ -4,7 +4,7 @@ Read this first, then `NOTES.md` (same folder: the full engineering log, newest 
 The owner writes in Russian; answers, task lists and summaries in Russian. Code, comments, NOTES in English.
 
 ## Latest (2026-11-17) - direct host drops, second-visit adoption and paint caches
-**Uncommitted, validation read**: statesync.lua + revisit-test.ps1 + CHANGELOG + NOTES + FIXED-BUGS.
+**Commit: 3d9f570**: statesync.lua + revisit-test.ps1 + CHANGELOG + NOTES + FIXED-BUGS.
 The host's new drop is sent directly now / +0.3 / +1 s instead of three root rescans (loot-live 15/15, 405-427 ms).
 Runtime S adopts an existing same-class actor within 50 cm instead of spawning a duplicate; adoptPredicted only scans
 actual dropAsked items. Failed approaches are documented and reverted: a full per-frame collect index, cached-only weak
