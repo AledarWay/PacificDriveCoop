@@ -4253,3 +4253,43 @@ Owner: "more extended, realistic tests - find and fix the problems".
   SetHighlight missed two repeat entries. Cross-car entries now use the real camera highlight (twin-parts-look.lua),
   as in cars / carswitch; no blind E is accepted. Final full profile (2026-11-17): 5/5, all 12 entries successful,
   worst 0.3 deg / 1 cm. entry-spin is now in run-all-tests -Quick.
+
+## Live drops, S-event cost and world-lifetime caches (2026-11-17, work in progress)
+- Confirmed by loot-live: the host's drop waited for a full root rescan and a serialization pass, taking 1.8-3.2 s.
+  `hostLiveDrop` now checks only item actors near the player now / +0.3 / +1 s, sends the new W| S directly and adds
+  its key to beginPaths (otherwise the next pre-scan pass would D it). The three extra rescans are gone. Two runs:
+  15/15, host drop 427 and 405 ms. A separate host_live_drop profiler was added.
+- The revisit logs located the large S costs at object resolution and duplicate spawning on the second visit. A full
+  per-frame Sync.collect index was tried first: it cost 30-100 ms itself and did not remove fallback path searches.
+  It was removed. A cached-only weak-handle resolve was then tried: it avoided some searches but could miss a new
+  object reusing the path and spawn a duplicate. Two near-identical game crashes in CivCar loot application followed
+  (dumps UE4CC-Windows-11A0C5824E6F5C2B75A2D0B4E23060F2_0000 and
+  UE4CC-Windows-D369E7D946C7E165693E3F9A1AA96FC6_0000, both read 0x1e3080200). That resolve change was reverted;
+  the next revisit completed without a new crash. Do not reintroduce cached-only identity resolution.
+- `adoptPredicted` no longer serializes every unmapped world item for every W| S: only actual local drops in
+  `dropAsked` can be adopted. For other runtime S, `adoptExisting` tries the import's rule - nearest unmapped actor
+  of the same class within 50 cm - with a cache that lives only while that event frame runs. Normal Sync.deref
+  (including replacement-at-path) is retained. Two revisits after the revert / adoption had no new crash; the long
+  duplicate S bursts disappeared and the guest's final state cost was 5.30 / 5.45 ms. The whole revisit check stays
+  red because playersync, session and the earlier arrival windows also contribute to its < 8 ms total.
+- Skipping SetPaint when GetTintableProperties already named the palette was tried and REVERTED: that property is not
+  proof that the part's materials carry Palette_Paint_Color. paint-test failed (only 23/102 parts matched). Every part
+  must still get SetPaint / SetDecal; do not use the tint property alone as the material-built check.
+- The late-join VP crash has a separate world-lifetime suspect: CoopSyncPaint.pal and tintCls held class objects
+  across UserLoadGame. M.start now resets them and the paint sent/scan state for every loaded world. After the tint
+  revert, paint passed 2/2 and all 8 startflow runs passed 30/30 with no new dump. This is good evidence, not proof
+  that the rare crash is gone forever. The latest revisit remained red only on its total < 8 ms budget (guest 33.4 ms
+  at 10 fps: players apply 11.15, state 8.98, send 6.79, frame 3.96, session 1.87); its client_events max was 55 ms,
+  down from the earlier 600 ms bursts. Full quick-suite is running.
+
+## Residual nose dive and final validation (2026-11-17)
+- The full quick suite passed every test except drive (brake speed exactly 50 with a <50 threshold), cars (the known
+  exit animation / own door flags / lost door bot-physics set), revisit (total frame budget) and entry-spin.
+- entry-spin exposed a residual 21.8 deg nose dive on guest -> host round 2, so the earlier 5/5 was not proof of a
+  complete fix. At 15 fps dive-probe reproduced 30.3 deg after seven clean rounds; all door meshes were already
+  kinematic at the first chassis-physics frame, disproving the open-door hypothesis.
+- Explicit SetConstraintReferenceFrame values after SetConstrainedComponents: still 14.5 / 22.4 deg on round 8;
+  REVERTED. Reseating once per mesh instead of every hand-over: 24.3 / 30.5 deg on round 3; REVERTED. twincar.lua is
+  byte-identical to the previously committed version. The residual dive remains OPEN; do not claim it fixed.
+- The statesync changes are independent of those experiments: paint 2/2, loot-live 15/15, startflow 30/30 x8, and all
+  the other quick tests passed. revisit's long duplicate S bursts are gone, but its total <8 ms test is still open.

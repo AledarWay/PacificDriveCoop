@@ -17,6 +17,26 @@ Commit:    hash    Test: which test covers it now
 
 ---
 
+## 2026-11-17 - the host's drop waited for full zone rescans
+Symptom:   the host dropped an item and the guest saw it 1.8-3.2 s later; the target was 1 s.
+Cause:     an inventory change forced three root scans and a serialization pass after each; the new item had no host
+           event until that pipeline reached it.
+Found by:  loot-live timings plus the hostLive / invScan / scanFrame path in statesync.
+Fix:       statesync hostLiveDrop sends a new nearby world item directly now, +0.3 and +1 s; hostPathAdd puts its key
+           into the pass cache so the next pre-scan pass cannot send D. The extra invScan rounds were removed.
+Commit:    -    Test: loot-live 15/15 repeatedly and in the quick suite; host drop 405-427 ms
+
+## 2026-11-17 - a second visit spawned runtime actors already loaded from the save
+Symptom:   revisit applied bursts of S at 30-600 ms each; duplicate wreck spawns could end in a game crash.
+Cause:     actors loaded from the host's zone save had new local paths and no host-key mapping; a runtime S spawned
+           another copy. W| adoption also serialized every unmapped world item instead of only predicted drops.
+Found by:  revisit's per-S adopt/spawn+loot hitch records; failed alternatives and two matching experimental dumps
+           are documented in NOTES (normal Sync.deref replacement-at-path must be retained).
+Fix:       statesync adoptExisting reuses the nearest unmapped same-class runtime actor within 50 cm, with an
+           event-frame-only cache; adoptPredicted checks only actual dropAsked items.
+Commit:    -    Test: revisit functional checks pass and the long duplicate S bursts are gone; its total < 8 ms
+           budget remains open (players / session / arrival work included)
+
 ## 2026-11-16 - the test saves were rejected when Steam was not running
 Symptom:   every reference-save load stopped after "CheckRootBlockDLC: Missing mounted DLC" and "SAVEFILE CONTAINS
            MISSING ENTITLEMENTS"; start-zone then spent four minutes waiting and continued in RB_MainMenu, making the
@@ -47,6 +67,8 @@ Fix:       twincar.reseatDoors (shut doors' hinges set again where they stand, t
            door ease is still running (Twin.doorsSettled), 4 s at most; an open door simulating by the game is left
            to the game and does not block the hand-over.
 Commit:    5e20e9e    Test: dive-probe.ps1 (8 entries, 0.6 deg at most), entry-spin-test.ps1 (5/5, in the quick suite)
+Update:    2026-11-17 - a residual repeated-entry dive reproduced later (21-30 deg). Three new hypotheses were
+           disproved and reverted; this entry is only a reduction, not a complete fix. See NOTES "Residual nose dive".
 
 ## 2026-11-15 - "the car turns on the spot as I get in" (owner's item j)
 Symptom:   now and then a car turned round, jumped or tipped as a player got into a car; entry-spin-test (new) saw a

@@ -3,9 +3,22 @@
 Read this first, then `NOTES.md` (same folder: the full engineering log, newest sections at the end).
 The owner writes in Russian; answers, task lists and summaries in Russian. Code, comments, NOTES in English.
 
-## Latest (2026-11-17) - nose dive fixed; test launcher checks Steam / DLC
+## Latest (2026-11-17) - direct host drops, second-visit adoption and paint caches
+**Uncommitted, validation read**: statesync.lua + revisit-test.ps1 + CHANGELOG + NOTES + FIXED-BUGS.
+The host's new drop is sent directly now / +0.3 / +1 s instead of three root rescans (loot-live 15/15, 405-427 ms).
+Runtime S adopts an existing same-class actor within 50 cm instead of spawning a duplicate; adoptPredicted only scans
+actual dropAsked items. Failed approaches are documented and reverted: a full per-frame collect index, cached-only weak
+resolve (two matching experimental CivCar crashes), tint-property-only skipping (paint-test 23/102), explicit constraint
+frames and once-per-mesh door reseat. Normal Sync.deref and mandatory SetPaint are retained.
+CoopSyncPaint.pal / tintCls reset on every world start: paint 2/2 and startflow 30/30 x8, no new dumps.
+Full quick suite: all tests passed except drive (brake speed 50, threshold <50), cars (3 known bot/physics failures),
+entry-spin (residual 21.8 deg nose dive on a repeat entry) and revisit (total frame budget; state 4.26, players and
+session still over). The residual nose dive is OPEN: three new hypotheses were disproved and reverted; the previous
+"fixed" claim was too strong. See NOTES "Live drops..." and "Residual nose dive...".
+
+## Before (2026-11-17) - nose dive reduced; test launcher checks Steam / DLC
 **Commit: 5e20e9e**: `twincar.lua` + `playersync.lua` + `game-args.ps1` + `start-zone.ps1` + `entry-spin-test.ps1` +
-`run-all-tests.ps1` + CHANGELOG + FIXED-BUGS. The nose dive is fixed by re-seating the twin's shut door hinges before
+`run-all-tests.ps1` + CHANGELOG + FIXED-BUGS. The nose dive was reduced by re-seating the twin's shut door hinges before
 physics starts and leaving a driven twin's doors to the game. `TD.entrySettled` waits only for mod-driven door
 animations. Final entry-spin-test 5/5: all 12 entries succeeded, worst 0.3 deg / 1 cm; it is in the quick suite now.
 The harness parks between rounds, requires every entry and uses the real camera highlight for another player's door.

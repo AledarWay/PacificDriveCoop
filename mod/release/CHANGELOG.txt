@@ -42,6 +42,9 @@ Things picked up and dropped:
   guest has less time to pick up the same thing again.
 - What the host drops shows for the guest sooner (0.7 s instead of 1.4 s). While a thrown item is moving, its
   position goes to the guest 10 times a second instead of once a second.
+- A new drop no longer waits for a full rescan of the zone: the host sends it directly (about 0.4 s in the tests).
+- Returning to a zone reuses actors already loaded from the host's save instead of spawning duplicates, avoiding the
+  long bursts of spawn work and the crash risk of duplicate car parts.
 - A dropped or thrown item (or a hazard) the local player is not holding settles and stops moving on its own once it
   follows the other side's position, instead of jittering with its own physics forever. A check in that switch
   always failed, so it never actually ran.
@@ -148,10 +151,10 @@ Cars:
 - A car no longer turns round, jumps or tips when a player gets into a car. A car parked close beside the other's
   was taken for one standing inside it and moved and turned; a speed jump with the cars not closing was taken for a
   hit and passed to the other side; a player turned down at the other's wheel was put inside its own car.
-- Taking the wheel of the other's car no longer throws it: its tail up a metre and its nose down, or a jolt
-  sideways that turned it on the spot as the driver's door shut. The doors' hinges of the copy pulled the car once it
-  took the driver's physics; it is handed over once the player is seated and the mod's door animations have finished,
-  with the hinges set where the doors stand, and the mod no longer moves a door of a car the local player drives.
+- Taking the wheel of the other's car is much less likely to throw it: its tail up a metre and its nose down, or a
+  jolt sideways as the driver's door shut. The copy's door hinges are set where the doors stand before it takes the
+  driver's physics, and the mod no longer moves a door of a car the local player drives. A rare nose-down jolt after
+  repeated hand-overs still remains under investigation.
 - The guest's game no longer crashes a few seconds after joining (the abandoned cars' paint was set up again on
   cars that already had it).
 - After joining from the garage the guest's car keeps its engine running, as it drove out.

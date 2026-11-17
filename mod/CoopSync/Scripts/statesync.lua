@@ -596,10 +596,43 @@ local function hostLivePick()
         end
     end
 end
--- ... and one it dropped is a new root: the roots scanned again now (and once more 0.4 s on: the game spawns the
--- thrown item a moment after the inventory lets it go), a pass after each scan (the next root scan took up to 2 s:
--- loot-live 5c 1.4 s, the item already lying when the guest got it)
-local invScan
+-- A dropped item is sent directly, without waiting for the next root scan and full serialization pass. The game can
+-- spawn the thrown actor a little after the inventory change, so check now, 0.3 s and 1 s on. Only new world items
+-- near the host player qualify; the ordinary root scan still catches everything else and starts tracking its poses.
+local hostDropChecks = {}
+local HOST_DROP_RADIUS = 1200
+local function hostPathAdd(k)
+    local paths = beginPaths.list
+    if not paths then return end
+    for _, p in ipairs(paths) do if p == k then return end end
+    paths[#paths + 1] = k
+end
+local function hostLiveDrop()
+    if not prev then return end
+    local pc = FindFirstOf("PlayerController")
+    local pawn = pc and pc.Pawn
+    if not (pawn and pawn:IsValid()) then return end
+    local at = pawn:K2_GetActorLocation()
+    local list = Sync.native and Sync.nfind(Sync.TAG.REPL, Sync.OPT.LEVEL | Sync.OPT.ROOT) or Sync.collect()
+    for _, a in ipairs(list) do
+        if Loot.isItemActor(a) and not Sync.inPool(a) then
+            local k = Sync.ref(a)
+            if prev[k] == nil then
+                local l = a:K2_GetActorLocation()
+                if (l.X - at.X) ^ 2 + (l.Y - at.Y) ^ 2 + (l.Z - at.Z) ^ 2 < HOST_DROP_RADIUS ^ 2 then
+                    local loot = Loot.serialize(a)
+                    if loot and loot:sub(1, 2) == "W|" then
+                        send("host.events", "S\t" .. row(a, loot))
+                        prev[k] = loot
+                        hostPathAdd(k) -- otherwise the next pre-scan pass would report this direct S as a D
+                        if pass then pass.snap[k] = loot end
+                        count("ev_S_live")
+                    end
+                end
+            end
+        end
+    end
+end
 -- Every frame: the client's requests, then the containers the slot hooks marked (their U at once).
 local function hostLive(deadline)
     for _, line in ipairs(receive("client.requests")) do
@@ -614,9 +647,17 @@ local function hostLive(deadline)
             local okP, eP = pcall(hostLivePick)
             if not okP then err("live pick: " .. tostring(eP)) end
             Sync.rescanNow()
-            invScan = { gen = Sync.scanGeneration, left = 3 } -- (a third scan 0.8 s on: the host's drop reached the guest 1.4-1.8 s late in 2 of 3 runs, 2026-11-14)
+            local tn = os.clock()
+            hostDropChecks = { tn, tn + 0.3, tn + 1 }
             count("inv_player")
         end
+    end
+    if hostDropChecks[1] and os.clock() >= hostDropChecks[1] then
+        table.remove(hostDropChecks, 1)
+        local tD = pstart()
+        local okD, eD = pcall(hostLiveDrop)
+        pend("host_live_drop", tD)
+        if not okD then err("live drop: " .. tostring(eD)) end
     end
     if not (prev and next(LH.dirty)) then return end
     for k in pairs(LH.dirty) do
@@ -646,14 +687,6 @@ local function hostFrame(deadline)
     local ts = pstart()
     Sync.scanFrame(deadline)
     pend("scan_frame", ts)
-    if invScan then
-        if invScan.due and os.clock() >= invScan.due then invScan.due = nil Sync.rescanNow() end
-        if Sync.scanGeneration ~= invScan.gen then
-            lastPassStart = -1e9
-            invScan.left = invScan.left - 1
-            if invScan.left <= 0 then invScan = nil else invScan.gen, invScan.due = Sync.scanGeneration, os.clock() + 0.4 end
-        end
-    end
     if not pass then
         if os.clock() * 1000 - lastPassStart < TICK_MS then return end
         lastPassStart = os.clock() * 1000
@@ -771,51 +804,59 @@ local function giveBackItem(spec, n)
     return done
 end
 
--- a predicted local world item of the same item near the host's new one is adopted instead of spawning
--- (the unmapped item actors with their loot, once per frame of events: every W| S walked all roots and serialized
--- each item - 50-110 ms an event, 107 of them after a load, journey-test 2026-11-13)
-local predCache = { frame = -1 }
-local evFrame = 0
+-- A local drop this side already asked the host to spawn is adopted instead of creating a second copy. Only those
+-- recorded candidates are checked: scanning and serializing every unmapped item cost 50-110 ms for each W| event.
+local dropAsked = {} -- local actor path -> true
 local function adoptPredicted(e)
-    if e.loot:sub(1, 2) ~= "W|" then return nil end
-    if predCache.frame ~= evFrame then
-        predCache = { frame = evFrame, list = {} }
-        Loot.beginPass()
-        for _, a in ipairs(Sync.collect()) do
-            if not reverse[Sync.ref(a)] and Loot.isItemActor(a) then
-                local s = Loot.serialize(a) or ""
-                predCache.list[s] = predCache.list[s] or {}
-                table.insert(predCache.list[s], a)
-            end
-        end
-        Loot.endPass()
-    end
-    local best, bestD, bestI
-    local cands = predCache.list[e.loot] or {}
-    for i, a in ipairs(cands) do
-        if CoopSyncUsable(a) and not reverse[Sync.ref(a)] then
+    if e.loot:sub(1, 2) ~= "W|" or not next(dropAsked) then return nil end
+    local best, bestD, bestP
+    for ap in pairs(dropAsked) do
+        local a = Sync.deref(ap)
+        if a and not reverse[ap] and Loot.isItemActor(a) and (Loot.serialize(a) or "") == e.loot then
             local l = a:K2_GetActorLocation()
             local d = math.sqrt((l.X - e.loc.X) ^ 2 + (l.Y - e.loc.Y) ^ 2 + (l.Z - e.loc.Z) ^ 2)
-            if d < ADOPT_DIST and (not bestD or d < bestD) then best, bestD, bestI = a, d, i end
+            if d < ADOPT_DIST and (not bestD or d < bestD) then best, bestD, bestP = a, d, ap end
         end
     end
     if best then
-        table.remove(cands, bestI)
+        dropAsked[bestP] = nil
         pcall(function() best:K2_SetActorLocationAndRotation(e.loc, e.rot, false, {}, true) end)
     end
     return best
 end
 
--- path -> actor for this tick (one collect() instead of a StaticFindObject per event: with forced
--- GUObjectArray iteration ~350 baseline events took ~12 s)
-local tickIndex
+-- Runtime actors from the host's zone save can already exist here under new names before their first S arrives.
+-- Adopt the nearest unmapped actor of the same class on the spot, as the import does, instead of spawning a duplicate.
+local evFrame = 0
+local adoptCache = { frame = -1, list = {} }
+local function adoptExisting(e)
+    if e.kind ~= "R" or e.loot:sub(1, 2) == "W|" then return nil end
+    if adoptCache.frame ~= evFrame then
+        adoptCache = { frame = evFrame, list = {} }
+        for _, a in ipairs(Sync.collect()) do
+            local ap = Sync.ref(a)
+            if not reverse[ap] and not Sync.isDerived(Sync.clsName(a)) then
+                local c = Sync.clsName(a)
+                adoptCache.list[c] = adoptCache.list[c] or {}
+                table.insert(adoptCache.list[c], a)
+            end
+        end
+    end
+    local best, bestD
+    for _, a in ipairs(adoptCache.list[(e.cls or ""):match("[^%.]+$") or ""] or {}) do
+        if not reverse[Sync.ref(a)] then
+            local l = a:K2_GetActorLocation()
+            local d = math.sqrt((l.X - e.loc.X) ^ 2 + (l.Y - e.loc.Y) ^ 2 + (l.Z - e.loc.Z) ^ 2)
+            if d < 50 and (not bestD or d < bestD) then best, bestD = a, d end
+        end
+    end
+    if best then pcall(function() best:K2_SetActorLocationAndRotation(e.loc, e.rot, false, {}, true) end) end
+    return best
+end
+
 local function resolve(key)
     local p = CoopSyncMap[key]
     if not p then return nil end
-    if tickIndex then
-        local a = tickIndex[p]
-        if a then return a end
-    end
     return Sync.deref(p)
 end
 
@@ -947,12 +988,15 @@ local function clientApply(t)
         -- (an actor this side has under that key already - the import's, a repeat: no second copy, its loot only)
         local known = resolve(e.key)
         if known and not CoopSyncUsable(known) then known = nil end
-        local a = known or adoptPredicted(e)
+        local a = known or adoptPredicted(e) or adoptExisting(e)
         local tS = os.clock()
         if known then
             count("ap_S_known")
             if e.loot ~= "" and e.loot:sub(1, 2) ~= "W|" and not Loot.same(known, e.loot) then applyLoot(known, e.loot) end
-        elseif a then count("ap_S_adopted") else
+        elseif a then
+            count("ap_S_adopted")
+            if e.loot ~= "" and e.loot:sub(1, 2) ~= "W|" and not Loot.same(a, e.loot) then applyLoot(a, e.loot) end
+        else
             local err2
             a, err2 = Sync.spawnEntry(e)
             tS = os.clock()
@@ -2755,7 +2799,6 @@ local dropChecks = {}
 -- it stayed on this side only, the host never saw it (soak test 2026-10-28: a door off the guest's car).
 local DROP_RADIUS = 800
 local invPrev
-local dropAsked = {} -- local actor path -> true
 -- (lost kinds and the places the player / cars were kept DROP_KEEP_S: the dropped item may come a pass later, and
 -- from a moving car it lies far behind by then - soak test 2026-10-28: items taken out in a driving car)
 -- A part knocked off the car first hangs on it and falls later: those kinds are kept CAR_KEEP_S (soak seed 7: of
@@ -2899,6 +2942,7 @@ local function clientFrame(deadline)
         if tE > 30 and CoopSyncHitch then CoopSyncHitch.op("state ev " .. (line:match("^[^\t]*") or "?"), tE) end
         if os.clock() > evEnd then break end
     end
+    adoptCache = { frame = -1, list = {} } -- event-frame objects are never kept for the next game tick
     local waiting = evHead <= #evQueue
     if not waiting then evQueue, evHead = {}, 1 end
     pend("client_events", t0)
@@ -2985,6 +3029,9 @@ end
 -- host spawn list path so it knows the host state it starts from.
 function M.start(syncModule, r, channelDir, hostListPath)
     CoopSyncPaint.startAt, CoopSyncPaint.sentAt, CoopSyncPaint.applied, CoopSyncPaint.list = nil, -1e9, {}, nil
+    -- Palette classes and the tint component class belong to this loaded world too: a cached object from an earlier
+    -- zone can be freed by the next UserLoadGame (the late-join VP crash). Resolve them again for this visit.
+    CoopSyncPaint.pal, CoopSyncPaint.tintCls, CoopSyncPaint.sent, CoopSyncPaint.scanAt = {}, nil, nil, -1e9
     CoopSyncEvent.sentAt, CoopSyncEvent.map, CoopSyncEvent.done, CoopSyncEvent.ended = -1e9, {}, {}, {}
     Sync, Loot, role, chan = syncModule, syncModule.Loot, r, channelDir
     DOORS.last, DOORS.applied, DOORS.quiet, DOORS.cache, DOORS.sentAll, DOORS.scanAt = {}, {}, {}, nil, -1e9, -1e9

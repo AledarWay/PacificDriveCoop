@@ -9,9 +9,9 @@ param([switch]$Keep, [switch]$NetExe, [int]$Port = 47871, [switch]$NoDeploy)
 $root = "C:\PacificDriveCoop"; $t = "$root\mod\tools"; $inst = "$root\local\instances"
 $hd = "$inst\host\coopdev"; $cd = "$inst\client\coopdev"
 $run = "Run = dofile('C:/PacificDriveCoop/mod/CoopSync/Scripts/runsync.lua')"
-function Send($dir, [string]$code) {
+function Send($dir, [string]$code, [switch]$Session) {
     $f = "$dir\_send.lua"; Set-Content $f $code -Encoding ascii
-    (((& "$t\send.ps1" -File $f -Dir $dir -TimeoutSec 120) -split "`r?`n" | Where-Object { $_ -match '^(OK|RUNTIME|COMPILE)' }) -join ' ') -replace '^OK ', ''
+    (((& "$t\send.ps1" -File $f -Dir $dir -TimeoutSec 120 -Session:$Session) -split "`r?`n" | Where-Object { $_ -match '^(OK|RUNTIME|COMPILE)' }) -join ' ') -replace '^OK ', ''
 }
 function KV($s) { $h = @{}; foreach ($kv in ($s -split ' ')) { $k, $v = $kv -split '=', 2; if ($v -ne $null) { $h[$k] = $v } }; $h['raw'] = $s; $h }
 function Status($chan) { KV ((Get-Content "$chan\status.txt" -ErrorAction SilentlyContinue | Select-Object -First 1) -as [string]) }
@@ -110,6 +110,12 @@ function ModMs($line) { $f = "$line" -split "`t"; if ($f.Count -ge 6) { [double]
 $fh = LastF $hchan; $fc = LastF $cchan
 Check "host: the mod takes < 8 ms per frame" ((ModMs $fh) -lt 8) "F line: $fh"
 Check "guest: the mod takes < 8 ms per frame" ((ModMs $fc) -lt 8) "F line: $fc"
+if ((ModMs $fh) -ge 8 -or (ModMs $fc) -ge 8) {
+    "  host state profile: " + (Send $hd "local m = CoopSyncSession.testMods() CoopSyncState = m.State return CoopSyncState.profile()" -Session)
+    "  guest state profile: " + (Send $cd "local m = CoopSyncSession.testMods() CoopSyncState = m.State return CoopSyncState.profile()" -Session)
+    "  host players profile: " + (Send $hd "local m = CoopSyncSession.testMods() CoopPlayers = m.Players return CoopPlayers.profile()" -Session)
+    "  guest players profile: " + (Send $cd "local m = CoopSyncSession.testMods() CoopPlayers = m.Players return CoopPlayers.profile()" -Session)
+}
 # no long frame once the guest synced (the host froze 1-2 min on the second visit, alpha 9): hitches.log gaps after the
 # guest's last import, the arrival loads left out
 # the time of the guest's last import (N line), then the worst gap at or after it in each log (same PC clock)

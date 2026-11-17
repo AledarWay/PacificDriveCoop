@@ -135,6 +135,8 @@ You need a strong PC for this.
 - Sometimes the guest has extra exit portals in the zone. The picked exit still opens for both players.
 - The computer screen's overall status text and clock in the other player's car still show your own car's.
 - In drive with the engine on, a car left alone creeps away. This is the game's own behaviour.
+- Rarely, after repeated driver hand-overs, a car can still tip nose down for a second. The door-hinge fix reduced
+  this, but the remaining case is still under investigation; please send both reports if it happens.
 - An anchor once showed up in both players' hands (alpha 20). The tests could not repeat it; if you see it, please
   send the reports and say how the anchor was taken.
 - The zone's light can look brighter in one game than in the other. The mod syncs the time of day and the
