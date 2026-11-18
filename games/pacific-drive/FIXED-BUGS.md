@@ -26,7 +26,7 @@ Found by:  the startup dump and A/B file groups; dofile/start after the fix and 
 Fix:       audit reads only session S.world (assigned at a normal session tick), with no engine lookup at startup;
            CoopDev starts the audit for bots too. start-zone kills only the same tag's old processes and catches errors
            by closing the new process and CrashReportClient.
-Commit:    -    Test: audit-test.ps1 (4/4, in the quick suite); real report ZIP contains audit.log/.1/.2.
+Commit:    346623f  Test: audit-test.ps1 (4/4, in the quick suite); real report ZIP contains audit.log/.1/.2.
            Note: crash-path cleanup has not been exercised by another deliberate crash; do not claim that separately.
 
 ## 2026-11-17 - the host's drop waited for full zone rescans

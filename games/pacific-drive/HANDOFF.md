@@ -4,7 +4,7 @@ Read this first, then `NOTES.md` (same folder: the full engineering log, newest 
 The owner writes in Russian; answers, task lists and summaries in Russian. Code, comments, NOTES in English.
 
 ## Latest (2026-11-18) - player action audit
-**Implemented, not yet committed**: audit.lua (new) + audit-test.ps1 (new, in the quick suite), config/hooks/
+**Commit: 346623f**: audit.lua (new) + audit-test.ps1 (new, in the quick suite), config/hooks/
 session/playersync/statesync/menu/CoopDev + localization + collect-report + start-zone.
 Opt-in (`audit=1` in config.txt or F7 -> Debug "Action audit"): audit.log records key down/up, Command Interact,
 doors, seats, drive hand-overs, loot requests and session changes with world/role/state. CoopDev records bot actions too.
