@@ -74,6 +74,8 @@ Press F7 - the co-op panel opens, with a Debug section:
 - Leave the session - go on alone;
 - Collect a report to the desktop - the zip CoopSync-report-<date>.zip. Send it to the developer
   with a short description: what you did and what went wrong.
+- Action audit (off by default): turn it on here or with audit=1 in <Saved>/CoopSync/config.txt.
+  audit.log records your input, interactions and their effects with the session/world context, and is included in the zip.
 If the game crashed and the menu is gone, run Report.bat from this folder: it collects the same zip.
 The report holds only logs and the mod's own files; no saves or personal files.
 Send the reports of BOTH players: the host and the guest have different logs (e.g. the hitch log hitches.log).

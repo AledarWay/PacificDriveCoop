@@ -8,6 +8,15 @@ local POLL_MS = 500
 -- (CoopSync's crash trace: the sync modules a test starts here run in this mod's loops)
 CoopSyncTraceTag = "dev"
 pcall(dofile, "C:/PacificDriveCoop/mod/CoopSync/Scripts/trace.lua")
+-- Test bots run in this Lua state too: record the same action audit as CoopSync when explicitly enabled.
+if os.getenv("COOPSYNC_AUDIT") == "1" then
+    local chan = os.getenv("COOPSYNC_CHAN")
+    if not chan or chan == "" then
+        local KML = StaticFindObject("/Script/Engine.Default__KismetSystemLibrary")
+        chan = KML:GetProjectSavedDirectory():ToString() .. "CoopSync"
+    end
+    pcall(function() dofile("C:/PacificDriveCoop/mod/CoopSync/Scripts/audit.lua").start(chan) end)
+end
 
 local function readall(path)
     local f = io.open(path, "rb")

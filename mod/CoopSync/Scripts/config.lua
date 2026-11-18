@@ -13,6 +13,7 @@ M.DEFAULTS = {
     entrance_split_chance = TESTS and 0 or 0.25,
     zone_from_save = 1,
     direct_load = 1,
+    audit = 0,
 }
 local TEMPLATE = [[
 # CoopSync settings. Edit and save; the game picks a change up within a few seconds.
@@ -29,6 +30,10 @@ zone_from_save = 1
 # With zone_from_save on: the guest goes from its garage straight into the host's zone with one load.
 # 0 = the guest's game first travels into a zone of its own, then loads the host's over it (slower).
 direct_load = 1
+
+# Record the player's input and the resulting interactions in <Saved>/CoopSync/audit.log (included in reports).
+# 1 = on. 0 = off. F7 -> Debug toggles this too.
+audit = 0
 ]]
 
 local path, values, readAt = nil, {}, -1e9
@@ -76,6 +81,20 @@ function M.get(key)
     local v = values[key]
     if v == nil then v = M.DEFAULTS[key] end
     return v
+end
+
+function M.set(key, value)
+    if not path then return end
+    local lines = {}
+    local f = io.open(path, "rb")
+    if f then
+        for line in f:lines() do if not line:match("^%s*" .. key .. "%s*=") then lines[#lines + 1] = line end end
+        f:close()
+    end
+    lines[#lines + 1] = key .. " = " .. tostring(value)
+    local w = io.open(path, "wb")
+    if w then w:write(table.concat(lines, "\n"), "\n") w:close() end
+    values[key] = value
 end
 
 -- (tests / the panel: what is in effect)

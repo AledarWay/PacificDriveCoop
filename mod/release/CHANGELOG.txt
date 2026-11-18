@@ -120,6 +120,8 @@ The weather:
 Reports:
 - The report also has the mod's logs of the two previous game starts. After a crash and restart, the report had only
   the new game's log.
+- Optional action audit (F7 -> Debug or audit=1 in the settings): audit.log records input, interactions and their
+  effects with the session and world context, and is included in reports.
 Settings:
 - A settings file, <Saved>/CoopSync/config.txt (in the game's save folder; an update of the mod keeps it), written with
   the defaults and their explanations the first time. Changes apply within a few seconds.

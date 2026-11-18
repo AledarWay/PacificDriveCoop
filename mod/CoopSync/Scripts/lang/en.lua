@@ -52,6 +52,8 @@ return {
     ["dbg.teleport"] = "Teleport to the other player",
     ["dbg.restore_car"] = "Restore car parts (insurance)",
     ["dbg.report"] = "Collect a report to the desktop",
+    ["dbg.audit_on"] = "Action audit: on",
+    ["dbg.audit_off"] = "Action audit: off",
     ["dbg.report_started"] = "collecting the report - the file will appear on the desktop",
     ["dbg.leave"] = "Leave the session (single player)",
     ["dbg.state"] = "State…",

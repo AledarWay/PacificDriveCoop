@@ -91,18 +91,18 @@ end
 --   CoopSyncOnKey(vk, fn)
 M.keys = {}
 local keyLooping = false
-function M.onKey(vk, fn)
+function M.onKey(vk, fn, watch)
     if not CoopNative_KeyDown then
         return pcall(RegisterKeyBind, vk, function() ExecuteInGameThread(fn) end)
     end
-    M.keys[#M.keys + 1] = { vk = vk, fn = fn, was = true } -- (held at the start: not a press)
+    M.keys[#M.keys + 1] = { vk = vk, fn = fn, was = true, watch = watch == true } -- (held at the start: not a press)
     if keyLooping then return true end
     keyLooping = true
     LoopInGameThreadWithDelay(15, function()
         for _, k in ipairs(M.keys) do
             local down = CoopNative_KeyDown(k.vk) == true
-            if down and not k.was then
-                local ok, e = pcall(k.fn)
+            if down ~= k.was and (down or k.watch) then
+                local ok, e = pcall(k.fn, down)
                 if not ok and CoopSyncHitch then CoopSyncHitch.note("key: " .. tostring(e):sub(1, 120)) end
             end
             k.was = down

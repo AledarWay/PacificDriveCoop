@@ -1193,6 +1193,7 @@ local function tick()
     if ZoneSave then pcall(ZoneSave.tick) end
     if S.role == "host" then hostTick(gstate, world)
     elseif S.role == "client" then clientTick(gstate, world) end
+    S.world = world -- audit.lua reads this without an engine lookup (nil at the mod's startup)
     -- the timeline (owner, 2026-11-09: "the guest's join takes long - check the timings for needless waits"): every
     -- change of the state, the game state or the world into the hitch log, and the last ones for the tests
     local sig = string.format("%s|%s|%s", tostring(S.state), tostring(gstate), tostring(world))
@@ -1201,6 +1202,7 @@ local function tick()
         local line = string.format("%.1f %s g=%s %s", t - (S.tlAt or t), tostring(S.state), tostring(gstate), tostring(world))
         S.tlSig, S.tlAt = sig, t
         pcall(Hitch.note, "timeline +" .. line)
+        if CoopSyncAudit then CoopSyncAudit.event("session", line) end
         M.timeline = M.timeline or {}
         M.timeline[#M.timeline + 1] = string.format("%.1f:%s", t, line)
         if #M.timeline > 60 then table.remove(M.timeline, 1) end
@@ -1236,6 +1238,8 @@ function M.start(syncModule, runModule, chanDir)
     chan = chan:gsub("\\", "/"):gsub("/$", "")
     Config = require("config")
     pcall(Config.load, chan)
+    local auditOk, auditErr = pcall(require("audit").start, chan)
+    if not auditOk then print("audit start failed: " .. tostring(auditErr)) end
     -- the helper normally made them; mkdir (a cmd process) only when a folder is missing
     for _, sub in ipairs({ "outbox", "inbox" }) do
         local probe = io.open(chan .. "/" .. sub .. "/.probe", "wb")
@@ -1263,6 +1267,7 @@ function M.start(syncModule, runModule, chanDir)
 end
 -- debug menu actions (alpha): recovery when something broke in a real game
 function M.debug(action)
+    if CoopSyncAudit then CoopSyncAudit.event("debug", action) end
     if action == "resync" then
         if S.role == "host" and S.state == "hosting" then
             -- publish the zone again under a new seq: the guest imports it once more

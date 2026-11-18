@@ -812,6 +812,7 @@ end
 -- while it sits there: the seat logic seats it there, wheelFrame keeps its pedals / wheel off the car.
 TD.ownSeat = nil
 function TD.ownEnter(pawn, n)
+    if CoopSyncAudit then CoopSyncAudit.event("seat", "own enter door=" .. tostring(n)) end
     local own = Twin.ownCar()
     local door = own and TD.realDoor(own, n)
     local function no(why) st.ownEnter = n .. ":" .. why return false end
@@ -843,6 +844,7 @@ function TD.ownBackDoorAimed()
     return (n == 3 or n == 4) and n or nil
 end
 function TD.twinDoorTap(pawn, press)
+    if CoopSyncAudit then CoopSyncAudit.event("door", "tap tag=" .. tostring(press.tag) .. " n=" .. tostring(press.n) .. " own=" .. tostring(press.own == true)) end
     if press.own then TD.ownEnter(pawn, press.n) return end
     local g = ghostOf(press.tag)
     if not (g and Twin.isTwin(g)) then return end
@@ -1181,6 +1183,7 @@ function TD.startDriving(tag)
     local tgt = tag == "H" and target.car or target.otherCar
     Twin.setDriven(g, true, tgt and tgt.vel or nil)
     TD.driving = tag
+    if CoopSyncAudit then CoopSyncAudit.event("drive", "start tag=" .. tag) end
     append(outFile, string.format("DV\t%d\t%s\t1", M.nowMs(), tag))
     st.driveTaken = (st.driveTaken or 0) + 1
 end
@@ -1188,6 +1191,7 @@ function TD.stopDriving()
     local tag = TD.driving
     TD.driving = nil
     if not tag then return end
+    if CoopSyncAudit then CoopSyncAudit.event("drive", "stop tag=" .. tag) end
     local g = ghostOf(tag)
     if g and Twin.isTwin(g) then
         local v = g:GetVelocity()
@@ -1414,6 +1418,7 @@ end
 
 -- the game's own exit let go of the other's car
 function TD.nativeLeft(pawn)
+    if CoopSyncAudit then CoopSyncAudit.event("seat", "leave tag=" .. tostring(inGhost and inGhost.tag) .. " seat=" .. tostring(inGhost and inGhost.seat)) end
     TD.twinAimMs = M.nowMs() -- (the other's car stays the context through the rest of the game's exit animation)
     if inGhost.seat and inGhost.seat ~= 1 then TD.passengerExit = { n = inGhost.seat, untilMs = M.nowMs() + 4000 } end
     -- (the owner's door of that seat shut for sure: the context may be the own car again by then - the host's door 3
@@ -2355,6 +2360,7 @@ end
 
 local function onPawnInput(what, v)
     if M.stopped then return end
+    if CoopSyncAudit then CoopSyncAudit.input(what, v) end
     -- (native cars: every E is the game's own - into / out of either car, its key, levers, doors; but a tap at a back
     -- door of the other's car: the mod starts the game's entry there)
     if TD.native and (what == "interact" or what == "carInteract") then
@@ -2509,6 +2515,11 @@ function TD.backSeatExit(own, n)
     st.backSeatExits = (st.backSeatExits or 0) + 1
 end
 function TD.onDoorCall(door, what)
+    if CoopSyncAudit and door and door:IsValid() then
+        local car = carOfPart(door)
+        CoopSyncAudit.event("door", what .. " class=" .. door:GetClass():GetFName():ToString()
+            .. " car=" .. (car and Twin.isTwin(car) and "twin" or "own"))
+    end
     if what == "exit" and not (M.stopped or TD.doorGuard) and door and door:IsValid() and TD.ownSeat and TD.ownSeat.n ~= 1 then
         local own = Twin.ownCar()
         local d1 = own and Twin.door(own, 1)

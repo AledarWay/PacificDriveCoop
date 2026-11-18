@@ -353,6 +353,10 @@ function M.debugRows(add, setPage)
     dbg(L("dbg.restart"), "restart")
     dbg(L("dbg.teleport"), "teleport")
     dbg(L("dbg.restore_car"), "restorecar")
+    if CoopSyncAudit then
+        if CoopSyncAudit.enabled() then add(L("dbg.audit_on"), function() return CoopSyncAudit.toggle() end)
+        else add(L("dbg.audit_off"), function() return CoopSyncAudit.toggle() end) end
+    end
     add(L("dbg.report"), function() return M.report() end)
     dbg(L("dbg.leave"), "leave")
     add(L("dbg.state"), function() setPage("state") return "" end)
@@ -507,6 +511,7 @@ function M.press(prefix)
 end
 
 function M.report()
+    if CoopSyncAudit then CoopSyncAudit.event("report", "collect requested") end
     local script = (Session.modDir() .. "tools/collect-report.ps1"):gsub("/", "\\")
     local cmd = string.format('start "" /b powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%s" -Chan "%s"', script, chan:gsub("/", "\\"))
     os.execute(cmd)

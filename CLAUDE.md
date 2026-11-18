@@ -111,6 +111,8 @@ The mod splits into a Lua half (`CoopSync`) and a C++ half (`CoopNative`). UE4SS
 - **playersync.lua** — puppet players, seat state, car entry/exit, own-car mode.
 - **statesync.lua** — host events (hazards, mines, loot pickups, knocked/kicked objects, fuel, ARC).
 - **lootsync.lua** — shared loot: container hooks, PUT/TAKE/MOVE requests, ACKs.
+- **audit.lua** — opt-in action audit (`audit.log`): player input, interactions and their effects. Starts before the
+  world exists; it must not call engine getters during startup (world is read later from `session.state().world`).
 
 ### Native half (C++)
 

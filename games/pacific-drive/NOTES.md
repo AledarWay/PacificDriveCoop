@@ -4293,3 +4293,30 @@ Owner: "more extended, realistic tests - find and fix the problems".
   byte-identical to the previously committed version. The residual dive remains OPEN; do not claim it fixed.
 - The statesync changes are independent of those experiments: paint 2/2, loot-live 15/15, startflow 30/30 x8, and all
   the other quick tests passed. revisit's long duplicate S bursts are gone, but its total <8 ms test is still open.
+
+## Player action audit (2026-11-17)
+- Owner asked for a separate log that lets a real playtest be reconstructed. `audit.lua` is opt-in (config.txt
+  `audit=0` by default, F7 -> Debug toggles it; COOPSYNC_AUDIT=1 forces tests). audit.log has millisecond timestamps,
+  world / role / session state, key down/up, Command Interact, doors, seats, drive hand-overs, loot requests and session
+  transitions. Nothing is written while disabled; no world scans or UObject index. CoopDev records bot input too.
+- `config.set` preserves other settings; F7 has localized on/off rows. collect-report includes audit.log/.1/.2.
+  start-zone kills only processes with the same -userdir on startup and closes CrashReportClient on failure.
+- First version crashed at startup in construct_fname: audit.event called CoopSync.worldName before the first UWorld.
+  Fixed by reading only session S.world (assigned at each normal tick, '?' before it). dofile/start then passed.
+  The first CoopDev logs had no interactions because it is a separate Lua state; audit is now started there as well
+  when COOPSYNC_AUDIT=1. Manual host chain: input interact=true -> door exit. Guest: input -> door shut.
+- audit-test.ps1 (in run-all-tests -Quick) checks both states' startup + session context, host and guest input/door
+  effects, the config roundtrip and report inclusion: 4/4 PASS. A real report ZIP built from the release layout was
+  inspected too: channel/audit.log, .1 and .2 are present.
+
+## Action-audit validation and remaining failures (2026-11-18)
+- Focused rerun after the full quick suite: runover 8/8, nextzone 19/19 (no state S crash this time), instability 8/8,
+  part-break 8/8, backseat 17/17. Steam initialized throughout: the earlier three Steam aborts did not recur.
+- interact still ends LOOT FAIL: after the guest's two picks / wheel detaches, two client-only BP_WorldItem_Health_C
+  remain (wheels), while the contents check is 154/155. OPEN, not an audit-specific failure.
+- seat-measure starts normally now but is 1/2: its first driver-seat sample is x=49.2 with the x>=50 threshold;
+  the next driver's-door entry passes at x=46.5. OPEN: a borderline entry-animation sampling failure.
+- cars remains 38/39: the known guest own-car drive moved 11 instead of >=300; the cross-car drives and doors passed.
+- revisit remains 10/11: host 6.6 ms passes, guest 26.4 ms at 18 fps (state 11.95, player apply 7.06). All functional
+  checks pass. The total <8 ms budget is still OPEN.
+- lua-lint 234 files, PowerShell parser checks and git diff --check pass. Do not call the entire quick suite green.

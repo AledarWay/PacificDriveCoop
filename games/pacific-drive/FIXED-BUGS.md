@@ -17,6 +17,18 @@ Commit:    hash    Test: which test covers it now
 
 ---
 
+## 2026-11-17 - the action audit crashed at startup and test processes stayed open
+Symptom:   CoopSync died in construct_fname before "[CoopSync] loaded"; CrashReportClient and test games stayed until
+           the user closed the report window by hand.
+Cause:     audit.event called CoopSync.worldName before the first UWorld existed. start-zone also had no failure
+           cleanup, and repeated launches accumulated copies with the same -userdir.
+Found by:  the startup dump and A/B file groups; dofile/start after the fix and audit-test.
+Fix:       audit reads only session S.world (assigned at a normal session tick), with no engine lookup at startup;
+           CoopDev starts the audit for bots too. start-zone kills only the same tag's old processes and catches errors
+           by closing the new process and CrashReportClient.
+Commit:    -    Test: audit-test.ps1 (4/4, in the quick suite); real report ZIP contains audit.log/.1/.2.
+           Note: crash-path cleanup has not been exercised by another deliberate crash; do not claim that separately.
+
 ## 2026-11-17 - the host's drop waited for full zone rescans
 Symptom:   the host dropped an item and the guest saw it 1.8-3.2 s later; the target was 1 s.
 Cause:     an inventory change forced three root scans and a serialization pass after each; the new item had no host

@@ -11,8 +11,13 @@
 # the game's master seed. $env:COOPTEST_QUICKSTART=0: the old start (UserNewGame with -Seed, the story's first zone).
 param([string]$Tag, [int]$Seed = 12345, [string]$PreTravelLua = "", [switch]$StopInGarage)
 $ErrorActionPreference = 'Stop'
+try {
 $root = "C:\PacificDriveCoop"; $t = "$root\mod\tools"; $w = "$root\testgame\PenDriverPro\Binaries\Win64"
 $u = "$root\local\instances\$Tag\userdir"; $dir = "$root\local\instances\$Tag\coopdev"
+# Do not accumulate copies of this tag (the other tag may be needed by a two-instance test).
+Get-CimInstance Win32_Process -Filter "Name='PenDriverPro-Win64-Shipping.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -match [regex]::Escape($u) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Get-Process CrashReportClient -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $u, $dir | Out-Null
 if (Test-Path "$dir\cmd.lua") { Remove-Item "$dir\cmd.lua" }
 
@@ -85,3 +90,8 @@ if ($StopInGarage) { "PID $($p.Id)"; exit 0 }
 Send 'StaticFindObject("/Game/Systems/ScriptingLibraries/BFL_ProgressionHelpers.Default__BFL_ProgressionHelpers_C"):TravelToNextLeg(FindFirstOf("PlayerController"))' | Out-Null
 & "$t\wait-state.ps1" -State 5 -Dir $dir -TimeoutSec 240 | Select-Object -Last 1 | ForEach-Object { Log $_ }
 "PID $($p.Id)"
+} catch {
+    if ($p) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+    Get-Process CrashReportClient -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    throw
+}

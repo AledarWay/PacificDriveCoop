@@ -327,6 +327,7 @@ local IBL = StaticFindObject("/Script/PenDriverInventory.Default__InventoryBluep
 local hostTake, hostPut -- (below)
 local function hostHandle(t)
     local op, key = t[1], t[2]
+    if CoopSyncAudit and op:sub(1, 1) ~= "H" then CoopSyncAudit.event("loot_request", op .. " " .. tostring(key):sub(1, 220)) end
     if op:sub(1, 1) == "H" then HZ.hostHandle(t) return end
     if op == "DSR" then DOORS.handle(t) return end
     if op == "KB" or op == "KK" then CoopSyncKnock.handle(t) return end
@@ -589,6 +590,7 @@ local function hostLivePick()
             local a = Sync.deref(k)
             if not a or Sync.inPool(a) then
                 send("host.events", "D\t" .. k)
+                if CoopSyncAudit then CoopSyncAudit.event("loot", "host pick " .. k) end
                 count("ev_D_live")
                 prev[k] = nil
                 if pass then pass.snap[k] = nil end
@@ -623,6 +625,7 @@ local function hostLiveDrop()
                     local loot = Loot.serialize(a)
                     if loot and loot:sub(1, 2) == "W|" then
                         send("host.events", "S\t" .. row(a, loot))
+                        if CoopSyncAudit then CoopSyncAudit.event("loot", "host drop " .. k .. " " .. loot:sub(1, 180)) end
                         prev[k] = loot
                         hostPathAdd(k) -- otherwise the next pre-scan pass would report this direct S as a D
                         if pass then pass.snap[k] = loot end

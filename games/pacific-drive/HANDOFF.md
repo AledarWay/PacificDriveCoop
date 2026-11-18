@@ -3,7 +3,20 @@
 Read this first, then `NOTES.md` (same folder: the full engineering log, newest sections at the end).
 The owner writes in Russian; answers, task lists and summaries in Russian. Code, comments, NOTES in English.
 
-## Latest (2026-11-17) - direct host drops, second-visit adoption and paint caches
+## Latest (2026-11-18) - player action audit
+**Implemented, not yet committed**: audit.lua (new) + audit-test.ps1 (new, in the quick suite), config/hooks/
+session/playersync/statesync/menu/CoopDev + localization + collect-report + start-zone.
+Opt-in (`audit=1` in config.txt or F7 -> Debug "Action audit"): audit.log records key down/up, Command Interact,
+doors, seats, drive hand-overs, loot requests and session changes with world/role/state. CoopDev records bot actions too.
+The report includes audit.log/.1/.2; a real ZIP was inspected and contains all three. Startup bug fixed: audit initially
+called CoopSync.worldName before the first UWorld (construct_fname crash); it now reads only S.world, assigned at the
+session tick. start-zone cleans the same tag's stale processes and CrashReportClient on startup/failure. audit-test 4/4;
+lua-lint 234 files, PowerShell syntax and diff checks pass.
+Focused rerun: runover 8/8, nextzone 19/19, instability 8/8, part-break 8/8, backseat 17/17; no Steam aborts and no
+nextzone crash this time. OPEN: interact (two client-only wheel world items), seat-measure 1/2 (first x=49.2 vs >=50),
+cars 38/39 (own car moved 11), revisit 10/11 (guest 26.4 ms total). See NOTES "Action-audit validation".
+
+## Before (2026-11-17) - direct host drops, second-visit adoption and paint caches
 **Commit: 3d9f570**: statesync.lua + revisit-test.ps1 + CHANGELOG + NOTES + FIXED-BUGS.
 The host's new drop is sent directly now / +0.3 / +1 s instead of three root rescans (loot-live 15/15, 405-427 ms).
 Runtime S adopts an existing same-class actor within 50 cm instead of spawning a duplicate; adoptPredicted only scans

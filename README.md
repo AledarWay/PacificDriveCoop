@@ -69,6 +69,8 @@ What works now, all tested in-game:
   of your saves.
 - **F7 → Debug**: resync the zone, restart the sync, teleport to the other player, restore car parts, leave the
   session, collect a report.
+- **Action audit** (off by default): enable it in F7 → Debug or with `audit = 1` in `<Saved>/CoopSync/config.txt`.
+  `audit.log` records input, interactions and their effects with the session/world context, and is included in reports.
 
 ## Requirements
 
