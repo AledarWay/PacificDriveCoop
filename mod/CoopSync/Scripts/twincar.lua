@@ -637,9 +637,13 @@ end
 -- shown as the part materials' Impact_Amount / Burn_Amount / Radiation_Amount by UpdateDamageVisuals (SetHealth
 -- changes no material - probed 2026-11-02; owner's alpha 18 item 14: "an almost broken part of the host's car looks new
 -- on the guest"). These three go along as kinds i / r / u: owner -> twin only (the owner's hits make them).
---   ES <time> <slot>=<health>,<fuel>,<battery>,<impact>,<radiation>,<burn>,<break>;...   owner -> the other side
---                                                     (changed: every 1 s, else every 10 s)
---   EY <time> <slot> <h|f|b> <delta>                    the other side -> owner
+--   ES <time> <slot>=<health>,<fuel>,<battery>,<impact>,<radiation>,<burn>,<break>,<effect+effect>;...
+--                                                     owner -> the other side (changed: every 1 s, else every 10 s)
+--   EY <time> <slot> <h|f|b> <delta>                  the other side -> owner
+--   EF <time> <slot> <effect+effect>                  the twin's complete effect set -> owner
+-- ActiveEffects carries the gameplay states (SE_Cracked_C, SE_FlatTire_C, ...), not just health / material wear.
+-- The game's status-effect manager applies / removes them so UI, visuals and handling all follow; an empty set also
+-- propagates a repair. EF returns local driving damage and repairs made on the other player's car.
 local COMP = "/Game/Gameplay/Inventory/GenericItemProperties/Components/"
 local stateCls
 local function stateClasses()
@@ -693,6 +697,64 @@ KINDS.k = {
 local KIND_ORDER = { "h", "f", "b", "i", "r", "u", "k" }
 local KIND_FMT = { h = "%.1f", f = "%.1f", b = "%.1f", i = "%.2f", r = "%.2f", u = "%.2f", k = "%.1f" }
 local OWNER_ONLY = { i = true, r = true, u = true, k = true } -- (not sent back from the twin: the owner's hits make them)
+
+local function effectPath(e)
+    return (e:GetClass():GetFullName():gsub("^%S+%s+", ""))
+end
+local function effectSet(inst)
+    local out = {}
+    if not (inst and inst:IsValid()) then return out end
+    local ok, arr = pcall(function() return inst.ActiveEffects end)
+    if not ok or not arr then return out end
+    for i = 1, arr:GetArrayNum() do
+        local e = arr[i]
+        if e and e:IsValid() and not e.IsDirector then out[effectPath(e)] = true end
+    end
+    return out
+end
+local function effectString(set)
+    local a = {}
+    for p in pairs(set or {}) do a[#a + 1] = p end
+    table.sort(a)
+    return table.concat(a, "+")
+end
+local function parseEffects(s)
+    local out = {}
+    for p in (s or ""):gmatch("[^+]+") do out[p] = true end
+    return out
+end
+local function sameEffects(a, b)
+    for p in pairs(a or {}) do if not (b or {})[p] then return false end end
+    for p in pairs(b or {}) do if not (a or {})[p] then return false end end
+    return true
+end
+local function effectCount(set)
+    local n = 0
+    for _ in pairs(set or {}) do n = n + 1 end
+    return n
+end
+local function applyEffects(inst, want)
+    local cur = effectSet(inst)
+    if sameEffects(cur, want) then return 0 end
+    local sm = CoopSyncFirst("BP_StatusEffectManager_C")
+    if not (sm and sm:IsValid()) then return 0 end
+    local n = 0
+    for p in pairs(cur) do
+        if not want[p] then
+            local c = SFO(p)
+            if c and pcall(function() sm:RemoveItemStatusEffect(inst, c) end) then n = n + 1 else M.stateStats.errors = M.stateStats.errors + 1 end
+        end
+    end
+    for p in pairs(want) do
+        if not cur[p] then
+            local c = SFO(p)
+            if c and pcall(function() sm:AddItemStatusEffect(inst, c) end) then n = n + 1 else M.stateStats.errors = M.stateStats.errors + 1 end
+        end
+    end
+    return n
+end
+M.parseEffects = parseEffects
+M.effectString = effectString
 -- (kept 5 s per item: GetActorManifestation + 3 component lookups per part made the state line 6 ms. As native
 -- weak handles: Lua objects kept across a travel were freed memory - IsValid passed, a property read crashed the
 -- host, revisit test 2026-10-28. The manifestation's address checked too: a new item can come at an old address.)
@@ -737,7 +799,7 @@ function M._partComps(it)
     if t.h then t.i, t.r, t.u, t.k = t.h, t.h, t.h, t.h end -- (the visual damage, the break health: the health component's)
     return t
 end
--- slot -> { comps = { kind = component }, v = { kind = value } } of a container's parts with any state
+-- slot -> { inst, comps, numeric values, active gameplay status-effect classes } of a container's parts with any state
 local function stateOf(cont)
     local r = {}
     local names = {}
@@ -746,11 +808,12 @@ local function stateOf(cont)
         local n = names[i]:get()
         local sl = cont:GetSlot(n)
         if sl and sl:IsValid() and sl.Items:GetArrayNum() > 0 then
-            local comps = partComps(sl.Items[1])
+            local inst = sl.Items[1]
+            local comps = partComps(inst)
             if comps and next(comps) then
                 local v = {}
                 for k, c in pairs(comps) do local ok, x = pcall(KINDS[k].get, c) if ok and type(x) == "number" then v[k] = x end end
-                r[n:ToString()] = { comps = comps, v = v }
+                r[n:ToString()] = { inst = inst, comps = comps, v = v, effects = effectSet(inst) }
             end
         end
     end
@@ -777,6 +840,7 @@ function M.stateLine(cont)
     for _, k in ipairs(keys) do
         local v, f = s[k].v, {}
         for i, kind in ipairs(KIND_ORDER) do f[i] = v[kind] and string.format(KIND_FMT[kind], v[kind]) or "" end
+        f[8] = effectString(s[k].effects)
         parts[#parts + 1] = k .. "=" .. table.concat(f, ",")
     end
     return table.concat(parts, ";")
@@ -788,6 +852,7 @@ function M.parseState(s)
         for f in (v .. ","):gmatch("([^,]*),") do x[#x + 1] = f end
         local e = {}
         for i, kind in ipairs(KIND_ORDER) do e[kind] = tonumber(x[i]) end
+        e.effects = parseEffects(x[8])
         t[k] = e
     end
     return t
@@ -829,6 +894,8 @@ function M.applyState(twin, want)
                     seen[kind] = have
                 end
             end
+            n = n + applyEffects(cur.inst, w.effects or {})
+            seen.effects = effectSet(cur.inst)
             e.state[slot] = seen
             e.statePending[slot] = nil
         end
@@ -836,9 +903,7 @@ function M.applyState(twin, want)
     M.stateStats.applied = M.stateStats.applied + n
     return n
 end
--- The other side: what the local player changed on the twin's parts since (slot, kind, delta) - for EY lines.
--- Not driven here: only upwards (repair, refuel, charge) - what runs down on a twin is the owner's car's own business.
--- Driven here (the local player at its wheel, the twin simulating on this side): everything, see `driven` below.
+-- The other side: numeric changes for EY; a complete status-effect set for EF (all driven changes, repairs outside).
 function M.watchState(twin)
     local e = equipOf[twin:GetAddress()]
     local cont = e and Sync.deref(e.cont)
@@ -863,8 +928,14 @@ function M.watchState(twin)
                 end
                 was[kind] = x
             end
+            if was.effects and not sameEffects(cur.effects, was.effects)
+                and (driven or (inside == false and effectCount(cur.effects) < effectCount(was.effects))) then
+                out[#out + 1] = { slot = slot, kind = "e", effects = effectString(cur.effects) }
+                e.statePending[slot] = os.clock()
+            end
+            was.effects = cur.effects
         else
-            local seen = {}
+            local seen = { effects = cur.effects }
             for kind, x in pairs(cur.v) do seen[kind] = x end
             e.state[slot] = seen
         end
@@ -906,6 +977,15 @@ function M.ownerState(slot, kind, delta)
     M.stateStats.owner = M.stateStats.owner + 1
     if not ok then M.stateStats.errors = M.stateStats.errors + 1 return "failed: " .. tostring(err) end
     return "ok"
+end
+function M.ownerEffects(slot, s)
+    local cont = realContainer()
+    if not (cont and cont:IsValid()) then return "no car container" end
+    local sl = cont:GetSlot(FName(slot))
+    if not (sl and sl:IsValid() and sl.Items:GetArrayNum() > 0) then return "empty slot" end
+    local n = applyEffects(sl.Items[1], parseEffects(s))
+    M.stateStats.owner = M.stateStats.owner + 1
+    return "ok " .. tostring(n)
 end
 function M.stateInfo()
     local s = M.stateStats
@@ -1591,8 +1671,7 @@ function M.pose(car)
             local x = Sync.deref(p)
             -- a door only while open and 3 s after (its closed pose is the twin's own)
             if x and n:find("^D%d%.") then
-                -- (a hidden one is shut for the other side: the driver's door swinging unseen for a back seat's exit, playersync
-                -- TD.backSeatExit)
+                -- Hidden meshes stay local; playersync may also omit D1 entirely during a back-seat exit.
                 local ok, open = pcall(function() return x:IsSimulatingPhysics(FName("None")) and x:IsVisible() end)
                 if ok and open then c.doorOpenAt[n] = now end
                 if now - (c.doorOpenAt[n] or -1e9) > 3 then x = nil end

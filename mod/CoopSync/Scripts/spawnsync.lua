@@ -14,7 +14,7 @@ M.Loot = Loot
 
 -- Classes whose instances are generated / randomized per run and must look the same for everyone.
 local PATTERNS = {
-    "^BP_Lootable_", "^BP_WorldItem", "^BP_Spawn_", "^BP_Hazard", "^BP_Template_",
+    "^BP_Lootable_", "^BP_WorldItem", "^BP_WorldManifestation_Anchor", "^BP_Spawn_", "^BP_Hazard", "^BP_Template_",
     "^BP_Resource_", "^BP_Destruct_", "^BP_TpoleTool", "^BP_VolCascade", "^BP_RoadObstruct",
     "^BP_Spawner_Building_", "^BP_Spawner_Site_", -- site spawners (see SITE_SPAWNER below)
     "^BP_LevelTransition_ExitPortal_", -- exits home: placed per run (the guest had its own, elsewhere: alpha 18 item 40)

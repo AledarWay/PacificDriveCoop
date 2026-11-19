@@ -65,6 +65,38 @@ $c = Send $cd "$st return st(CoopSyncMap['$ka']) .. '/' .. st(CoopSyncMap['$kb']
 $h = Send $hd "$st return st('$ka') .. '/' .. st('$kb')"
 Check "both anchors stay taken on both sides (no revert)" ($c -eq 'true/true' -and $h -eq 'true/true') "host $h | client $c"
 
+"=== 3b. a thrown anchor is an ordinary replicated drop, on both sides"
+# Reproduce the inventory-loss + world-manifestation half of a real throw: the detector must find this class too.
+$anchorArch = '/Game/Gameplay/Inventory/Items/Resources/Anchor/AnchorBlue/IA_Resource_Anchor_Stable_L.IA_Resource_Anchor_Stable_L'
+function GiveAnchor($dir) {
+    Send $dir "local im = FindFirstOf('BP_InventoryManager_C') ANCHOR_TEST_ITEM, ANCHOR_TEST_CONT = nil, nil for _, f in ipairs({ 'Inventory_Player', 'Inventory_PlayerHand' }) do local c = im[f] for i = 1, c.Slots:GetArrayNum() do local s = c.Slots[i] for j = 1, s.Items:GetArrayNum() do local it = s.Items[j] if not ANCHOR_TEST_ITEM and it.Archetype:GetFName():ToString():find('IA_Resource_Anchor_') then ANCHOR_TEST_ITEM, ANCHOR_TEST_CONT = it, c end end end end if not ANCHOR_TEST_ITEM then ANCHOR_TEST_CONT = im.Inventory_PlayerHand local made = CoopSync.Loot.newItem('$anchorArch') ANCHOR_TEST_CONT:AddItem(made, true) ANCHOR_TEST_ITEM = ANCHOR_TEST_CONT:FindItemOfType(made.Archetype) end return ANCHOR_TEST_ITEM and ANCHOR_TEST_ITEM:IsValid() and ('ready ' .. ANCHOR_TEST_ITEM.Archetype:GetFName():ToString()) or 'NO ANCHOR IN INVENTORY'"
+}
+function ThrowAnchor($dir) {
+    Send $dir "if not (ANCHOR_TEST_ITEM and ANCHOR_TEST_ITEM:IsValid() and ANCHOR_TEST_CONT) then return 'NO ANCHOR IN INVENTORY' end local p = FindFirstOf('PlayerController').Pawn local l = p:K2_GetActorLocation() local x = { X = l.X + 150, Y = l.Y, Z = l.Z + 30 } local arch = ANCHOR_TEST_ITEM.Archetype:GetFullName():gsub('^%S+%s+', '') ANCHOR_TEST_CONT:RemoveItem(ANCHOR_TEST_ITEM) local a = CoopSync.Loot.spawnWorldItem('W|' .. arch, { Translation = x, Rotation = CoopSync.quat(0, 0, 0), Scale3D = { X = 1, Y = 1, Z = 1 } }) ANCHOR_TEST_ITEM, ANCHOR_TEST_CONT = nil, nil return a and string.format('%.2f %.2f %.2f', x.X, x.Y, x.Z) or 'spawn failed'"
+}
+function AnchorCount($dir, [string]$xyz) {
+    if ($xyz -notmatch '^\s*-?\d') { return '0' }
+    $v = $xyz -split ' '
+    Send $dir "local n = 0 for _, a in ipairs(FindAllOf('BP_WorldManifestation_Anchor_C') or {}) do if a:IsValid() and not CoopSync.inPool(a) then n = n + 1 end end return n"
+}
+function OwnAnchorCount($dir) {
+    Send $dir "local im = FindFirstOf('BP_InventoryManager_C') local n = 0 for _, f in ipairs({ 'Inventory_Player', 'Inventory_PlayerHand' }) do local c = im[f] for i = 1, c.Slots:GetArrayNum() do local s = c.Slots[i] for j = 1, s.Items:GetArrayNum() do if s.Items[j].Archetype:GetFName():ToString():find('IA_Resource_Anchor_') then n = n + 1 end end end end return n"
+}
+$hostOwn0 = OwnAnchorCount $hd
+"  guest gets one test anchor: " + (GiveAnchor $cd); Start-Sleep 4
+$xyz = ThrowAnchor $cd; "  guest throws at $xyz"; Start-Sleep 12
+$hn = AnchorCount $hd $xyz; $cn = AnchorCount $cd $xyz
+$hr = Send $hd "return CoopSyncState.report()"
+$cr = Send $cd "return CoopSyncState.report()"
+$filter = Send $cd "for _, a in ipairs(FindAllOf('BP_WorldManifestation_Anchor_C') or {}) do if a:IsValid() then return string.format('matches=%s item=%s root=%s loot=%s', tostring(CoopSync.matches(CoopSync.clsName(a))), tostring(CoopSync.Loot.isItemActor(a)), tostring(CoopSync.isRoot(a)), tostring(CoopSync.Loot.serialize(a))) end end return 'none'"
+Check "guest throw: one world anchor on both sides" ($hn -eq '1' -and $cn -eq '1' -and $hr -match 'req_DROP_done=') "host=$hn guest=$cn filter: $filter | host: $hr | guest: $cr"
+Check "the guest's throw did not add an anchor to the host's own inventories" ((OwnAnchorCount $hd) -eq $hostOwn0) "host own anchors before=$hostOwn0 after=$(OwnAnchorCount $hd)"
+
+"  host gets one test anchor: " + (GiveAnchor $hd); Start-Sleep 4
+$xyz = ThrowAnchor $hd; "  host throws at $xyz"; Start-Sleep 12
+$hn = AnchorCount $hd $xyz; $cn = AnchorCount $cd $xyz
+Check "host throw: the guest's anchor and the host's new one both exist on both sides" ($hn -eq '2' -and $cn -eq '2') "host=$hn guest=$cn"
+
 "=== 4. anchors into the ARC (the Gobbler): a deposit on one side charges the other side's ARC too"
 # (the deposit's end, the game's AddingAnchorCompleteLogic with a new anchor of the zone's kind)
 $chg = "local s = FindFirstOf('BP_Carpart_Internal_GobblerScreen_C') local a, b = {}, {} s:GetAnchorCharge(a, b) return string.format('%.3f', a.CurrentCharge)"

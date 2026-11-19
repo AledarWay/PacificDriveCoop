@@ -4320,3 +4320,193 @@ Owner: "more extended, realistic tests - find and fix the problems".
 - revisit remains 10/11: host 6.6 ms passes, guest 26.4 ms at 18 fps (state 11.95, player apply 7.06). All functional
   checks pass. The total <8 ms budget is still OPEN.
 - lua-lint 234 files, PowerShell parser checks and git diff --check pass. Do not call the entire quick suite green.
+
+## Live two-window test: the driver's cracked window (2026-11-19, OPEN)
+- Owner-driven host/client graphics pair, reference garage saves, Wilderness_Forest_15, action audit on. Symptom: the
+  host's front steel driver's door shows broken glass and its UI icon; the guest's twin shows neither. This is the same
+  unresolved item 10 from the owner's 2026-11-11 test, now with a live object-level comparison.
+- The ordinary part-state path is not missing: host own / guest twin health about 39.9 / 39.5, both window materials
+  report effective CrackLevel=1.0, both use M_PlayerCar_Window_Exterior / Interior, and both meshes are visible.
+  Thus a material-number-only fix or another UpdateDamageVisuals call is not a demonstrated solution.
+- Found the game's dedicated status effect: SE_Cracked_C. On the host it is attached to ItemInstance_2147460847 and
+  WorldActor is the host driver's door BP_CarPart_Door_Base_C_2147399954. On the guest an SE_Cracked_C is attached
+  to ItemInstance_2147458404 and the correct twin door BP_CarPart_Door_Base_C_2147433123. It may have come from the
+  twin's own local damage: no mod code reads or writes SE_Cracked_C / item status effects. The guest also has another
+  cracked item whose WorldActor is nil, while the host's second effect belongs to the rear door.
+- twincar ES currently carries only h/f/b/i/r/u/k. It has no explicit authoritative status-effect set, so an owner's
+  cracked state is not guaranteed to reproduce, and a locally acquired twin effect is not guaranteed to be removed
+  when the owner repairs its door. The missing icon is consistent with the status-effect path being incomplete, but
+  the presently converged effect + material values do not explain why the guest still sees no cracks.
+- No state-changing probe was done. Next controlled probe, only after separate restorable saves of both copies:
+  record the status effect before any hit; remove/reapply it through BP_StatusEffectManager_C on the twin and inspect
+  both the UI and rendered glass; then implement owner->twin status-effect reconciliation (at least SE_Cracked_C),
+  including repair/removal, and extend twin-state-test beyond health / material scalar values.
+- Owner's standing instruction for this live session: before any potentially crashing or state-changing diagnostic,
+  make separate restorable saves in both copies first. Read-only probes so far did not alter the session.
+
+## Live two-window test: four guest-only spare wheels (2026-11-19, OPEN)
+- The owner noticed one spare on the road near the guest that the host did not have. A read-only radius probe found
+  FOUR unmapped BP_WorldItem_Health_C actors carrying IA_Attach_Wheel_Spare, all near the guest's spawn:
+  BP_WorldItem_Health_C_2147427873 at -81254,-66448,425; _2147427855 at -81362,-66094,423;
+  _2147427844 at -81247,-66324,424; _2147427828 at -81211,-66445,468. The host has ZERO spare world items in
+  the entire zone; its two ordinary scrap-steel items at the probe spot match the guest's.
+- All four wheels remain installed on both own cars and both twins. No DROP request or host loot event appears in
+  the action audit. Guest Tab presses at 20:07 were inventory opens, not the creation time. The actors' names precede
+  the guest's current car / pawn names and their mesh loaded at 19:50:21 during the host zone-save load; they were
+  not a manual drop at the report time.
+- At import (19:50:23) the guest kept 1217 / adopted 1169 host rows, removed only 4 unmatched actors; cleanup removed
+  2 mines. The later stray sweep removed ordinary BP_WorldItem_C (3, then 2), but never these Health items.
+- Confirmed cleanup gap: STRAY.BASES names only BP_WorldItem_C, not BP_WorldItem_Health_C (nor other world-item
+  subclasses). In addition its world-item branch unconditionally skips every /Items/Car/ archetype and anything
+  within 600 cm of the player. Those guards protect genuine local drops / fallen car parts, but also make these
+  load-time guest-only wheels permanent. This also fits the two client-only wheel items in the interact quick test.
+- Do not fix by simply deleting every unmapped car item: detectDrops / dropAsked must keep a real guest drop and its
+  predicted S adoption. Candidate fix: distinguish items present from the initial zone-load baseline (no inventory
+  loss and no DROP request) from later genuine drops, sweep the former including Health subclasses; add explicit
+  guest drop / detection audit lines. Add a live zone-load regression with host zero / guest four initial spares,
+  plus a genuine guest wheel drop to prove it survives and reaches the host.
+- No object was picked up, destroyed or moved during diagnosis; the live pair is unchanged for further testing.
+
+## Live two-window test: own back-seat exit blinks the driver's door (2026-11-19, OPEN)
+- Owner: on the host's own car, sit on the back seat and get out through its back door; the driver's door vanishes for
+  a moment, then reappears open. It should never react. Audit at 20:18:21 correctly records own enter door=3 / seat
+  own enter; at 20:18:31 the exit hook runs, followed by two shut calls at 20:18:32. This is not seat misdetection.
+- Confirmed cause in playersync TD.backSeatExit: the game's own exit still animates the driver's door. The workaround
+  hides d1.MainMesh with SetVisibility(false, true) immediately AFTER AttemptDoorExit, opens the actual back door,
+  shuts it after EXIT_SHUT_MS=1200, and restores the driver's mesh only after EXIT_SHUT_MS+1500 = 2.7 s. The game is
+  still free to animate the hidden driver's mesh meanwhile, so restoring it can expose the open pose. The initial
+  post-hook frame can also show the driver's door before it is hidden.
+- The 2026-11-11 workaround traded the original wrong-door animation for a visual blink; it is not an acceptable final
+  behavior. backseat-test 17/17 did not disprove it: its check watches logical opened door numbers and the end spot,
+  not the own driver's MainMesh visibility / relative rotation frame by frame during the exit.
+- Fix direction for the later implementation round: keep the driver's mesh continuously visible and visually shut
+  while allowing only the logical exit sequence the game needs, or redirect that sequence without driving d1 at all.
+  Do not extend the hide timer. Add a graphics/manual regression that samples own door 1 visibility and mesh transform
+  at <=50 ms through entry/exit: no invisible frame and no open pose, while door 3/4 opens and the player exits there.
+- No state-changing probe or live-code reload was done.
+
+## Live two-window test: harvesting a detached wheel leaves a whole guest copy (2026-11-19, OPEN)
+- Owner detached a wheel on the host and harvested it with the Scrapper. It broke into resources on the host; on the
+  guest the whole wheel remained on the road. This is distinct from network lag and from the four load-time spares.
+- Located the remaining guest object: BP_WorldItem_Health_C_2147407831, IA_Attach_Wheel_Basic, around
+  -80443,-66759,439, with CoopSyncMap entry nil. The corresponding host pooled wheel is
+  BP_WorldItem_Health_C_2147341097 at 0,0,0 after harvesting. The host's four harvested products around
+  -80600,-66600 subsequently appeared mapped on the guest.
+- At 20:42 the queues were drained: host pending=0, guest pending=0. Host ev_D=44 exactly matches guest ap_D=34 plus
+  ap_D_already=10; host ev_S=15, guest ap_S_spawned=15 and ap_S_adopted=2. Host req_DROP_done=3 and guest rq_DROP=3,
+  including a DROP of IA_Attach_Wheel_Basic at 20:33:17. The whole guest wheel is therefore a local side-effect /
+  predicted-drop actor outside authoritative S/D mapping, not a host D still waiting in the queue.
+- Likely sequence to test: removing the wheel from the host car makes the guest game spawn a local wheel from its
+  twin/equipment change; detectDrops can send it as a guest DROP; the host's authoritative wheel is then harvested.
+  Whether its S was adopted or its S/D removed only the authoritative copy, the unmapped local wheel survives. The
+  exact failed adoption branch is not yet proven; do not claim it is only a missing D.
+- Regression needed in loot-live/interact: host detach -> wait for both world copies -> host Scrapper harvest ->
+  host products and no whole wheel on either side, pending=0. Also immediate detach -> harvest before the next pass.
+  Assert zero unmapped /Items/Car/ manifestations for the detached item, not just loot-content percentage. Log local
+  DROP detection, dropAsked path, S adoption and D target in audit.log. Reconcile this with the load-time-wheel fix:
+  genuine predicted drops must survive until adopted or explicitly refused, but a completed harvest must leave none.
+- Read-only inspection only; the remaining wheel was not deleted so the state stays available for the next probe.
+
+## Live two-window test: flat installed tire confirms the status-effect gap (2026-11-19, OPEN)
+- Owner used the Scrapper on a wheel still installed on the host's car. The host gets the flat-tire UI effect and
+  visual; the guest's twin has neither, matching the earlier cracked-window symptom.
+- Confirmed the exact game effect: SE_FlatTire_C /Engine/Transient.ItemInstance_2147460816:SE_FlatTire_C_2147339742
+  is attached on the host to installed BP_CarPart_Wheel_Base_C_2147399831. On the guest no SE_FlatTire_C is attached
+  to any installed BP_CarPart_Wheel_Base_C of the host's twin (its listed effects are director defaults, unrelated
+  items, or item instances with WorldActor nil). This is direct evidence, not only a hypothesis from similar visuals.
+- Therefore cracked glass and flat tires are ONE missing synchronization mechanism: authoritative item status-effect
+  sets are absent from twincar ES. Do not implement separate CrackLevel or FlatTire material/graph hacks. Reconcile
+  the owner's status effects onto the twin's item instances through the game's status-effect manager, including the
+  initial equip and removal after repair. SE_Cracked_C and SE_FlatTire_C are the first two required regression cases;
+  preserve other effects and avoid director/default instances with no item.
+- A second host SE_FlatTire_C on detached world spare BP_WorldItem_Health_C_2147341378 also lacks the effect on its
+  mapped guest counterpart, so the later design should decide whether world-item loot serialization needs the same
+  status set too; installed parts alone will not cover detached items.
+- Read-only comparison, no effects added or removed during this diagnosis.
+
+## Live two-window test: the red door bar is synced but mechanic UI reads the local car (2026-11-19, OPEN)
+- Owner sawed the host's rear-left door past white health into the red break-health bar. On the guest looking at the
+  host's car, the shown bar remains white. This is NOT the same missing channel as SE_Cracked / SE_FlatTire.
+- Definitive stable-car comparison using CoopPlayers.twinModule().isTwin, not the switchable CarManager.NewCarActor:
+  host own rear-left BP_CarPart_Door_Base_C_2147399908 has h=0/30, k=1.39/9.90, breaking=true; the guest's actual
+  host-car twin BP_CarPart_Door_Base_C_2147431242 has h=0/30, k=1.40/9.90, breaking=true. The guest's OWN rear-left
+  BP_CarPart_Door_Base_C_2147433070 is still h=29.58/30, k=0. Thus ES kind k and the breaking state reached the right
+  twin and match within the normal update tick. Do not add another break-health sender or a breaking status hack.
+- The white UI therefore corresponds to the guest's local own item rather than the selected twin's item. This fits
+  the already known one-car UI context (twincar dash comments; UMG_ItemInfo_CarEquipment_SlotInfo SetCarEquipSlot and
+  ParentInstance), although the exact visible widget binding still needs a graphics probe. Fix the mechanic-mode /
+  part-info binding to the highlighted car's container, like dashParts already does for the computer's part icons.
+- Important diagnostic pitfall: CarManager.NewCarActor changed between probes while interacting with the twin, which
+  reversed naive OWN/OTHER labels and briefly suggested damage had gone to the wrong car. All future live car probes
+  must label cars by Twin.isTwin / stable actor path, never only NewCarActor.
+- twin-state-test 1c checks only HC values, so it passed without checking what the mechanic UI displays. Add a
+  graphics/UI assertion that the visible rear-left slot's ItemInstance is the twin container's item and shows the red
+  break bar; keep the existing value assertion. No game state was changed during this diagnosis.
+
+## Live two-window test: a guest's dropped anchor never reaches the host (2026-11-19, OPEN)
+- Owner grabbed a nearby anchor as the guest; the other player's visible hands followed. After the guest threw it,
+  no dropped anchor appeared on the host. Audit: guest E at 21:00:53, host req_GRAB_done for
+  BP_Spawn_Anchor_Stable_L_C_2147339511 at 21:01:21, but no subsequent DROP request. Host req_DROP_done stayed 3;
+  guest rq_DROP stayed 3 and drop_unmatched became 1, queues pending=0.
+- Live guest object: BP_WorldManifestation_Anchor_C_2147404352 carrying IA_Resource_Anchor_Stable_L at
+  -80994,-65948,440. The host has no world anchor manifestation; its remaining BP_HandManifestation_Anchor_C is a
+  hand/held representation, not the dropped world object.
+- Root cause directly confirmed on the guest object: CoopSync.matches=false, while Loot.isItemActor=true,
+  CoopSync.isRoot=true and Loot.serialize correctly returns W|...IA_Resource_Anchor_Stable_L. spawnsync PATTERNS
+  includes ^BP_WorldItem but not ^BP_WorldManifestation_Anchor. detectDrops iterates Sync.collect, notices the anchor
+  inventory loss, but cannot find this valid item actor -> drop_unmatched and no DROP. No networking or spawn API
+  change is needed for that diagnosis; the existing loot serializer already understands it.
+- Fix direction: add the anchor world-manifestation family to the replicated/item collection and ensure the host's
+  normal S/D/pose passes track it after DROP. Verify no double spawn with the original BP_Spawn_Resource_GrabBase R|1.
+  Extend anchor-test beyond grab and ARC deposit: guest grab -> throw -> real host world anchor at the same spot;
+  host grab -> throw -> guest too; pick the dropped anchor up again on the other side without duplication. Check
+  the held-hand visual clears after the throw. Do not simply delete the guest object as a fix.
+- Read-only diagnosis; the dropped guest anchor was not moved or destroyed.
+
+### Anchor ownership requirement from the owner (same live test)
+- Owner clarification: taking an anchor must NOT give the item to both local players. The grabber alone gets it in
+  his local hands / inventory. On the other screen only that player's remote puppet may appear to hold it; the local
+  player's own hands and Inventory_Player / Inventory_PlayerHand must remain empty. The pedestal's R|1 taken state
+  should still synchronize so the same unit cannot be grabbed twice.
+- Current code intends exactly this: Loot.markGrabbed calls Long Grab Complete with no grabber, whose earlier probe
+  marked the resource taken without handing out an item. After the guest's throw the live host has zero anchors in
+  both Inventory_Player and Inventory_PlayerHand; BP_HandManifestation_Anchor_C_2147337289 has no parent and is parked
+  at 0,0,0. Thus there is no current evidence of a persistent second inventory item. The earlier visible hand actor
+  may have been the remote puppet's held visual or a transient hand-visual bug; do not dismiss the owner's observation,
+  but do not claim GRAB certainly duplicated the inventory item either.
+- Strengthen anchor-test at the actual grab instant, not only total ItemInstance counts: local grabber has exactly one
+  anchor; other side's own player/hand inventories have zero; its own pawn has no attached hand manifestation, while
+  the remote puppet may have one; after throw the remote held visual clears and the one world anchor follows the DROP
+  fix. This ownership contract must be preserved when adding BP_WorldManifestation_Anchor to Sync.collect.
+
+## Fixes from the owner's live findings (2026-11-20, validation round)
+- **Installed-part status effects implemented and green.** twincar stateOf/stateLine now include each item's sorted
+  ActiveEffects class set as ES field 8. applyEffects reconciles additions/removals through BP_StatusEffectManager_C,
+  not through material hacks. EF returns the complete set from the side driving the twin or repairing it outside.
+  SE_Cracked_C and SE_FlatTire_C both propagate; owner glass repair reaches the twin, guest twin tire repair reaches
+  the owner. Numeric h/f/b/i/r/u/k behavior is retained. All 14 non-UI twin-state checks passed headless and graphics.
+- **World-item duplicates after DETACH fixed.** adoptWorld handles runtime W| S when a same-class, exactly matching
+  unmapped item is already within 50 cm (distance before serialization; only that class is enumerated). It covers local
+  actors created by twin equipment changes as well as predicted drops. Guest DROP also returns its authoritative S
+  immediately, inserts it into prev/beginPaths, and the local DROP is audited. STRAY includes Health/Fuelable/anchor
+  world manifestations and protects dropAsked car parts for 35 s. interact changed from two client-only Basic wheels /
+  LOOT FAIL to LOOT PASS; final contents 155/155 in that run.
+- **Anchor throw fixed and green.** spawnsync recognizes BP_WorldManifestation_Anchor; the existing W| serializer and
+  SpawnItemActor path handle the rest. The expanded anchor-test exercises guest and host inventory-loss/world throws,
+  adoption, no extra item in the other's own inventory, both original GRAB checks, ARC deposits and fuel. After the
+  guest throw there is one world anchor per side; after the independent host throw there are two per side. 14/14.
+- **Own back-seat driver-door visual fixed after two failed variants.** Keeping the driver's MainMesh visible while
+  holding its relative rotation preserves the game's logical exit and the player's correct rear-door exit. sendPose
+  omits D1.MainMesh for the short exit window, so the other side's twin does not open either. exit-watch now samples
+  visibility and relative mesh angle every 30 ms. Both roles: hidden=false, angle1=0, remote D1 max=0, rear door opens,
+  player detaches at the rear. Full backseat-test 19/19, including all previous doorless/rear-entry scenarios.
+  Failed and not retained: making the mesh kinematic blocked the exit and broke doors; the earlier 2.7 s hide caused
+  the reported blink. Do not reintroduce either.
+- **Mechanic UI remains OPEN; experimental hook REVERTED.** A scoped SetCarEquipSlot inventory-container swap was
+  implemented for base, regular and Crafting item-info classes, but no automated scene produced a real widget to verify
+  it. Graphics runs enabled mechanic mode before aiming and also called the highlighted part's OpenPartContext; both
+  regular and Crafting FindAllOf counts stayed 0. Therefore the hook and synthetic UI check were removed before commit.
+  The underlying values still reach the twin; only the visible local-car UI binding is unfixed. Next attempt needs a
+  real user-opened mechanic card / UI object dump, not another blind hook. Do not call this part fixed.
+- Related regressions after these changes: loot-live 15/15 and revisit 11/11 (including its total frame budget).
+- Related static checks throughout: lua-lint 234 files, PowerShell PSParser and git diff --check. No release created.

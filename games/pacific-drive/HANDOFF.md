@@ -3,7 +3,50 @@
 Read this first, then `NOTES.md` (same folder: the full engineering log, newest sections at the end).
 The owner writes in Russian; answers, task lists and summaries in Russian. Code, comments, NOTES in English.
 
-## Latest (2026-11-18) - player action audit
+## Latest (2026-11-20) - live-findings fix round
+**Four verified fixes, commit pending final static checks.** Mechanic UI remains OPEN and its experimental hook was
+reverted: graphics probes could not instantiate regular/Crafting item-info even after OpenPartContext, so no UI claim
+is made. The next attempt needs a real user-opened widget dump. Green changes:
+- Installed item ActiveEffects sync through ES field 8 and EF repair/driving return (SE_Cracked / SE_FlatTire included);
+  all 14 non-UI twin-state checks pass headless and graphics.
+- Exact-match world-item adoption within 50 cm plus immediate authoritative S for guest DROP: interact LOOT PASS,
+  no previous client-only wheels; loot-live 15/15 and revisit 11/11.
+- BP_WorldManifestation_Anchor joins normal DROP/S/D replication; anchor-test 14/14 (throws both ways, ownership,
+  original GRAB, ARC and fuel).
+- Own back-seat exit holds the visible driver's mesh rotation and omits D1 from the outgoing pose briefly; physics
+  remains the game's. backseat-test 19/19, local and remote D1 angle 0, no hidden frame, correct rear exit.
+Full evidence and failed variants: NOTES "Fixes from the owner's live findings". No release/tag.
+
+## Before (2026-11-19) - owner-driven two-window test, findings recorded, fixes pending
+**No mod-code fix from this session is committed yet.** Two graphics instances used reference garage saves and the
+manual channel `local/instances/{host,client}/chan-manual-20261119-194349`; action audit captured the owner's real
+inputs. Both game processes are now stopped. Detailed object-level evidence is at the end of NOTES in the sections
+"Live two-window test"; the findings are:
+1. Cracked glass and flat installed tires share one missing mechanism: item status-effect sets are not synced by
+   twincar ES (SE_Cracked_C / SE_FlatTire_C; include initial state and removal after repair; detached items too).
+2. The red break-health bar DOES reach the right twin (h=0, k about 1.4, breaking=true), but mechanic UI reads the
+   guest's local own-car item. Fix the selected-car widget binding, not the k sender. Probes must use Twin.isTwin:
+   CarManager.NewCarActor switches and can reverse naive OWN/OTHER labels.
+3. Four load-time guest-only spare wheels survive because the stray sweep names only BP_WorldItem_C and excludes car
+   items / near-player objects. A detached-then-harvested Basic wheel also leaves a separate unmapped local guest
+   actor after all S/D queues drain. Fix without deleting genuine dropAsked items; add detach -> Scrapper regressions.
+4. Own back-seat exit still animates the driver's door. TD.backSeatExit deliberately hides its mesh for 2.7 s and can
+   reveal it open: replace the visual workaround, do not extend the timer; test visibility / mesh pose every <=50 ms.
+5. Guest anchor throw is not sent: BP_WorldManifestation_Anchor_C is a valid serializable item/root but
+   CoopSync.matches=false (PATTERNS only has BP_WorldItem), producing drop_unmatched. Add it to item collection and
+   test throw both ways / re-pickup. Ownership contract: only the grabber's local hands/inventory get the anchor;
+   the other screen may show it only in the remote puppet's hands. Current host inventories have zero anchors.
+6. Owner's standing safety instruction: make separate restorable saves in BOTH copies before potentially crashing or
+   state-changing diagnostics. In this session read-only probes needed no saves; slot 8 was saved before giving items.
+
+**Resume point before item grants, already inside Wilderness_Forest_15:** `local/advsave/coop-preitems-host.sav` and
+`local/advsave/coop-preitems-client.sav` are byte-verified 20:25 saves before the 20:28 item grants. Host odsave8 was
+automatically overwritten at 21:20, so the preserved host copy comes from its exact automatic
+odsave8-backup-2026.11.19-20.25.19.sav (789487 bytes), not the later odsave8. Guest odsave8 was still the 20:25 save.
+Keep both resume files unchanged for future tests. Basic items were then granted and count-checked; those later items
+are NOT in this resume point. The live findings docs are currently uncommitted.
+
+## Before (2026-11-18) - player action audit
 **Commit: 346623f**: audit.lua (new) + audit-test.ps1 (new, in the quick suite), config/hooks/
 session/playersync/statesync/menu/CoopDev + localization + collect-report + start-zone.
 Opt-in (`audit=1` in config.txt or F7 -> Debug "Action audit"): audit.log records key down/up, Command Interact,

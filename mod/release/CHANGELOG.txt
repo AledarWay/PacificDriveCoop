@@ -37,6 +37,14 @@ The instability and the sky:
 - The sun and the fog follow the host's more closely: the host sends its sky 4 times a second instead of every 2 s.
   The fog and the sun swing back and forth with the weather, and the guest was up to 2 s behind (up to 10 % brighter
   or darker at a moment); now within about 1 %.
+Live two-window test fixes:
+- Cracked door glass and flat tires now reach the other player's copy of the car through the game's own status-effect
+  system. Repairing the other player's part removes the effect on the owner's car too.
+- Taking a wheel off and harvesting it no longer leaves a whole guest-only wheel behind. Matching local world items
+  adopt the host's authoritative identity instead of becoming permanent duplicates.
+- Thrown anchors now appear on both sides. The anchor still belongs only to the player who picked it up; the pedestal
+  is taken for both, but the other local player's inventory does not get a second anchor.
+- Leaving your own car's back seat no longer hides or opens the driver's door visually, on either copy of the car.
 Things picked up and dropped:
 - What the host picks up is gone for the guest about twice as fast (in the tests 0.7 s instead of 1.4 s), so the
   guest has less time to pick up the same thing again.

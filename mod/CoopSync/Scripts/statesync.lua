@@ -324,7 +324,7 @@ local byKey = {}
 
 local IBL = StaticFindObject("/Script/PenDriverInventory.Default__InventoryBlueprintLibrary")
 
-local hostTake, hostPut -- (below)
+local hostTake, hostPut, hostPathAdd -- (below)
 local function hostHandle(t)
     local op, key = t[1], t[2]
     if CoopSyncAudit and op:sub(1, 1) ~= "H" then CoopSyncAudit.event("loot_request", op .. " " .. tostring(key):sub(1, 220)) end
@@ -333,8 +333,8 @@ local function hostHandle(t)
     if op == "KB" or op == "KK" then CoopSyncKnock.handle(t) return end
     if op == "TS" then CoopSyncTour.apply(t) return end
     if op == "DROP" then
-        -- the client dropped one of its own items: it becomes a world item here (the next pass sends it
-        -- back as S, and the client adopts its local one)
+        -- the client dropped one of its own items: it becomes a world item here and its S goes back at once,
+        -- so the client adopts its local predicted actor (the next pass only maintains the authoritative copy)
         local loc = { X = tonumber(t[3]), Y = tonumber(t[4]), Z = tonumber(t[5]) }
         local xf = { Translation = loc, Rotation = Sync.quat(tonumber(t[6]) or 0, tonumber(t[7]) or 0, tonumber(t[8]) or 0), Scale3D = { X = 1, Y = 1, Z = 1 } }
         local ok, a = pcall(Loot.spawnWorldItem, t[2], xf)
@@ -351,6 +351,16 @@ local function hostHandle(t)
                     r:WakeAllRigidBodies()
                 end
             end)
+            -- Return the authoritative key immediately: the client adopts its predicted actor while it is still here.
+            -- Waiting for a later full pass let a quick pick-up / harvest leave the local predicted copy behind.
+            local k, loot = Sync.ref(a), Loot.serialize(a)
+            if k and loot then
+                send("host.events", "S\t" .. row(a, loot))
+                if prev then prev[k] = loot end
+                if pass then pass.snap[k] = loot end
+                hostPathAdd(k)
+                if CoopSyncAudit then CoopSyncAudit.event("loot", "guest drop " .. k .. " " .. loot:sub(1, 180)) end
+            end
         end
         count((ok and a) and "req_DROP_done" or "req_DROP_failed")
         return
@@ -603,7 +613,7 @@ end
 -- near the host player qualify; the ordinary root scan still catches everything else and starts tracking its poses.
 local hostDropChecks = {}
 local HOST_DROP_RADIUS = 1200
-local function hostPathAdd(k)
+hostPathAdd = function(k)
     local paths = beginPaths.list
     if not paths then return end
     for _, p in ipairs(paths) do if p == k then return end end
@@ -828,6 +838,30 @@ local function adoptPredicted(e)
     return best
 end
 
+-- The game can also create a local world item as a side effect of applying a twin's DETACH / equipment change. It is
+-- not in dropAsked, but it is the same unit as the host's subsequent S. Adopt only an exact item match on the spot;
+-- distance is checked before serialization, and only the event's class is enumerated (no whole-zone loot scan).
+local function adoptWorld(e)
+    if e.kind ~= "R" or e.loot:sub(1, 2) ~= "W|" then return nil end
+    local cls = (e.cls or ""):match("[^%.]+$")
+    if not cls then return nil end
+    local best, bestD
+    for _, a in ipairs(FindAllOf(cls) or {}) do
+        if CoopSyncUsable(a) and not reverse[Sync.ref(a)] and not Sync.inPool(a) and Sync.isRoot(a) then
+            local l = a:K2_GetActorLocation()
+            local d2 = (l.X - e.loc.X) ^ 2 + (l.Y - e.loc.Y) ^ 2 + (l.Z - e.loc.Z) ^ 2
+            if d2 < ADOPT_DIST ^ 2 and (not bestD or d2 < bestD) and (Loot.serialize(a) or "") == e.loot then
+                best, bestD = a, d2
+            end
+        end
+    end
+    if best then
+        pcall(function() best:K2_SetActorLocationAndRotation(e.loc, e.rot, false, {}, true) end)
+        if CoopSyncAudit then CoopSyncAudit.event("loot", "adopt world " .. Sync.ref(best)) end
+    end
+    return best
+end
+
 -- Runtime actors from the host's zone save can already exist here under new names before their first S arrives.
 -- Adopt the nearest unmapped actor of the same class on the spot, as the import does, instead of spawning a duplicate.
 local evFrame = 0
@@ -991,7 +1025,7 @@ local function clientApply(t)
         -- (an actor this side has under that key already - the import's, a repeat: no second copy, its loot only)
         local known = resolve(e.key)
         if known and not CoopSyncUsable(known) then known = nil end
-        local a = known or adoptPredicted(e) or adoptExisting(e)
+        local a = known or adoptPredicted(e) or adoptWorld(e) or adoptExisting(e)
         local tS = os.clock()
         if known then
             count("ap_S_known")
@@ -1703,6 +1737,9 @@ STRAY.BASES = {
     -- spots in zone B, journey-test 2026-11-13; the host's come mapped)
     { "BP_Spawn_Resource_GrabBase_C", "stray_grab", 10 },
     { "BP_WorldItem_C", "stray_item", 10, true },
+    { "BP_WorldItem_Health_C", "stray_item_health", 10, true },
+    { "BP_WorldItem_Fuelable_C", "stray_item_fuelable", 10, true },
+    { "BP_WorldManifestation_Anchor_C", "stray_item_anchor", 10, true },
 }
 STRAY.GRACE_S = 6
 STRAY.NEAR_CM = 600 -- (a world item this close to the player: maybe its own throw, its DROP's S on the way)
@@ -1725,19 +1762,25 @@ function STRAY.tick()
                 and not (CoopSyncKeep or {})[a:GetFullName()] and Sync.isRoot(a) then
                 local ok, c = pcall(function() return a:GetClass():GetFName():ToString() end)
                 local skip = not (ok and Sync.matches(c))
+                local grace = base[3]
                 if not skip and base[4] then
-                    -- (the car's parts and attachments: the guest's own car's, fallen off - never the host's to send)
                     local arch = ""
                     pcall(function() arch = a.Instance.Archetype:GetFullName() end)
-                    if arch == "" or arch:find("/Items/Car/", 1, true) then skip = true end
-                    if me and not skip then
+                    if arch == "" then skip = true end
+                    local carPart = arch:find("/Items/Car/", 1, true) ~= nil
+                    if carPart then
+                        -- A real fallen / dropped part is registered by detectDrops. Give that detection longer than
+                        -- its 30 s car-loss memory; an unrequested load-time duplicate is safe to sweep afterwards.
+                        grace = 35
+                        if dropAsked[p] then skip = true end
+                    elseif me and not skip then
                         local l = a:K2_GetActorLocation()
                         if (l.X - me.X) ^ 2 + (l.Y - me.Y) ^ 2 + (l.Z - me.Z) ^ 2 < STRAY.NEAR_CM ^ 2 then skip = true end
                     end
                 end
                 if not skip then
                     seen[p] = STRAY.seen[p] or now
-                    if now - seen[p] >= base[3] then
+                    if now - seen[p] >= grace then
                         seen[p] = nil
                         if pcall(function() a:K2_DestroyActor() end) then
                             count(base[2])
@@ -2887,6 +2930,7 @@ local function detectDrops()
                     send("client.requests", string.format("DROP\t%s\t%.2f\t%.2f\t%.2f\t%.3f\t%.3f\t%.3f\t%s", loot, l.X, l.Y, l.Z, r.Pitch, r.Yaw, r.Roll, okF and tostring(fv) or ""))
                     count("rq_DROP")
                     dropAsked[ap] = true
+                    if CoopSyncAudit then CoopSyncAudit.event("loot", "local drop " .. ap .. " " .. loot:sub(1, 180)) end
                     lost[arch].n = lost[arch].n - 1
                 end
             end

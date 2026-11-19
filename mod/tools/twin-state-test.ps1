@@ -33,6 +33,15 @@ function PartState($dir, [string]$which, [string]$slot) {
 function SetPart($dir, [string]$which, [string]$slot, [string]$kv) { Probe $dir "STATE_CAR = '$which' STATE_SET = { slot = '$slot', $kv } STATE_SLOTS = {'$slot'}" "part-state.lua" }
 function Num($s, [int]$i) { $p = $s -split ','; if ($p.Count -gt $i -and $p[$i] -ne '') { [double]$p[$i] } else { [double]::NaN } }
 function StInfo($dir) { (Send $dir "return CoopPlayers.ghostInfo()") -replace '.*?(state_applied=.*)', '$1' }
+function PartEffects($dir, [string]$which, [string]$slot) {
+    $getCont = if ($which -eq 'twin') { "local T = CoopPlayers.twinModule() local cont for _, c in ipairs(FindAllOf('BP_PlayerCarNew_C') or {}) do if c:IsValid() and T.isTwin(c) then cont = T.twinContainer(c) end end" } else { "local cont = FindFirstOf('BP_InventoryManager_C').Inventory_CarEquipped" }
+    Send $dir "$getCont local sl = cont and cont:GetSlot(FName('$slot')) local it = sl and sl.Items:GetArrayNum() > 0 and sl.Items[1] local o = {} if it then local a = it.ActiveEffects for i = 1, a:GetArrayNum() do if a[i]:IsValid() and not a[i].IsDirector then o[#o + 1] = a[i]:GetClass():GetFName():ToString() end end end table.sort(o) return table.concat(o, '+')"
+}
+function SetEffect($dir, [string]$which, [string]$slot, [string]$effect, [bool]$on) {
+    $getCont = if ($which -eq 'twin') { "local T = CoopPlayers.twinModule() local cont for _, c in ipairs(FindAllOf('BP_PlayerCarNew_C') or {}) do if c:IsValid() and T.isTwin(c) then cont = T.twinContainer(c) end end" } else { "local cont = FindFirstOf('BP_InventoryManager_C').Inventory_CarEquipped" }
+    $call = if ($on) { 'AddItemStatusEffect' } else { 'RemoveItemStatusEffect' }
+    Send $dir "$getCont local sl = cont and cont:GetSlot(FName('$slot')) local it = sl and sl.Items:GetArrayNum() > 0 and sl.Items[1] local e = FindFirstOf('$effect') local sm = FindFirstOf('BP_StatusEffectManager_C') if not (it and e and sm) then return 'missing' end sm:$call(it, e:GetClass()) return '$effect $call'"
+}
 
 Get-Process PenDriverPro-Win64-Shipping -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2
 & "$t\deploy.ps1"
@@ -74,6 +83,23 @@ Start-Sleep 4
 $hw = PartState $hd 'own' $w; $tw = PartState $cd 'twin' $w
 Check "guest: the twin's wheel has the host's red bar (health 0, break 6)" ((Num $tw 0) -lt 0.5 -and [math]::Abs((Num $tw 6) - 6) -lt 0.5) "host wheel=$hw | twin wheel=$tw"
 "  host: " + (Send $hd "$hcOf local hc = hcOf(FindFirstOf('BP_InventoryManager_C').Inventory_CarEquipped) hc:SetBreakHealth(0) hc:SetHealth(60) return 'back to 60'"); Start-Sleep 4
+
+"=== 1d. gameplay status effects: flat tire and cracked glass, both directions"
+$door = 'Car.Equip.Body.DoorsFL'
+"  host: " + (SetEffect $hd 'own' $w 'SE_FlatTire_C' $true)
+"  host: " + (SetEffect $hd 'own' $door 'SE_Cracked_C' $true)
+Start-Sleep 5
+$fw = PartEffects $cd 'twin' $w; $cdoor = PartEffects $cd 'twin' $door
+Check "guest: the twin has the owner's flat tire and cracked glass" ($fw -match 'SE_FlatTire_C' -and $cdoor -match 'SE_Cracked_C') "wheel=$fw door=$cdoor"
+"  host repairs glass: " + (SetEffect $hd 'own' $door 'SE_Cracked_C' $false)
+Start-Sleep 5
+$cdoor = PartEffects $cd 'twin' $door
+Check "guest: the owner's glass repair removes the twin's effect" ($cdoor -notmatch 'SE_Cracked_C') "door=$cdoor"
+"  guest repairs the twin's tire: " + (SetEffect $cd 'twin' $w 'SE_FlatTire_C' $false)
+Start-Sleep 6
+$hf = PartEffects $hd 'own' $w; $gf = PartEffects $cd 'twin' $w
+Check "guest's twin repair removes the effect on the owner's real wheel" ($hf -notmatch 'SE_FlatTire_C' -and $gf -notmatch 'SE_FlatTire_C') "host=$hf twin=$gf"
+
 "=== 2. the guest repairs the host car's wheel on its twin"
 "  guest: " + (SetPart $cd 'twin' $w 'health = 175')
 Start-Sleep 4

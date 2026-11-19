@@ -63,7 +63,8 @@ foreach ($side in @(@{ name = 'host'; dir = $hd; n = 3 }, @{ name = 'guest'; dir
     Start-Sleep 8
     $w = KV (Send $d "return EW_READ()")
     "  exit: $($w.raw)"
-    Check "$who`: its back door opened, the driver's did not" ($w.opened -match "$bn" -and $w.opened -notmatch '1') "opened $($w.opened)"
+    Check "$who`: its back door opened for the exit" ($w.opened -match "$bn") "opened $($w.opened)"
+    Check "$who`: the driver's mesh stayed visible and in its shut pose throughout" ($w.hidden1 -eq 'false' -and [double]$w.angle1 -lt 10) "hidden=$($w.hidden1) largest mesh angle=$($w.angle1)"
     # (by the back door: its x nearer the back door's than the driver's door's; on the left side, out of the car)
     $tw = Send $od "return string.format('%.0f/%.0f', TW[1], TW[$bn])"
     $t1, $t3 = $tw -split '/'

@@ -534,8 +534,13 @@ function TD.equipTick(c)
     TD.prof("eq_state", t0)
     if not okS then return end
     for _, x in ipairs(sc) do
-        append(outFile, string.format("EY\t%d\t%s\t%s\t%.2f", now, x.slot, x.kind, x.delta))
-        st.stateEySent = (st.stateEySent or 0) + 1
+        if x.kind == "e" then
+            append(outFile, string.format("EF\t%d\t%s\t%s", now, x.slot, x.effects or ""))
+            st.stateEfSent = (st.stateEfSent or 0) + 1
+        else
+            append(outFile, string.format("EY\t%d\t%s\t%s\t%.2f", now, x.slot, x.kind, x.delta))
+            st.stateEySent = (st.stateEySent or 0) + 1
+        end
     end
 end
 function TD.devicesBusy(car)
@@ -2488,29 +2493,28 @@ local function carOfPart(a)
     end
     return car
 end
--- Out of the own car's back seat (owner's two-games test 2026-11-11: "out of the back seat by the back door the driver's
--- door opened, I went through the back door"): the game's exit works the driver's door only (its animation's door; a
--- back door's slot made the exit a jump - TD.contextSlot). On the own car that door really swung open (on the other's
--- twin it is kinematic - TD.twinDoorReconcile shuts it there). So right after its AttemptDoorExit (the hook runs after
--- the body) the driver's door is hidden while it swings and the seat's own door opens, shut again TD.EXIT_SHUT_MS
--- later as the game shuts the driver's. backseat-test.
+-- Out of the own car's back seat: the game's exit logically works the driver's door only, but its visible mesh must
+-- not react. Keep the mesh visible and hold only its relative rotation; physics and the logical exit stay the game's.
+-- (Making the mesh kinematic blocked the exit and broke the door; hiding it caused the owner's visible blink.)
 function TD.backSeatExit(own, n)
     local d1, dn = Twin.door(own, 1), TD.realDoor(own, n)
+    local dp, d1p = dn and Sync.ref(dn), d1 and Sync.ref(d1)
+    local rot = d1 and d1.MainMesh.RelativeRotation
+    TD.backSeatPoseUntil = M.nowMs() + TD.EXIT_SHUT_MS + 1000
     TD.doorGuard = true
-    -- (the driver's door swings unseen: shut at once the game's exit waited for it and never let go of the player -
-    -- backseat-test; on the twin it stays open TD.EXIT_DOOR_MS for that)
-    pcall(function() d1.MainMesh:SetVisibility(false, true) end)
     if dn then pcall(function() dn:AttemptOpen() end) end
     TD.doorGuard = false
-    local dp, d1p = dn and Sync.ref(dn), Sync.ref(d1)
+    local holdUntil = os.clock() + (TD.EXIT_SHUT_MS + 500) / 1000
+    local function holdDriverMesh()
+        local d = d1p and Sync.deref(d1p)
+        if not d or os.clock() >= holdUntil then return end
+        pcall(function() d.MainMesh:K2_SetRelativeRotation(rot, false, {}, true) end)
+        CoopSyncAfter(1, holdDriverMesh)
+    end
+    holdDriverMesh()
     CoopSyncAfter(TD.EXIT_SHUT_MS, function()
         local d2 = dp and Sync.deref(dp)
         if d2 then TD.doorGuard = true pcall(function() d2:AttemptShut() end) TD.doorGuard = false end
-    end)
-    -- (seen again once the game's own shut has it home)
-    CoopSyncAfter(TD.EXIT_SHUT_MS + 1500, function()
-        local d = Sync.deref(d1p)
-        if d then pcall(function() d.MainMesh:SetVisibility(true, true) end) end
     end)
     st.backSeatExits = (st.backSeatExits or 0) + 1
 end
@@ -3093,6 +3097,9 @@ end
 --   V <time> <name=x,y,z,pitch,yaw,roll;...>
 local function sendPose(car)
     local ok, s = pcall(Twin.pose, car)
+    if ok and TD.backSeatPoseUntil and M.nowMs() < TD.backSeatPoseUntil then
+        s = s:gsub("D1%.MainMesh=[^;]+;?", "")
+    end
     if ok and s ~= "" then
         append(outFile, "V\t" .. M.nowMs() .. "\t" .. s)
         st.posesSent = (st.posesSent or 0) + 1
@@ -4119,6 +4126,9 @@ local function applyTick()
         elseif t[1] == "EY" then
             -- the other player repaired / refuelled / charged a part of this side's car on its twin
             st.lastEy = Twin.ownerState(t[3] or "", t[4] or "", tonumber(t[5])) st.stateEyDone = (st.stateEyDone or 0) + 1
+        elseif t[1] == "EF" then
+            -- the complete status-effect set after a repair, or from the side currently driving this side's car
+            st.lastEf = Twin.ownerEffects(t[3] or "", t[4] or "") st.stateEfDone = (st.stateEfDone or 0) + 1
         elseif t[1] == "Y" then
             takeLayoutLine(t)
         elseif t[1] == "G" and role == "host" then
