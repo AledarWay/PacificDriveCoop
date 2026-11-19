@@ -25,7 +25,7 @@ Cause:     ES carried numeric health and wear only. The game's item ActiveEffect
 Found by:  the owner's two-window test plus live ItemInstance.ActiveEffects / WorldActor comparisons on both cars.
 Fix:       twincar serializes the sorted effect-class set in ES, applies/removes it through BP_StatusEffectManager_C;
            playersync EF returns repairs and changes from the side driving the twin. No material-specific workaround.
-Commit:    -    Test: twin-state-test.ps1: 14 non-UI checks pass headless and graphics; both effects/repair directions
+Commit:    0b2e415    Test: twin-state-test.ps1: 14 non-UI checks pass headless and graphics; both effects/repair directions
 
 ## 2026-11-20 - guest-only wheels survived a detach / harvest
 Symptom:   a wheel removed and Scrapper-harvested on the host remained whole on the guest; interact repeatedly ended
@@ -35,7 +35,7 @@ Cause:     the guest game created local world-item side effects that were not dr
 Found by:  live mapping / pooled-host-item comparison with drained S/D queues, and interact's after-client diagnostics.
 Fix:       statesync adoptWorld adopts only a same-class, exactly serialized unmapped item within 50 cm; DROP returns
            an authoritative S immediately. Health/Fuelable/anchor sweep classes added, dropAsked car parts protected.
-Commit:    -    Test: interact-test.ps1 LOOT PASS, no client-only wheels; related world-item adoption in anchor-test
+Commit:    0b2e415    Test: interact-test.ps1 LOOT PASS, no client-only wheels; related world-item adoption in anchor-test
 
 ## 2026-11-20 - a thrown anchor stayed only on the thrower's side
 Symptom:   the guest took and threw an anchor, but the host never got the dropped world object.
@@ -44,7 +44,7 @@ Cause:     anchors use BP_WorldManifestation_Anchor_C rather than BP_WorldItem_C
 Found by:  the live guest object returned matches=false, isItemActor/root=true and a valid W| serialization.
 Fix:       spawnsync recognizes anchor world manifestations; the ordinary DROP/S/D pipeline replicates them. The guest
            DROP's immediate S also lets the predicted local anchor adopt its authoritative key at once.
-Commit:    -    Test: anchor-test.ps1 14/14; throws both ways, adoption, inventory ownership, GRAB, ARC and fuel
+Commit:    0b2e415    Test: anchor-test.ps1 14/14; throws both ways, adoption, inventory ownership, GRAB, ARC and fuel
 
 ## 2026-11-20 - the driver's door blinked when leaving the own back seat
 Symptom:   leaving the host's own rear seat hid the driver's door briefly and could show it open afterwards, although
@@ -54,7 +54,7 @@ Cause:     the game logically exits through the driver's door. TD.backSeatExit h
 Found by:  the owner's graphics report and new exit-watch samples of visibility/relative rotation every 30 ms.
 Fix:       keep the mesh visible, hold only its relative rotation, leave physics/logical exit intact, and omit D1 from
            the outgoing pose during that window. A kinematic-mesh variant blocked exit and was reverted, not retained.
-Commit:    -    Test: backseat-test.ps1 19/19; both roles, local/remote D1 angle 0, no hidden frame, rear exit works
+Commit:    0b2e415    Test: backseat-test.ps1 19/19; both roles, local/remote D1 angle 0, no hidden frame, rear exit works
 
 ## 2026-11-17 - the action audit crashed at startup and test processes stayed open
 Symptom:   CoopSync died in construct_fname before "[CoopSync] loaded"; CrashReportClient and test games stayed until

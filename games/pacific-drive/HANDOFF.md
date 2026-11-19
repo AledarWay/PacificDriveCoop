@@ -4,7 +4,7 @@ Read this first, then `NOTES.md` (same folder: the full engineering log, newest 
 The owner writes in Russian; answers, task lists and summaries in Russian. Code, comments, NOTES in English.
 
 ## Latest (2026-11-20) - live-findings fix round
-**Four verified fixes, commit pending final static checks.** Mechanic UI remains OPEN and its experimental hook was
+**Commit: 0b2e415 — four verified fixes.** Mechanic UI remains OPEN and its experimental hook was
 reverted: graphics probes could not instantiate regular/Crafting item-info even after OpenPartContext, so no UI claim
 is made. The next attempt needs a real user-opened widget dump. Green changes:
 - Installed item ActiveEffects sync through ES field 8 and EF repair/driving return (SE_Cracked / SE_FlatTire included);
