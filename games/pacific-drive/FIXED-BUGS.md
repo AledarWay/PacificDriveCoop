@@ -27,7 +27,7 @@ Found by:  live UMG class enumeration, Current Instance vs GetInstanceBarAmount 
            Synthetic SetHealth alone did not produce the native red event; the final test uses real Scrapper hits.
 Fix:       playersync TD.mechanicUITick updates only twin items' HealthBar/BreakBar directly from Current Instance
            every 100 ms, including percent and red-bar visibility. Own-car native UI is deliberately left untouched.
-Commit:    -    Test: twin-state-test.ps1 15/15 (real damage); native/twin screenshots both show the red bar
+Commit:    7baf7f4  Test: twin-state-test.ps1 15/15 (real damage); native/twin screenshots both show the red bar
 
 ## 2026-11-20 - the other car's cracked glass and flat tires were missing
 Symptom:   the owner's door glass / installed tire broke locally, but the other player's twin showed neither the icon

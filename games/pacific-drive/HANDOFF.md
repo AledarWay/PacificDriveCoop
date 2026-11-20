@@ -4,7 +4,7 @@ Read this first, then `NOTES.md` (same folder: the full engineering log, newest 
 The owner writes in Russian; answers, task lists and summaries in Russian. Code, comments, NOTES in English.
 
 ## Latest (2026-11-20) - live-findings fix round
-**Commit: 0b2e415 — four verified fixes; Mechanic UI now FIXED separately (UI commit next).** GenericBar's Blueprint
+**Commit: 0b2e415 — four verified fixes; 7baf7f4 — Mechanic UI.** GenericBar's Blueprint
 read the manager's local equipped-car state despite a correct twin Current Instance. UMG hooks accepted but never
 fired (fixed=0). TD.mechanicUITick now updates only twin items directly from Current Instance every 100 ms; own-car
 native UI is untouched. Real Scrapper-hit regression twin-state 15/15 (health 0, break 40), plus native/twin
