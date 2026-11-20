@@ -17,6 +17,18 @@ Commit:    hash    Test: which test covers it now
 
 ---
 
+## 2026-11-20 - the twin's red break-health bar stayed white in mechanic UI
+Symptom:   the host sawed a door past white health into the red break bar; the guest saw only white on its twin,
+           although the twin's health component already had health=0 and positive break health.
+Cause:     GenericBar had the correct Current Instance, but its Blueprint also read the manager's single equipped-car
+           state, i.e. the guest's own intact part. The twin's actual breaking state never reached that display path.
+           UMG function hooks registered successfully but were never invoked by this widget (fixed=0).
+Found by:  live UMG class enumeration, Current Instance vs GetInstanceBarAmount outputs, and real graphics captures.
+           Synthetic SetHealth alone did not produce the native red event; the final test uses real Scrapper hits.
+Fix:       playersync TD.mechanicUITick updates only twin items' HealthBar/BreakBar directly from Current Instance
+           every 100 ms, including percent and red-bar visibility. Own-car native UI is deliberately left untouched.
+Commit:    -    Test: twin-state-test.ps1 15/15 (real damage); native/twin screenshots both show the red bar
+
 ## 2026-11-20 - the other car's cracked glass and flat tires were missing
 Symptom:   the owner's door glass / installed tire broke locally, but the other player's twin showed neither the icon
            nor the gameplay visual; repairs had the same problem in reverse.

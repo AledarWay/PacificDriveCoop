@@ -1311,6 +1311,42 @@ function TD.hookSlotLookup()
     end)
 end
 
+-- GenericBar's Blueprint reads the manager's one equipped-car state for break colours even when Current Instance is
+-- a twin's item. UMG function hooks never fire for this widget in the current UE4SS build, so update the live HUD bar
+-- directly from its Current Instance. This is display-only and works for own and twin items, including open-bar edits.
+function TD.mechanicUITick()
+    CoopSyncMechanicUI = CoopSyncMechanicUI or { updated = 0 }
+    local HC = StaticFindObject("/Game/Gameplay/Inventory/GenericItemProperties/Components/BP_HealthComponent.BP_HealthComponent_C")
+    if not HC then return end
+    for _, w in ipairs(FindAllOf("UMG_HighlightWidget_BasicInfo_HUD_C") or {}) do
+        if w:IsValid() and w:GetFullName():find("PDP_PlayerHUD_Main_C", 1, true) then
+            pcall(function()
+                local b = w.HealthDurabilityBar
+                local it = b["Current Instance"]
+                local a = it and it:IsValid() and it:GetActorManifestation()
+                local car, g = a, 0
+                while car and car:IsValid() and g < 10 do
+                    local p = car:GetAttachParentActor()
+                    if not (p and p:IsValid()) then break end
+                    car, g = p, g + 1
+                end
+                if not (car and car:IsValid() and Twin.isTwin(car)) then return end
+                local h = a and a:IsValid() and a:GetComponentByClass(HC)
+                if not h then return end
+                local max, maxBreak = h:HC_GetMaxHealth(), h:HC_GetMaxBreakHealth()
+                local breaking = h:HC_IsBreaking()
+                b.NeedsUpdateEveryFrame = false
+                b.HasBreakBar = maxBreak > 0
+                b.HealthBar:SetPercent(max > 0 and h:HC_GetHealth() / max or 0)
+                b.BreakBar:SetPercent(breaking and maxBreak > 0 and h:HC_GetBreakHealth() / maxBreak or 1)
+                b.HealthBar:SetVisibility(0)
+                b.BreakBar:SetVisibility(breaking and 0 or 1)
+                CoopSyncMechanicUI.updated = CoopSyncMechanicUI.updated + 1
+            end)
+        end
+    end
+end
+
 -- the door n of car a highlight belongs to (its door actor, the door slot's spot, the body's EnterDoor), else nil
 function TD.doorOfHighlight(car, hc, owner)
     if hc:GetFName():ToString() == "Highlight_EnterDoor" then return 1 end
@@ -4826,6 +4862,10 @@ function M.start(syncModule, r, channelDir, opts)
         local okN, eN = pcall(TD.nativeTick)
         if not okN then err("native: " .. tostring(eN)) end
     end, "p.apply")
+    loop(100, function()
+        if gone() then return true end
+        pcall(TD.mechanicUITick)
+    end)
     loop(1, function()
         if gone() then return true end
         local okP, eP = pcall(puppetFrame)

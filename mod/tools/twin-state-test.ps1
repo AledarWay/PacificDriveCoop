@@ -127,6 +127,22 @@ Check "guest: its own wheel untouched" ([math]::Abs((Num $gw 0) - $gw0) -lt 1) "
 $g = StInfo $cd; $h = StInfo $hd
 Check "no state errors, both sides sent and received" ($g -match 'state_errors=0' -and $h -match 'state_errors=0' -and $g -match 'es_recv=[1-9]' -and $h -match 'es_recv=[1-9]') "guest: $g | host: $h"
 
+"=== 6. the highlight's GenericBar reads the twin's break state, not the local own car's"
+for ($i = 0; $i -lt 80; $i++) {
+    Probe $hd "PB_CAR = 'own' PB_SLOT = '$w' PB_N = 1 PB_DMG = 5" 'part-break-probe.lua' | Out-Null
+    Start-Sleep -Milliseconds 450
+    $hw = PartState $hd 'own' $w
+    if ((Num $hw 0) -le 0 -and (Num $hw 6) -gt 0) { break }
+}
+"  host real Scrapper hits: $hw"
+Start-Sleep 4
+"  guest mechanic mode: " + (Send $cd "FindFirstOf('BP_CarManager_C'):SetMechanicMode(true) return 'on'")
+"  guest aims at that twin wheel: " + (Send $cd "LOOK_OWN = false LOOK_DZ = 0 LOOK_SLOT = '$w' $(Get-Content "$t\cmds\twin-parts-look.lua" -Raw)")
+Start-Sleep 3
+$ui = Send $cd "local T = CoopPlayers.twinModule() local want for _, c in ipairs(FindAllOf('BP_PlayerCarNew_C') or {}) do if c:IsValid() and T.isTwin(c) then want = T.twinContainer(c):GetSlot(FName('$w')).Items[1] end end for _, w in ipairs(FindAllOf('UMG_HighlightWidget_BasicInfo_HUD_C') or {}) do if w:IsValid() and w:GetFullName():find('PDP_PlayerHUD_Main_C', 1, true) then local b = w.HealthDurabilityBar local it = b['Current Instance'] local u = rawget(_G, 'CoopSyncMechanicUI') return string.format('same=%s visible=%s needs=%s updated=%s', tostring(it and want and it:IsValid() and want:IsValid() and it:GetAddress() == want:GetAddress()), tostring(b.BreakBar:GetVisibility()), tostring(b.NeedsUpdateEveryFrame), tostring(u and u.updated)) end end return 'no live GenericBar'"
+Check "the visible bar uses the twin item's red break percent" ($ui -match 'same=true' -and $ui -match 'visible=0' -and $ui -match 'updated=[1-9]') $ui
+"  guest mechanic mode off: " + (Send $cd "FindFirstOf('BP_CarManager_C'):SetMechanicMode(false) return 'off'")
+
 "  errors host: " + (Send $hd "return CoopPlayers.report()")
 "  errors guest: " + (Send $cd "return CoopPlayers.report()")
 "=== RESULT: $script:pass passed, $script:fail failed"

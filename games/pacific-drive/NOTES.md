@@ -4502,11 +4502,21 @@ Owner: "more extended, realistic tests - find and fix the problems".
   player detaches at the rear. Full backseat-test 19/19, including all previous doorless/rear-entry scenarios.
   Failed and not retained: making the mesh kinematic blocked the exit and broke doors; the earlier 2.7 s hide caused
   the reported blink. Do not reintroduce either.
-- **Mechanic UI remains OPEN; experimental hook REVERTED.** A scoped SetCarEquipSlot inventory-container swap was
-  implemented for base, regular and Crafting item-info classes, but no automated scene produced a real widget to verify
-  it. Graphics runs enabled mechanic mode before aiming and also called the highlighted part's OpenPartContext; both
-  regular and Crafting FindAllOf counts stayed 0. Therefore the hook and synthetic UI check were removed before commit.
-  The underlying values still reach the twin; only the visible local-car UI binding is unfixed. Next attempt needs a
-  real user-opened mechanic card / UI object dump, not another blind hook. Do not call this part fixed.
+- **Mechanic UI FIXED (2026-11-20).** The actual widgets are UMG_HighlightWidget_Compare_Slot_C and
+  UMG_HighlightWidget_BasicInfo_HUD_C / UMG_ItemInfo_GenericBar_C, not the regular/Crafting item-info classes first
+  guessed. Current Instance was already the correct twin item, but GetInstanceBarAmount returned the guest's local
+  own-car Use Break Colors=false / BreakPercent=1. Its health component simultaneously had health=0, break>0 and
+  HC_IsBreaking=true. The Blueprint therefore read the manager's one equipped-car state, not just Current Instance.
+  RegisterHook accepted the UMG functions (54 hooks, waiting=0, failed=0) but the callback count stayed fixed=0 even
+  with NeedsUpdateEveryFrame=true, so UMG hooks were not a usable path.
+- Final implementation: TD.mechanicUITick every 100 ms only for an item whose manifestation belongs to a Twin.isTwin
+  car. It writes health / break percent and BreakBar visibility from Current Instance, without inventory swaps or any
+  gameplay writes. Own-car native UI is not touched. A direct tick applied to all items was tested and REVERTED after
+  it overwrote the host's correct native bar.
+- Test correction: SetHealth/SetBreakHealth alone did not trigger the native red UI event, and repeated instant hits
+  could break the wheel. The regression now issues real Scrapper hits with 450 ms pauses until the first break>0.
+  Final twin-state 15/15: health=0, break=40, same=true, visible=0, updated=22. Separate graphics captures on host
+  and guest both show the red bar and matching status icons. NeedsUpdateEveryFrame reads back as TrivialObject and is
+  not a valid assertion. No release tag yet; quick-suite is running.
 - Related regressions after these changes: loot-live 15/15 and revisit 11/11 (including its total frame budget).
 - Related static checks throughout: lua-lint 234 files, PowerShell PSParser and git diff --check. No release created.

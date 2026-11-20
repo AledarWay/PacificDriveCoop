@@ -4,9 +4,11 @@ Read this first, then `NOTES.md` (same folder: the full engineering log, newest 
 The owner writes in Russian; answers, task lists and summaries in Russian. Code, comments, NOTES in English.
 
 ## Latest (2026-11-20) - live-findings fix round
-**Commit: 0b2e415 — four verified fixes.** Mechanic UI remains OPEN and its experimental hook was
-reverted: graphics probes could not instantiate regular/Crafting item-info even after OpenPartContext, so no UI claim
-is made. The next attempt needs a real user-opened widget dump. Green changes:
+**Commit: 0b2e415 — four verified fixes; Mechanic UI now FIXED separately (UI commit next).** GenericBar's Blueprint
+read the manager's local equipped-car state despite a correct twin Current Instance. UMG hooks accepted but never
+fired (fixed=0). TD.mechanicUITick now updates only twin items directly from Current Instance every 100 ms; own-car
+native UI is untouched. Real Scrapper-hit regression twin-state 15/15 (health 0, break 40), plus native/twin
+screenshots with matching red bars. Quick-suite is running before alpha22. Earlier four fixes:
 - Installed item ActiveEffects sync through ES field 8 and EF repair/driving return (SE_Cracked / SE_FlatTire included);
   all 14 non-UI twin-state checks pass headless and graphics.
 - Exact-match world-item adoption within 50 cm plus immediate authoritative S for guest DROP: interact LOOT PASS,

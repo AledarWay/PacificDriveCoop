@@ -38,6 +38,8 @@ The instability and the sky:
   The fog and the sun swing back and forth with the weather, and the guest was up to 2 s behind (up to 10 % brighter
   or darker at a moment); now within about 1 %.
 Live two-window test fixes:
+- The mechanic highlight's durability bar now uses the highlighted item's own health and break health. The other car's
+  red damage stage no longer stays white, and your own car's native bar keeps the game's behavior.
 - Cracked door glass and flat tires now reach the other player's copy of the car through the game's own status-effect
   system. Repairing the other player's part removes the effect on the owner's car too.
 - Taking a wheel off and harvesting it no longer leaves a whole guest-only wheel behind. Matching local world items
