@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 CoopSync is an unofficial two-player co-op mod for Pacific Drive (UE4 4.27, project name `PenDriverPro`). It is built on UE4SS and ships as a zip with an installer. The host and guest each play in their own car; the mod replicates the zone, loot, hazards, and both cars over a Steam P2P lobby embedded in the game.
 
-**Current alpha:** 0.1.0-alpha22 (being prepared). `mod/release/CHANGELOG.txt` is the authoritative version log. Update it and check `mod/release/README.txt` before every build.
+**Current alpha:** 0.1.0-alpha22 (released 2026-11-20). `mod/release/CHANGELOG.txt` is the authoritative version log. Update it and check `mod/release/README.txt` before every build.
 
 ## Repository layout
 

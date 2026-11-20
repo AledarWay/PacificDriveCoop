@@ -8,7 +8,8 @@ The owner writes in Russian; answers, task lists and summaries in Russian. Code,
 read the manager's local equipped-car state despite a correct twin Current Instance. UMG hooks accepted but never
 fired (fixed=0). TD.mechanicUITick now updates only twin items directly from Current Instance every 100 ms; own-car
 native UI is untouched. Real Scrapper-hit regression twin-state 15/15 (health 0, break 40), plus native/twin
-screenshots with matching red bars. Quick-suite is running before alpha22. Earlier four fixes:
+screenshots with matching red bars. Quick-suite plus reruns are green except the known unrelated cars 38/39 bot/physics
+flake. Alpha22 ZIP built locally (8.8 MB), install-test 10/10; tag v0.1.0-alpha22 is authorized and is the next step. Earlier four fixes:
 - Installed item ActiveEffects sync through ES field 8 and EF repair/driving return (SE_Cracked / SE_FlatTire included);
   all 14 non-UI twin-state checks pass headless and graphics.
 - Exact-match world-item adoption within 50 cm plus immediate authoritative S for guest DROP: interact LOOT PASS,

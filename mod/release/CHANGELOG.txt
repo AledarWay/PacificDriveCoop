@@ -4,7 +4,7 @@ CoopSync for Pacific Drive - version history
 Newest first. The installed mod's version is in files\VERSION.txt of the zip.
 
 
-0.1.0-alpha22 (being prepared)
+0.1.0-alpha22 (2026-11-20)
 ------------------------------
 After the owner's alpha 21 test with a friend (host with an advanced save, guest with a new game).
 The garage map:

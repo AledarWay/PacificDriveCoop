@@ -4520,3 +4520,15 @@ Owner: "more extended, realistic tests - find and fix the problems".
   not a valid assertion. No release tag yet; quick-suite is running.
 - Related regressions after these changes: loot-live 15/15 and revisit 11/11 (including its total frame budget).
 - Related static checks throughout: lua-lint 234 files, PowerShell PSParser and git diff --check. No release created.
+
+## Alpha22 pre-release quick-suite (2026-11-20)
+- Full quick suite after all five live fixes: 41/46 passed in one sequential run, including twin-state 15/15,
+  anchor 14/14, backseat 19/19, interact LOOT PASS, loot-live 15/15, entry-spin 5/5 and startflow 30/30.
+- Five reruns required: fuelcan (container-full/loot query failures), staybehind (one extra-car status), cars (the known
+  own-car moved 10), revisit (guest state 24.06 ms), garage-seat (old logical-door assertion after the visual fix).
+- garage-seat-test was corrected to require the rear door plus hidden1=false and angle1<10; the driver's logical flag
+  may open for the game's exit, but its mesh must not move. This is the same contract as the expanded backseat-test.
+- Rerun results: fuelcan 5/5, staybehind 7/7, garage-seat 14/14, revisit 11/11. Cars remains the known unrelated
+  bot/physics failure 38/39 (guest own car moved 10); all other quick tests passed in the run or targeted rerun.
+- Local `local/release/PacificDriveCoop-0.1.0-alpha22.zip` built (8.8 MB), symbols saved, install-test 10/10.
+  Push and tag v0.1.0-alpha22 will build and publish the GitHub pre-release with the zip and symbols.

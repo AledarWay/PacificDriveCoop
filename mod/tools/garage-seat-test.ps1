@@ -63,7 +63,9 @@ foreach ($role in 'host', 'client') {
     $w = Send $hd "return EW_READ()"
     "  exit: $w"
     $op = if ($w -match 'opened=(\S+)') { $Matches[1] } else { '?' }
-    Check "$($role): out by its back door: that door opened, the driver's did not" ($op -match "$bn" -and $op -notmatch '1') "opened $op"
+    $hidden = if ($w -match 'hidden1=(\S+)') { $Matches[1] } else { '?' }
+    $angle = if ($w -match 'angle1=([\d.]+)') { [double]$Matches[1] } else { 1e9 }
+    Check "$($role): out by its back door: that door opened, the driver's mesh stayed shut" ($op -match "$bn" -and $hidden -eq 'false' -and $angle -lt 10) "opened $op hidden=$hidden angle=$angle"
     $ey = if ($w -match 'end=-?\d+,(-?\d+)') { [double]$Matches[1] } else { 0 }
     Check "$($role): it stands on that door's side of the car" ($(if ($bn -eq 3) { $ey -lt -80 } else { $ey -gt 80 })) "end y $ey (door $bn)"
     $a = Send $hd $att; $s = Send $hd $sock
