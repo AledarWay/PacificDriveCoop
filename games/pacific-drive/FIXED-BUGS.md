@@ -17,6 +17,25 @@ Commit:    hash    Test: which test covers it now
 
 ---
 
+## 2026-11-21 - the driver's door opened when leaving the own back seat by the in-car E
+Symptom:   sitting in the own car's back seat and exiting by the in-car E, the driver's door swung open together with
+           the back door (alpha22's fix did not hold live). Forcing the driver door shut instead faded the screen to
+           black (the game's blocked-exit fade).
+Cause:     the game hardcodes the front-left (driver) door for the in-car exit and opens it with a physics impulse.
+           alpha22 held the door mesh's relative rotation, but a rotation write cannot stop a simulating body - physics
+           won and the door rendered open. The ExitDoor-highlight test path exits out the back door directly and never
+           opens the driver door, so backseat-test (19/19) missed the live in-car E path.
+Found by:  the owner's live two-window test + a 25 ms door-mesh watch and an exit-call trace (exit-trace.lua). Failed
+           variants recorded in NOTES: kinematic mesh breaks the constraint (the game destroys the door); physics
+           velocity setters crash; AttemptShut alone black-screens; DoorTargetAngle=0 leaves the impulse twitch.
+Fix:       playersync TD.backSeatExit holds the driver door shut with the game's OWN AttemptShut (10 ms) for the exit
+           window and opens the back door; hookDoors registers a PRE-hook on BP_CarPart_Door_Base_C:GetFLDoorAngle that
+           returns 90 for the own driver door during the window, so the exit safety trace clears (no black screen). The
+           driver door still twitches ~8 deg from the impulse before AttemptShut brakes it - the safe floor (README
+           Known issues). UE4SS: POST-only hooks (pre=nil) do not fire here; a pre-hook return overrides only the return
+           value, not a void body.
+Commit:    d16ba98    Test: backseat-test.ps1 23/23 (new in-car E section via Exit Car(false,false)); owner-confirmed live
+
 ## 2026-11-20 - the twin's red break-health bar stayed white in mechanic UI
 Symptom:   the host sawed a door past white health into the red break bar; the guest saw only white on its twin,
            although the twin's health component already had health=0 and positive break health.

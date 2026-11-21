@@ -4,7 +4,7 @@ Read this first, then `NOTES.md` (same folder: the full engineering log, newest 
 The owner writes in Russian; answers, task lists and summaries in Russian. Code, comments, NOTES in English.
 
 ## Latest (2026-11-20) - back-seat exit by the in-car E fixed (live joint test)
-**Commit: (pending) - playersync TD.backSeatExit + GetFLDoorAngle pre-hook; backseat-test in-car E coverage.**
+**Commit: d16ba98 - playersync TD.backSeatExit + GetFLDoorAngle pre-hook; backseat-test in-car E coverage.**
 The owner's live two-window test (garage, reference saves, channel chan-manual-20261120-a) found the alpha22 back-seat
 exit fix did not hold: exiting the own car's back seat by the in-car E opened the driver's door together with the back
 door. Root cause: the game hardcodes the front-left (driver) door for the in-car exit and opens it with a physics
