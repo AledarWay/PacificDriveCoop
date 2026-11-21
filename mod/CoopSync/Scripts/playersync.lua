@@ -50,6 +50,10 @@ local function loop(ms, fn, label)
     return h
 end
 local SEND_MS, APPLY_MS = 100, 33
+-- a load / reunion dumps thousands of lines at once; parsing them all in one apply tick hitched the frame (the owner's
+-- two-PC test: players apply up to 357 ms). Process a slice per tick (TD.pendingLines buffers the rest in order for the
+-- next ticks). Late pose samples are skipped by the interpolation (it renders INTERP_MS in the past by sender time);
+-- events keep their order. The buffer is bounded so a sustained flood still drains (process more past 5000).
 local SMOOTH = 0.6       -- fraction of the remaining distance covered per apply step
 local EXTRAPOLATE_MAX = 0.3 -- seconds a sample may be extrapolated along its velocity
 local MAX_SPEED = 4000      -- units/s cap for the velocity estimate (~145 km/h, as TD.KIN_MAX_SPEED: the car goes faster than 2000)
@@ -3941,7 +3945,13 @@ local function section(name, t0)
 end
 local function applyTick()
     local ts = os.clock()
-    local lines = readLines()
+    local fresh = readLines()
+    local lines = TD.pendingLines or {}
+    TD.pendingLines = {}
+    for i = 1, #fresh do lines[#lines + 1] = fresh[i] end
+    local stop = math.min(#lines, math.max(300, #lines - 5000))
+    for i = stop + 1, #lines do TD.pendingLines[#TD.pendingLines + 1] = lines[i] end
+    for i = #lines, stop + 1, -1 do lines[i] = nil end
     ts = section("apply_read", ts)
     for _, line in ipairs(lines) do
         local t = {}
@@ -4851,6 +4861,7 @@ function M.start(syncModule, r, channelDir, opts)
     outStream, inStream = role == "host" and "host.fast" or "client.fast", role == "host" and "client.fast" or "host.fast"
     local f = io.open(inFile, "rb")
     if f then readOff = f:seek("end") f:close() end -- ignore samples from before this session
+    TD.pendingLines = {} -- drop a previous world's buffered lines
     Link.drain(inStream)
     -- the session belongs to this map: stop once the game travels elsewhere (home, death), so a player
     -- in its own garage does not show up walking around in the other player's zone

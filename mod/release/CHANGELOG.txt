@@ -18,6 +18,10 @@ Live two-PC test with a friend (2026-11-20):
   waits at the exit under the loading screen until the host's zone is ready, then loads into the same zone. Before, a
   timeout lifted the loading screen while the guest legitimately waited, the world resumed, the car rolled out of the
   exit and the guest stayed in the old zone while the host went on.
+Performance:
+- Fewer brief freezes when a lot happens at once (arriving in a zone, reuniting after a split): the mod now spreads a
+  big burst of incoming updates over several frames instead of applying it all in one frame. The other player's car and
+  puppet stay smooth (the motion interpolation skips late samples); loot and other events keep their order.
 
 
 0.1.0-alpha22 (2026-11-20)

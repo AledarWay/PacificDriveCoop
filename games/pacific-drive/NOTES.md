@@ -4680,3 +4680,14 @@ Owner: "more extended, realistic tests - find and fix the problems".
   S at once (synchronous on the game thread). Sent via send.ps1 -Session (CoopSyncSession is in the CoopSync mod's state,
   not CoopDev's). Validated standalone: atExit=true playing=false. With the fix the cover stays dark at the exit; the
   real slow-save race (23 s Steam transfer) is confirmed by the owner's next two-PC test.
+
+## Performance work (2026-11-21, owner priorities: smooth bursts, profile, optimize Lua tick; keep twin detail)
+- playersync applyTick burst smoothing: a load/reunion dumps thousands of lines at once and parsing them all in one tick
+  hitched the frame (players apply up to 357 ms, apply_parse 283). applyTick now processes a slice (300 lines, more once
+  the buffer passes 5000 so a sustained flood drains) and buffers the rest in TD.pendingLines in order for the next ticks
+  (33 ms). Late pose samples are skipped by the interpolation (renders INTERP_MS=120 in the past by sender time, hist
+  pruned by receive time); events keep their order. TD.pendingLines reset in M.start (a new world drops the old buffer).
+  Stored on TD, not new module locals: playersync's main chunk is at Lua's 200-local limit (luac54 "too many local
+  variables"). This smooths the rare bursts (stutters); the steady-state apply (~1.25 ms, few lines) is unchanged, so the
+  steady ~35 fps (mostly rendering the replicated world) is not raised by this - that needs the Lua-tick hot paths or a
+  fidelity tradeoff the owner declined. Validating on sync/interact/loot-live/players/nextzone/twin-state/anomaly/collide.
