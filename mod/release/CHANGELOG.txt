@@ -4,6 +4,16 @@ CoopSync for Pacific Drive - version history
 Newest first. The installed mod's version is in files\VERSION.txt of the zip.
 
 
+0.1.0-alpha23 (being prepared)
+------------------------------
+Live two-window test (2026-11-20):
+- Getting out of the own car's back seat by the in-car E: the driver's door no longer swings open together with the
+  back door. The game always exits through the driver's door and opens it with a physics impulse; the mod now holds it
+  shut with the game's own door-shut and reports the door open to the exit safety check, so the exit is not treated as
+  blocked (no black screen). The back door opens for the exit and the player steps out beside it. The driver's door
+  still twitches briefly (about 8 degrees) from the game's impulse before it is shut - see Known issues.
+
+
 0.1.0-alpha22 (2026-11-20)
 ------------------------------
 After the owner's alpha 21 test with a friend (host with an advanced save, guest with a new game).

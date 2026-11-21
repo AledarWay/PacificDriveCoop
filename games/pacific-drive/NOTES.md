@@ -4532,3 +4532,112 @@ Owner: "more extended, realistic tests - find and fix the problems".
   bot/physics failure 38/39 (guest own car moved 10); all other quick tests passed in the run or targeted rerun.
 - Local `local/release/PacificDriveCoop-0.1.0-alpha22.zip` built (8.8 MB), symbols saved, install-test 10/10.
   Push and tag v0.1.0-alpha22 will build and publish the GitHub pre-release with the zip and symbols.
+
+## Live two-window test: back-seat exit STILL opens the driver's door (2026-11-20, OPEN)
+- Owner reproduced alpha22's "fixed" back-seat exit in the garage (host, own car, in by the back left door n=3, out by
+  the in-car E). The driver's door swings open together with the back door. The alpha22 fix (0b2e415, TD.backSeatExit:
+  keep the mesh visible, hold its relative rotation, omit D1 from the pose) did not hold live.
+- Read-only 25 ms watch (backseat-watch2.txt) on the host, two reproductions. Timeline of the second:
+  CALL exit n=1 (the game's AttemptDoorExit on the DRIVER's door, pawn still attached): D1 MainMesh yaw=-3.5 sim=true
+  (the body already started a PHYSICS swing before the post-body hook); D3 yaw=0. AFTER (backSeatExit ran): D3 yaw=-3.5
+  sim=true (it opened the back door). +1143 ms CALL shut n=1: D1 yaw=49.6 sim=true (fully open despite the hold).
+  +1208 ms CALL shut n=3 (backSeatExit's scheduled back-door shut): D1 yaw=25.7 (closing after the game's own shut).
+- Root cause: TD.backSeatExit holds D1.MainMesh with K2_SetRelativeRotation, but the mesh is SIMULATING PHYSICS during
+  the exit; a rotation write cannot stop a simulating body, physics wins and the door renders open. It also captures
+  the rotation AFTER the body opened it (-3.5), so even a sticking hold would keep it ajar, not shut.
+- Why backseat-test (19/19) missed it: the test exits by the ExitDoor HIGHLIGHT (car-e.lua CE_HL='ExitDoor'), the owner
+  exits by the in-car E (audit input carInteract=true). Different game exit paths; the test's path did not produce the
+  live physics swing (or its angle1<10 tolerance hid a small ajar). The test must also cover the in-car carInteract exit.
+- Restorable saves taken in BOTH copies before the state-changing experiment: slot 8, backed up to
+  local/advsave/coop-backseat2-host.sav (213241 b) and coop-backseat2-client.sav (217771 b).
+- Next: controlled live experiment - on the in-car back-seat exit make D1's mesh kinematic for the exit window and hold
+  the SHUT rotation captured before the swing, open/shut the back door as now, restore physics after. The earlier
+  kinematic variant "blocked exit and broke the door" (it also re-attached the mesh); this one only toggles physics +
+  rotation, no attach. If the character exit stalls, revert. Read-only watch validated each UE4SS call once before
+  looping (the first watch looped a wrong-arity IsSimulatingPhysics and logged ~14k binding errors - do not repeat).
+- Kinematic experiment FAILED (backseat-exp.txt): on the in-car exit (pawn rel -45,-46, rear seat) D1 was made
+  kinematic + held at yaw 0; the back door opened. But D1 then VANISHED from the object list (its physics constraint
+  broke -> the game's OnConstraintBroken destroyed the door, owner: "the driver's door fell off"). The character stayed
+  seated through the 1.7 s window (exit blocked), then got out passing THROUGH the shut back door (clipping). Confirms
+  the earlier reverted kinematic variant: SetSimulatePhysics(false) on a door mesh breaks its constraint. Do NOT make
+  the door kinematic. Two mesh-workaround failures now (hide -> blink; kinematic -> breaks + blocks).
+- Direction: stop fighting the mesh. Either (a) keep D1 simulating but freeze its swing by zeroing angular velocity +
+  rotation each frame (constraint intact), or (b) the clean native fix - make the game's own exit use the BACK door the
+  player sits at, so D1 is never opened. Investigate how the game selects the exit door (car / controller exit path).
+- Exit trace (exit-trace.lua, host, normal in-car back-seat exit): the sequence is UpdateExitDoorHighlight ->
+  AttemptOpen x2 + AttemptDoorExit on D1 -> character "Exit Car"(false,false) -> LocateSafeExitPoint/GetExitPoint (the
+  mod already moved the exit spot to the back door) -> OnPlayerStartExitCar_Event -> CarExitAnimAttemptComplete(TRUE)
+  at +0.15 s -> ExitValid -> LocateSafeExitPoint/GetExitPoint every frame as the character steps out. The exit completes
+  IMMEDIATELY, independent of the door angle: holding D1 shut cannot block it. The door open is purely visual; the game
+  hardcodes the FL (driver) door (GetFLDoorAngle spam), ManualActivate_ExitDoor was not called. Redirecting the source
+  door is not exposed.
+- Velocity-damping probe CRASHED the host (dump UE4CC-Windows-33745020425EA64DC53E709AC1C77DC2_0000): calling
+  SetPhysicsAngularVelocityInDegrees / SetPhysicsLinearVelocityInDegrees / SetAllPhysicsAngularVelocityInDegrees on the
+  door mesh (arity 3: vec, BoneName, bAddToExisting) killed the game. Do NOT use these setters on car doors.
+- Next experiment (safe, game-native): on the rear-seat exit open the back door and repeatedly call the game's own
+  D1:AttemptShut() from t=0 through the window (it closes a simulating door without breaking the constraint, proven by
+  the game's own +1.1 s shut). No physics setters, no kinematic. Exit completes regardless.
+- Experiment v3 (game-native AttemptShut spam on D1, backseat-exp3.txt): D1 blinked open to -9 deg then shut to 0 by
+  +284 ms and stayed shut; the back door D3 opened smoothly to 52 deg and shut; the character got out (foot). BUT the
+  owner saw a BLACK SCREEN on exit and did not see the back door open.
+- Owner's decisive clue: the black screen is the game's BLOCKED-EXIT fade - it appears when an obstacle stops the door
+  opening. A normal alpha22 exit (D1 left open) has NO black screen; both doors open. So forcing D1 shut makes the
+  game's exit validation treat the exit as blocked -> black screen. CONFIRMED CONSTRAINT: the game's in-car exit
+  hardcodes the front-left (driver) door and requires it OPEN for a clean exit (GetFLDoorAngle / ExitValid /
+  LocateSafeExitPoint trace from it). The car exposes NO settable exit-door property (24 exit/door props dumped: only
+  exit-point components TempExitLocation/ExitPoint/ExitCheckPoints/TeleportExitLocation, the door slots, highlights).
+  Therefore ANY fix that keeps D1 closed during the game's exit will black-screen. Holding/kinematic/velocity/shut-spam
+  all fail for this reason (or break the door / crash).
+- The only clean way to "only the back door opens, no black screen" is to BYPASS the game's FL exit for the rear seat:
+  a mod-driven rear-seat exit (open the back door game-natively, place the character at the back-door exit spot, play
+  the exit) instead of letting the game run its driver-door exit. To investigate: how the game places the character
+  outside (LocateSafeExitPoint/GetExitPoint transform) and whether the mod can drive a rear-door exit cleanly.
+- Experiment v4 (backseat-exp4.txt): pre-hook AttemptOpen on D1 returning true does NOT skip the BP body - D1 still swung
+  open to 54 deg (both doors opened together). A pre-hook return only overrides the RETURN VALUE (as K2_ShouldHighlight
+  does), not the side effect of a void function. No black screen here only because D1 was in fact open. So skipping the
+  open via pre-hook return is not possible.
+- Hook params are UE4SS Param userdata with :get() (exit-trace's val() uses x:get()); therefore :set() should write an
+  output param back. Next v5: hold D1 shut via game-native AttemptShut (v3) AND post-hook LocateSafeExitPoint /
+  GetExitPoint to set Failed_UsingSafetyTrace=false and Transform=the back-door exit spot (car.TempExitLocation world
+  transform), plus GetFLDoorAngle->90, so the game's blocked-exit fade (black screen) is suppressed while D1 stays shut.
+- Experiment v5 SUCCESS (backseat-exp5.txt, clean host): hold D1 shut via game-native AttemptShut + pre-hook
+  GetFLDoorAngle on D1 -> 90 during the rear-exit window + open the back door. Result: D1 only twitched to -8 deg then
+  shut to 0 by +250 ms and stayed shut; the back door opened to 52 deg and shut; the character exited normally; NO black
+  screen (owner: "the driver's door only twitched slightly, already better, exited normally"). The output-param overrides
+  (LocateSafeExitPoint/GetExitPoint Failed:=false) NEVER fired (Param:set count 0) - they were not needed. The black
+  screen is suppressed by GetFLDoorAngle->90 alone: LocateSafeExitPoint's safety trace starts from the door's OPEN angle,
+  so with the angle reported open the trace clears the (visually shut) door and Failed_UsingSafetyTrace stays false.
+- Remaining imperfection: D1 twitches ~8 deg for ~0.25 s (the AttemptOpen body's open impulse before AttemptShut closes
+  it). v6: trigger the shut earlier (right after the AttemptOpen body, post-hook) + tighter hold to shrink the twitch.
+- Experiment v6 failed to trigger: a POST-only hook (CoopSyncHook path, nil, post) does NOT fire in this UE4SS build -
+  RegisterHook(path, nil, post) never calls post. Confirmed twice: v5's LocateSafeExitPoint/GetExitPoint post overrides
+  never ran (Param:set count 0), and v6's AttemptOpen post trigger never ran (no EXP START; the exit fell through to
+  alpha22's TD.backSeatExit, D1 opened fully). ONLY PRE hooks (single callback) fire. The final fix must use pre hooks;
+  the trigger can stay TD.onDoorCall (the AttemptDoorExit pre hook) as in v5.
+- Experiment v7 (backseat-exp7.txt, pre-hook AttemptOpen trigger + 10 ms AttemptShut hold + GetFLDoorAngle->90): D1 peak
+  -7.8 deg then shut to 0 by +250 ms; back door to 52 deg; normal exit, no black screen (owner: "the driver's door
+  twitched just a little"). The ~8 deg / 0.25 s twitch is the AttemptOpen body's open impulse reversed by AttemptShut -
+  the safe minimum; the earlier trigger / tighter hold did not shrink the peak (the impulse magnitude is fixed). Zero
+  twitch would need unsafe physics (kinematic breaks, velocity setters crash) or a custom mod-driven exit bypass.
+- WORKING MECHANISM (to port into TD.backSeatExit): on the in-car rear-seat exit, open the back door game-natively,
+  hold D1 shut with repeated game-native AttemptShut (~10 ms) for the exit window, and PRE-hook
+  BP_CarPart_Door_Base_C:GetFLDoorAngle to return 90 for D1 during the window so the game's safety trace treats the exit
+  as unblocked (no black screen). Trigger via the existing AttemptDoorExit pre hook (TD.onDoorCall). Post-only hooks do
+  not fire; use pre hooks. The alpha22 rotation-hold / pose-omit is replaced by this.
+- Experiment v8 (backseat-exp8.txt): hold D1.DoorTargetAngle=0 (physical drive target closed, DoorOpen stays true) +
+  GetFLDoorAngle->90. The property is writable (readback 0). D1 STILL twitched to -7.7 deg then back to 0 by +250 ms -
+  same as v7. The game opens the door with an angular-VELOCITY impulse, not just a target angle; zeroing the target
+  reverses the drive but the imparted velocity carries the door ~8 deg before it brakes. Zeroing that velocity needs the
+  physics setters that crash the game. CONCLUSION: ~8 deg / 0.25 s twitch is the safe floor; zero twitch is not safely
+  achievable (kinematic breaks the door, velocity setters crash, target/rotation/shut holds all leave the impulse twitch).
+  A custom mod-driven exit bypass could avoid the impulse but would replace the game's exit animation/camera (janky risk).
+- Ported into the code: playersync TD.backSeatExit now holds D1 shut with the game's AttemptShut (10 ms, EXIT_SHUT_MS+300
+  window) and sets TD.backSeatAngleUntil; hookDoors registers a PRE-hook on BP_CarPart_Door_Base_C:GetFLDoorAngle that
+  returns 90 for the own D1 during that window. lua-lint OK (234 files), deployed. Owner confirmed the fix in the real
+  build (garage, in-car E): back door opens, driver door only twitches and shuts, normal exit, no black screen.
+- backseat-test gained an in-car E exit section. The trigger that replicates the owner's animated exit is the character's
+  "Exit Car"(false, false) - NOT Command Interact (does nothing seated) and NOT the car's Interact(true) (no exit) and NOT
+  botExitCar (that is "Exit Car"(false,true), the instant no-door exit). The ExitDoor-highlight exit (the test's original
+  path) goes out the back door directly and never opens D1 (angle1=0), which is why it missed the bug. Final backseat-test
+  with the fix: 23 passed, 0 failed (local/instances/backseat-fix-run3.log); the in-car section: opened=1,3, attached=false,
+  angle1=0.0 (D1 shut), out by the back door.

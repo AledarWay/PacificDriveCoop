@@ -76,6 +76,34 @@ foreach ($side in @(@{ name = 'host'; dir = $hd; n = 3 }, @{ name = 'guest'; dir
     Check "$who`: out by the back door (beside it, not by the driver's door)" ($w.attached -eq 'false' -and $byBack -and $sideOk) "end $e | door1 $($w.door1) door$bn $dB"
 }
 
+# (the in-car E exit - the owner's live path 2026-11-20, missed by the ExitDoor-highlight exit above: the game opens
+# the driver's door with a physics impulse; TD.backSeatExit holds it shut via AttemptShut + GetFLDoorAngle->open so the
+# exit is not blocked. The driver's door may twitch ~8 deg from the impulse - allowed < 12; the back door opens.)
+"=== the host out of its own back seat by the in-car E (the live path)"
+if ((Send $hd $att) -match 'true') { "  out first: " + (Out $hd); Start-Sleep 5 }
+"  free the back seat: " + (Send $hd "local sl = CoopPlayers.twinModule().ownCar().SLOT_BackSeatLeft.ItemSlot local n = sl.Items:GetArrayNum() if n > 0 then sl:RemoveItem(sl.Items[1]) end return n .. ' -> ' .. sl.Items:GetArrayNum()")
+"  to its back door: " + (Send $hd "local p = FindFirstOf('PlayerController').Pawn local car = CoopPlayers.twinModule().ownCar() local KML = StaticFindObject('/Script/Engine.Default__KismetMathLibrary') local w = KML:TransformLocation(car:GetTransform(), { X = 0, Y = -260, Z = 0 }) p:K2_SetActorLocation({ X = w.X, Y = w.Y, Z = w.Z + 100 }, false, {}, true) return 'there'")
+Start-Sleep 2
+$aim = ''
+foreach ($dz in 0, 20, -20, 40) {
+    Send $hd "LOOK_OWN = true LOOK_DZ = $dz LOOK_SLOT = 'DoorsRL' $look" | Out-Null; Start-Sleep -Milliseconds 700
+    Send $hd "LOOK_OWN = true LOOK_DZ = $dz LOOK_SLOT = 'DoorsRL' $look" | Out-Null; Start-Sleep -Milliseconds 500
+    $aim = Send $hd "return tostring(CoopPlayers.ownBackDoorAimed())"
+    if ($aim -match "^3") { break }
+}
+"  E (aimed back door: $aim): " + (Press $hd)
+Start-Sleep 6
+$inSeat = Send $hd "return CoopPlayers.seatNowN()"
+"  watch: " + (Send $hd $watch)
+"  in-car E exit: " + (Send $hd "local p = FindFirstOf('PlayerController').Pawn local ok, e = pcall(function() p['Exit Car'](p, false, false) end) return 'Exit Car(false,false): ' .. tostring(ok) .. ' ' .. tostring(e or '')")
+Start-Sleep 8
+$w = KV (Send $hd "return EW_READ()")
+"  exit: $($w.raw)"
+Check "the host sat in its back seat 3" ($inSeat -eq "3") "seat: $inSeat"
+Check "in-car E: its back door opened for the exit" ($w.opened -match "3") "opened $($w.opened)"
+Check "in-car E: the driver's door stayed shut (only the impulse twitch, < 12 deg)" ($w.hidden1 -eq 'false' -and [double]$w.angle1 -lt 12) "hidden=$($w.hidden1) largest mesh angle=$($w.angle1)"
+Check "in-car E: the host got out (the exit was not blocked)" ($w.attached -eq 'false') "attached=$($w.attached)"
+
 DoorsNow 'the back seats'
 "=== the host at its own wheel, the guest at that driver's door (owner's two-games test: not lit, nothing to do with it)"
 # (cars-test's Tap: look at the twin's door until the game lights it)

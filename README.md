@@ -139,6 +139,9 @@ You need a strong PC for this.
 - In drive with the engine on, a car left alone creeps away. This is the game's own behaviour.
 - Rarely, after repeated driver hand-overs, a car can still tip nose down for a second. The door-hinge fix reduced
   this, but the remaining case is still under investigation; please send both reports if it happens.
+- Getting out of the back seat by the in-car E, the driver's door twitches briefly (about 8 degrees) before it shuts.
+  The game always exits through the driver's door and opens it with a physics impulse; the mod holds it shut and opens
+  the back door for the exit, but the impulse twitch remains. The exit itself works normally.
 - An anchor once showed up in both players' hands (alpha 20). The tests could not repeat it; if you see it, please
   send the reports and say how the anchor was taken.
 - The zone's light can look brighter in one game than in the other. The mod syncs the time of day and the

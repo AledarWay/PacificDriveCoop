@@ -3,7 +3,25 @@
 Read this first, then `NOTES.md` (same folder: the full engineering log, newest sections at the end).
 The owner writes in Russian; answers, task lists and summaries in Russian. Code, comments, NOTES in English.
 
-## Latest (2026-11-20) - live-findings fix round
+## Latest (2026-11-20) - back-seat exit by the in-car E fixed (live joint test)
+**Commit: (pending) - playersync TD.backSeatExit + GetFLDoorAngle pre-hook; backseat-test in-car E coverage.**
+The owner's live two-window test (garage, reference saves, channel chan-manual-20261120-a) found the alpha22 back-seat
+exit fix did not hold: exiting the own car's back seat by the in-car E opened the driver's door together with the back
+door. Root cause: the game hardcodes the front-left (driver) door for the in-car exit and opens it with a physics
+impulse; alpha22's rotation hold lost to the simulating mesh. The ExitDoor-highlight test path did not reproduce it
+(the owner exits by the in-car E, carInteract). Safe fix found by live experiments (NOTES "Live two-window test:
+back-seat exit STILL opens the driver's door"): hold D1 shut with the game's OWN AttemptShut (~10 ms) for the exit
+window + a PRE-hook on BP_CarPart_Door_Base_C:GetFLDoorAngle returning 90 for D1 during the window, so the game's exit
+safety trace does not treat the shut door as a blocked exit (which fades to black). The back door opens for the exit.
+Owner confirmed the fix works in the real build. Remaining imperfection (documented in README Known issues): D1 twitches
+~8 deg / 0.25 s from the game's open impulse before AttemptShut brakes it - the safe floor; zero is unsafe (kinematic
+breaks/destroys the door, physics velocity setters crash, target-angle/rotation holds leave the impulse twitch).
+backseat-test gained an in-car E exit section (angle1 < 12 allows the twitch). Failed approaches recorded in NOTES.
+UE4SS lessons: POST-only hooks (pre=nil) do NOT fire here - use PRE hooks; a pre-hook return overrides only the return
+value, not a void body; hook params are Param userdata (:get()). Restorable saves before state-changing probes:
+local/advsave/coop-backseat2-host.sav / -client.sav.
+
+## Before (2026-11-20) - live-findings fix round
 **Commit: 0b2e415 — four verified fixes; 7baf7f4 — Mechanic UI.** GenericBar's Blueprint
 read the manager's local equipped-car state despite a correct twin Current Instance. UMG hooks accepted but never
 fired (fixed=0). TD.mechanicUITick now updates only twin items directly from Current Instance every 100 ms; own-car

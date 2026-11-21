@@ -2529,25 +2529,30 @@ local function carOfPart(a)
     end
     return car
 end
--- Out of the own car's back seat: the game's exit logically works the driver's door only, but its visible mesh must
--- not react. Keep the mesh visible and hold only its relative rotation; physics and the logical exit stay the game's.
--- (Making the mesh kinematic blocked the exit and broke the door; hiding it caused the owner's visible blink.)
+-- Out of the own car's back seat: the game's exit logically works the driver's door only and opens it with a physics
+-- impulse. Hold that door shut with the game's OWN AttemptShut (a rotation hold loses to the simulating mesh; making
+-- the mesh kinematic breaks its constraint and the game destroys the door; the physics velocity setters crash). The
+-- GetFLDoorAngle pre-hook (hookDoors) reports the door open during the window so the game's exit safety trace does not
+-- treat the shut door as a blocked exit (black screen). The door still twitches ~8 deg from the open impulse before
+-- AttemptShut brakes it - the safe floor (owner's live test 2026-11-20, NOTES). The back door opens for the exit.
 function TD.backSeatExit(own, n)
     local d1, dn = Twin.door(own, 1), TD.realDoor(own, n)
     local dp, d1p = dn and Sync.ref(dn), d1 and Sync.ref(d1)
-    local rot = d1 and d1.MainMesh.RelativeRotation
     TD.backSeatPoseUntil = M.nowMs() + TD.EXIT_SHUT_MS + 1000
+    TD.backSeatAngleUntil = TD.backSeatPoseUntil
     TD.doorGuard = true
     if dn then pcall(function() dn:AttemptOpen() end) end
     TD.doorGuard = false
-    local holdUntil = os.clock() + (TD.EXIT_SHUT_MS + 500) / 1000
-    local function holdDriverMesh()
+    local holdUntil = os.clock() + (TD.EXIT_SHUT_MS + 300) / 1000
+    local function holdDriverShut()
         local d = d1p and Sync.deref(d1p)
         if not d or os.clock() >= holdUntil then return end
-        pcall(function() d.MainMesh:K2_SetRelativeRotation(rot, false, {}, true) end)
-        CoopSyncAfter(1, holdDriverMesh)
+        TD.doorGuard = true
+        pcall(function() d:AttemptShut() end)
+        TD.doorGuard = false
+        CoopSyncAfter(10, holdDriverShut)
     end
-    holdDriverMesh()
+    holdDriverShut()
     CoopSyncAfter(TD.EXIT_SHUT_MS, function()
         local d2 = dp and Sync.deref(dp)
         if d2 then TD.doorGuard = true pcall(function() d2:AttemptShut() end) TD.doorGuard = false end
@@ -2659,6 +2664,19 @@ local function hookDoors()
             if f then pcall(f, self:get(), what) end
         end)
     end
+    -- The in-car back-seat exit opens the driver's door (the game hardcodes the front-left door for exit). TD.backSeatExit
+    -- holds that door shut with the game's own AttemptShut; the exit safety trace would then see a shut door as a blocked
+    -- exit and fade to black. Report the driver door's angle as open during that window so the trace clears (owner's live
+    -- test 2026-11-20). The door still twitches ~8 deg from the game's open impulse - the safe floor, see NOTES.
+    pcall(Hook, cls .. ":GetFLDoorAngle", function(self)
+        if not (TD.backSeatAngleUntil and M.nowMs() < TD.backSeatAngleUntil) then return end
+        local ok, isD1 = pcall(function()
+            local own = Twin.ownCar()
+            local d1 = own and Twin.door(own, 1)
+            return d1 and self:get():GetAddress() == d1:GetAddress()
+        end)
+        if ok and isD1 then return 90.0 end
+    end)
     -- the trunk storage's RefreshTrunkInventory (the game calls it on the trunk's changes) points the storage at the
     -- inventory manager's trunk = the LOCAL player's own: on a twin that showed the player's own loot in the other's
     -- trunk box (owner, alpha 16; cmds/store-point.lua). Pointed back at once (a pre-hook runs after the body).
