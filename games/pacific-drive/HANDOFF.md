@@ -3,7 +3,29 @@
 Read this first, then `NOTES.md` (same folder: the full engineering log, newest sections at the end).
 The owner writes in Russian; answers, task lists and summaries in Russian. Code, comments, NOTES in English.
 
-## Latest (2026-11-20) - back-seat exit by the in-car E fixed (live joint test)
+## Latest (2026-11-21) - next-junction split fixed (friend two-PC test); perf diagnosed
+**Commit: (pending) - session.lua coverWanted excludes "zone: at the exit"; nextzone-test step 4 (slow save).**
+Friend two-PC test on alpha22 (reports local/reports/friend-20261120/{host,guest}; timeline in channel/hitches.log).
+CRITICAL: going to the next junction, the guest reached the zone exit before the host; the host's 4.5 MB zone save took
+~23 s over Steam. coverWanted's wrong-world lift (WRONG_WORLD_S=10) fired while the guest legitimately waited in the OLD
+world for the host's NEW one ("zone: at the exit" was not excluded): the cover lifted, the world unpaused, the car rolled
+out of the gate, zoneExitTick cancelled the follow after 4 s outside - the guest stayed in the old zone, the host went on.
+FIX: exclude "zone: at the exit" from the wrong-world lift (the mismatch is expected there); the cover stays dark and the
+world paused (coverPause already pauses it), the car stays in the gate, the guest waits (SAVE_WAIT_S=90) and direct-loads
+the host's zone when the save arrives. nextzone-test 19/19 + new step 4 holds the guest's zone-save inbox file >10 s
+(background job) and asserts the cover stays dark / the guest follows on release. The guest's brief junction-map flash at
+the exit is separate polish (the mod's post-hook closes it); the owner wants no map at all - immediate loading screen.
+PERF diagnosed (owner priorities: smooth bursts, deeper profiling, optimize Lua tick; keep twin detail): hitches.log F/O
+lines - host 35 fps / 28.9 ms frame / mod 4.53 ms, guest 45 fps / 22.6 ms / mod 4.29 ms (garage 60-89 fps, mod ~0.4). The
+Lua tick is only ~16 % of the frame; the fps drop is mostly rendering the replicated world (full twin car 124-130 actors,
+~799 imported actors). Recurring stutters (O lines >=30 ms): players apply 235x avg 48.6 max 357 (applyTick parses the
+whole queued batch at once), players send/s_layout/car_equip max ~100, state t_frame/client_events max 85. One-offs: zone
+save 809, twin spawn 281, phase loot 287, load gaps to 10 s. Plan: cap the per-tick apply batch with a leftover buffer
+(events in order, poses coalesced), spread state-event bursts, optimize hot parse/serialize paths - one at a time with
+suite validation. NOTE: a rare CivCar loot-application zone-import crash (known open, dumps 11A0C582/D369E7D9) aborted one
+nextzone run; unrelated to these fixes.
+
+## Before (2026-11-20) - back-seat exit by the in-car E fixed (live joint test)
 **Commit: d16ba98 - playersync TD.backSeatExit + GetFLDoorAngle pre-hook; backseat-test in-car E coverage.**
 The owner's live two-window test (garage, reference saves, channel chan-manual-20261120-a) found the alpha22 back-seat
 exit fix did not hold: exiting the own car's back seat by the in-car E opened the driver's door together with the back

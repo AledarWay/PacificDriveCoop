@@ -1089,9 +1089,13 @@ local function coverWanted(gstate, world)
     -- in the garage: once the guest drove into the exit (the junction map opens a moment after - under the screen)
     if gstate == 4 then on = S.joinPending == true or st == "joining" end
     -- a zone that is not the host's (nextzone-test 2026-11-09: the host's junction, but the game loaded the guest's own
-    -- zone for it - a stabilizer zone on the host's side): nothing of the host's comes here - not left blind and paused
+    -- zone for it - a stabilizer zone on the host's side): nothing of the host's comes here - not left blind and paused.
+    -- NOT while waiting at a zone exit (owner's two-PC test 2026-11-20: the guest drove into the exit before the host,
+    -- the host's 4.5 MB zone save took ~23 s over Steam; the 10 s lift below fired while the guest legitimately waited
+    -- in the OLD world for the host's NEW one, unpaused the world, the car rolled out of the gate and the follow was
+    -- cancelled - the guest stayed in the old zone while the host went on). At the exit the world mismatch is expected.
     local ses = S.lastSession or {}
-    local wrong = on and gstate == 5 and st ~= "zone: loading the host's" and st ~= "joining" and ses.world and ses.world ~= "-" and ses.world ~= world
+    local wrong = on and gstate == 5 and st ~= "zone: loading the host's" and st ~= "zone: at the exit" and st ~= "joining" and ses.world and ses.world ~= "-" and ses.world ~= world
     if wrong then S.wrongSince = S.wrongSince or nowS() else S.wrongSince = nil end
     if S.wrongSince and nowS() - S.wrongSince > WRONG_WORLD_S then
         if not S.wrongNoted then S.wrongNoted = true pcall(Hitch.note, "timeline not the host's zone (" .. tostring(world) .. " / host " .. tostring(ses.world) .. "): screen lifted") end
@@ -1101,6 +1105,24 @@ local function coverWanted(gstate, world)
     if not on then S.coverSince = nil return false end
     S.coverSince = S.coverSince or nowS()
     return nowS() - S.coverSince < COVER_MAX_S
+end
+-- test only (COOPDEV_DIR): force the guest into the wrong-world scenario at a zone exit and read coverWanted, to check
+-- the lift excludes "zone: at the exit" (owner's two-PC test 2026-11-20: the guest waited in the old world for the host's
+-- new zone save and the 10 s lift stranded it). Restores the session state at once; runs synchronously on the game thread.
+if os.getenv("COOPDEV_DIR") then
+    function M._testWrongWorld()
+        local save = { role = S.role, state = S.state, lastSession = S.lastSession, wrongSince = S.wrongSince, coverSince = S.coverSince, wrongNoted = S.wrongNoted }
+        local wrongWorld = M.wrongWorld
+        S.role, S.state, S.lastSession = "client", "zone: at the exit", { world = "HOST_NEW_WORLD" }
+        S.wrongSince, S.coverSince, S.wrongNoted = nowS() - 11, nowS() - 12, nil
+        local atExit = coverWanted(5, "GUEST_OLD_WORLD")
+        S.state, S.wrongSince = "playing", nowS() - 11
+        local playing = coverWanted(5, "GUEST_OLD_WORLD")
+        S.role, S.state, S.lastSession = save.role, save.state, save.lastSession
+        S.wrongSince, S.coverSince, S.wrongNoted = save.wrongSince, save.coverSince, save.wrongNoted
+        M.wrongWorld = wrongWorld
+        return string.format("atExit=%s playing=%s", tostring(atExit), tostring(playing))
+    end
 end
 -- the world paused under the screen where the zone needs no ticking: the guest's own generated zone while the host's
 -- comes (it is replaced), the host's zone loaded until the import is in (its actors spawn the same paused), the zone's

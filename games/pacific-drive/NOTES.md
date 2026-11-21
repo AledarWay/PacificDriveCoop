@@ -4641,3 +4641,42 @@ Owner: "more extended, realistic tests - find and fix the problems".
   path) goes out the back door directly and never opens D1 (angle1=0), which is why it missed the bug. Final backseat-test
   with the fix: 23 passed, 0 failed (local/instances/backseat-fix-run3.log); the in-car section: opened=1,3, attached=false,
   angle1=0.0 (D1 shut), out by the back door.
+
+## Live two-PC friend test (2026-11-20): next-junction split and performance (reports local/reports/friend-20261120)
+- Real two-PC test on alpha22 (host D:\, guest F:\ SteamLibrary). Reports unpacked to local/reports/friend-20261120/{host,guest}.
+  The detailed mod timeline is in channel/hitches.log (N/O/F/G lines); coopsync.log holds only load/twin milestones; the
+  sent-/inbox-host-*.txt are stale Oct file-transport leftovers (the live session used Steam documents, net.log).
+- CRITICAL next-junction split (Forest_07 -> Forest_04, leg 92): the guest drove into the zone exit at 22:34:33 (before the
+  host), the mod closed its map and raised the loading cover (state "zone: at the exit", world paused). The host picked at
+  22:34:34, travelled, published run+session+spawnlist+zonesave (4.5 MB) 22:34:45-22:35:02. The guest received the session
+  (host world = Forest_04) at 22:35:00 and waited for the zone save. BUT coverWanted's wrong-world lift (WRONG_WORLD_S=10)
+  fired at 22:35:11: the guest was in the OLD world (Forest_07) while ses.world was the host's NEW one (Forest_04) - the
+  mismatch is EXPECTED while waiting at the exit, but "zone: at the exit" was not excluded from the lift. The cover lifted,
+  coverPause stopped pausing, the car rolled out of the exit volume, zoneExitTick cancelled followPending after 4 s outside
+  (22:35:24 "left the zone's exit: playing on") - the guest stayed in Forest_07. The zone save arrived 22:35:25, 1 s too
+  late. The guest drove out again, picked the junction itself (22:38:37) and reunited. The crashes in the reports are all
+  OLD (Oct/Feb), none during this session.
+- FIX (session.lua coverWanted): exclude "zone: at the exit" from the wrong-world lift, like "zone: loading the host's" and
+  "joining". At the exit the guest intentionally waits in the old world for the host's new zone save; the cover stays dark
+  and the world paused (coverPause already pauses "zone: at the exit"), the car stays in the gate, zoneExitTick keeps
+  waiting (SAVE_WAIT_S=90 > the 23 s transfer) and direct-loads the host's zone when the save arrives. nextzone-test gained
+  step 4: hold the guest's new zone-save inbox file >10 s and assert the cover stays dark / the guest follows on release.
+- The guest's brief junction-map flash at the exit (game opens it, the mod's post-hook closes it ~3 s later) is separate
+  polish; the critical split is the cover lift above. The owner wants no map at all for the guest - immediate loading screen.
+- PERFORMANCE: hitches.log F lines, driving in Forest_07: host avg 35.1 fps (min 27), 28.9 ms/frame, mod 4.53 ms/frame
+  (p.apply 1.25, state 1.01, p.frame 0.87, p.send 0.76, session 0.35); guest avg 45.1 fps (min 34), 22.6 ms/frame, mod
+  4.29 ms (state 1.54, p.apply 1.01). Garage 60-89 fps, mod ~0.4 ms. The mod's Lua tick is only ~4.5 ms (~16 % of the
+  frame) - it alone cannot explain 80-90 -> 30 fps. The bulk is the added world content: a fully-equipped twin car
+  (124-130 attached actors, mirrors/screens), ~799 imported zone actors, and pose/event bursts (reunion: "host events:
+  8623 at once ... 26 old poses dropped"; one-offs: players apply 357 ms, twin spawn 281, phase loot 287, state t_frame
+  up to 85 ms, load gaps G 10214/6962 ms). Steady-state fps is mostly rendering the replicated world; the hitches are
+  loads/spawns/event bursts. Improving fps significantly means reducing rendered content (twin detail / imported actors)
+  - a fidelity tradeoff - or smoothing the bursts; the Lua tick optimization gives only a small gain.
+- nextzone-test step 4 final form: the in-game test network (COOPSYNC_NET=tcp) keeps documents IN MEMORY (link.docPath
+  returns "doc:<name>", CoopNative_DocGet/DocGetFile; hostSaveReady writes coop-host-zone.sav from the memory doc), so the
+  zone save cannot be held as an inbox file (the file-hold attempts found "none appeared"). The deterministic check is a
+  test-only accessor session.M._testWrongWorld (COOPDEV_DIR guarded): it forces the guest 11 s into the wrong-world window
+  and reads coverWanted - "zone: at the exit" -> cover wanted (atExit=true), "playing" -> lifted (playing=false), restoring
+  S at once (synchronous on the game thread). Sent via send.ps1 -Session (CoopSyncSession is in the CoopSync mod's state,
+  not CoopDev's). Validated standalone: atExit=true playing=false. With the fix the cover stays dark at the exit; the
+  real slow-save race (23 s Steam transfer) is confirmed by the owner's next two-PC test.

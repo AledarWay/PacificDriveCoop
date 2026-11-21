@@ -12,6 +12,12 @@ Live two-window test (2026-11-20):
   shut with the game's own door-shut and reports the door open to the exit safety check, so the exit is not treated as
   blocked (no black screen). The back door opens for the exit and the player steps out beside it. The driver's door
   still twitches briefly (about 8 degrees) from the game's impulse before it is shut - see Known issues.
+Live two-PC test with a friend (2026-11-20):
+- Going to the next junction together: the guest no longer gets left behind in the old zone when it reaches the zone
+  exit before the host and the host's zone save takes a while to arrive (a large save over the internet). The guest
+  waits at the exit under the loading screen until the host's zone is ready, then loads into the same zone. Before, a
+  timeout lifted the loading screen while the guest legitimately waited, the world resumed, the car rolled out of the
+  exit and the guest stayed in the old zone while the host went on.
 
 
 0.1.0-alpha22 (2026-11-20)

@@ -166,6 +166,20 @@ Check "no extra car on either side in the new zone" ($h.cars -eq '2/1' -and $c.c
 
 NorthSame 'next zone'
 
+"=== 4. the wrong-world cover lift excludes waiting at a zone exit (owner's two-PC test 2026-11-20) ==="
+# (the bug: the guest drove into the exit before the host; the host's 4.5 MB zone save took ~23 s over Steam; the 10 s
+# wrong-world cover lift fired while the guest legitimately waited in the OLD world for the host's NEW one, unpaused the
+# world, the car rolled out of the gate and the follow was cancelled - the guest stayed in the old zone. The in-game test
+# network keeps documents in memory, so the save cannot be held as a file; check the guard directly: force the guest's
+# session 11 s into the wrong-world window and read coverWanted - at the exit the cover must stay wanted, a playing guest
+# in the wrong world still lifts. Session._testWrongWorld restores the state at once.)
+# (CoopSyncSession lives in the CoopSync mod's own Lua state, not CoopDev's: ask it there via send.ps1 -Session)
+$pf = "$cd\_wwprobe.lua"; Set-Content $pf "return CoopSyncSession._testWrongWorld and CoopSyncSession._testWrongWorld() or 'no accessor'" -Encoding ascii
+$probe = (((& "$t\send.ps1" -File $pf -Dir $cd -Session -TimeoutSec 60) -split "`r?`n" | Where-Object { $_ -match '^OK' }) -join ' ') -replace '^OK ', ''
+"  coverWanted: $probe"
+Check "slow save: at the exit the cover stays wanted past the 10 s wrong-world window" ($probe -match 'atExit=true') $probe
+Check "slow save: a playing guest in the wrong world still lifts the cover" ($probe -match 'playing=false') $probe
+
 "=== RESULT: $script:pass passed, $script:fail failed -> $(if ($script:fail -eq 0) { 'PASS' } else { 'FAIL' })"
 if (-not $Keep) {
     Get-Process PenDriverPro-Win64-Shipping -ErrorAction SilentlyContinue | Stop-Process -Force
