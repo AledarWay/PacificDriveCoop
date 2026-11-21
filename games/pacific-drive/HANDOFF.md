@@ -4,7 +4,7 @@ Read this first, then `NOTES.md` (same folder: the full engineering log, newest 
 The owner writes in Russian; answers, task lists and summaries in Russian. Code, comments, NOTES in English.
 
 ## Latest (2026-11-21) - next-junction split fixed (friend two-PC test); perf diagnosed
-**Commit: (pending) - session.lua coverWanted excludes "zone: at the exit"; nextzone-test step 4 (slow save).**
+**Commit: 646ad4d - session.lua coverWanted excludes "zone: at the exit"; nextzone-test step 4 (slow save).**
 Friend two-PC test on alpha22 (reports local/reports/friend-20261120/{host,guest}; timeline in channel/hitches.log).
 CRITICAL: going to the next junction, the guest reached the zone exit before the host; the host's 4.5 MB zone save took
 ~23 s over Steam. coverWanted's wrong-world lift (WRONG_WORLD_S=10) fired while the guest legitimately waited in the OLD

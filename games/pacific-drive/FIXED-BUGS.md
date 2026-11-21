@@ -17,6 +17,23 @@ Commit:    hash    Test: which test covers it now
 
 ---
 
+## 2026-11-21 - the guest was left behind in the old zone on the next-junction travel
+Symptom:   going to the next junction, the guest reached the zone exit before the host; after a while it loaded back
+           into the OLD zone while the host went on to the new one - they split. The guest had to drive out again and
+           pick the junction itself to reunite.
+Cause:     the host's zone save (4.5 MB) took ~23 s over Steam. While the guest waited at the exit in the OLD world for
+           the host's NEW one, session.coverWanted's wrong-world lift (WRONG_WORLD_S=10) fired: "zone: at the exit" was
+           not excluded, so the loading screen lifted, coverPause stopped pausing, the car rolled out of the exit volume
+           and zoneExitTick cancelled followPending after 4 s outside - 1 s before the save arrived.
+Found by:  the owner's two-PC friend test reports (local/reports/friend-20261120), timeline in channel/hitches.log:
+           "not the host's zone ... screen lifted" at +10 s, "left the zone's exit (car out of the gate): playing on" at
+           +14 s, the zone save document arriving at +23 s.
+Fix:       session.coverWanted excludes "zone: at the exit" from the wrong-world lift (the mismatch is expected while
+           waiting for the host's pick/save). The cover stays dark and the world paused, the car stays in the gate, the
+           guest waits (SAVE_WAIT_S=90) and direct-loads the host's zone when the save arrives.
+Commit:    646ad4d    Test: nextzone-test.ps1 21/21 (step 4: session._testWrongWorld forces the wrong-world window -
+           at the exit the cover stays wanted, a playing guest in the wrong world still lifts)
+
 ## 2026-11-21 - the driver's door opened when leaving the own back seat by the in-car E
 Symptom:   sitting in the own car's back seat and exiting by the in-car E, the driver's door swung open together with
            the back door (alpha22's fix did not hold live). Forcing the driver door shut instead faded the screen to
