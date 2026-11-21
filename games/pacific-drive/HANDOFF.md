@@ -22,8 +22,14 @@ Lua tick is only ~16 % of the frame; the fps drop is mostly rendering the replic
 whole queued batch at once), players send/s_layout/car_equip max ~100, state t_frame/client_events max 85. One-offs: zone
 save 809, twin spawn 281, phase loot 287, load gaps to 10 s. Plan: cap the per-tick apply batch with a leftover buffer
 (events in order, poses coalesced), spread state-event bursts, optimize hot parse/serialize paths - one at a time with
-suite validation. NOTE: a rare CivCar loot-application zone-import crash (known open, dumps 11A0C582/D369E7D9) aborted one
-nextzone run; unrelated to these fixes.
+suite validation. DONE (commit 1f1621f): playersync applyTick processes a slice (300 lines, more past a 5000 buffer) and
+buffers the rest in TD.pendingLines in order; late poses skipped by the interpolation, events keep order, buffer reset on
+a new world; stored on TD (playersync main chunk at Lua's 200-local limit). Smooths the rare bursts (steady apply ~1.25 ms
+unchanged). Validated sync/interact/players/loot-live LOOT PASS, twin-state 15/0, collide 9/0, nextzone 21/0, anomaly 9/0
+(the 8/1 gap-200 was the documented pose-lag flake). NEXT: state-event bursts (statesync already budgets CLIENT_BUDGET_MS=2
+client-side; host pass_begin ~84 ms spikes are inherent tracking), Lua-tick hot paths (small gains). Steady ~35 fps is
+mostly rendering the replicated world - not raised without a fidelity tradeoff the owner declined. NOTE: a rare CivCar
+loot-application zone-import crash (known open, dumps 11A0C582/D369E7D9) aborted one nextzone run; unrelated to these fixes.
 
 ## Before (2026-11-20) - back-seat exit by the in-car E fixed (live joint test)
 **Commit: d16ba98 - playersync TD.backSeatExit + GetFLDoorAngle pre-hook; backseat-test in-car E coverage.**
